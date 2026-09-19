@@ -19,13 +19,13 @@ public sealed class MainForm : Form
     public MainForm(AppFacade app)
     {
         _app = app; Text = "Studio Manager"; WindowState = FormWindowState.Maximized; MinimumSize = new(1180, 720); AutoScaleMode = AutoScaleMode.Dpi; BackColor = Theme.Background; Font = Theme.Font();
-        BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); ShowPage("Tổng quan", new DashboardPage(_app), _menu.Controls.OfType<Button>().FirstOrDefault());
+        BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); ShowPage("Tổng quan", CreateDashboard(), _menu.Controls.OfType<Button>().FirstOrDefault());
     }
 
     private void BuildSidebar()
     {
         _logo.Font = Theme.Font(12, FontStyle.Bold);
-        AddMenu("⌂", "Tổng quan", () => new DashboardPage(_app)); AddMenu("◷", "Lịch chụp", () => new BookingsPage(_app)); AddMenu("♙", "Khách hàng", () => new CrudPage(_app, "Khách hàng", "KhachHang"));
+        AddMenu("⌂", "Tổng quan", CreateDashboard); AddMenu("◷", "Lịch chụp", () => new BookingsPage(_app)); AddMenu("♙", "Khách hàng", () => new CrudPage(_app, "Khách hàng", "KhachHang"));
         if (_app.Session!.VaiTro == VaiTro.QuanTriVien) AddMenu("♟", "Nhân viên", () => new CrudPage(_app, "Nhân viên", "NhanVien"));
         AddMenu("▦", "Gói chụp", () => new CrudPage(_app, "Gói chụp", "GoiChup")); AddMenu("◇", "Dịch vụ", () => new CrudPage(_app, "Dịch vụ bổ sung", "DichVu")); AddMenu("▣", "Phòng chụp", () => new CrudPage(_app, "Phòng chụp", "PhongChup")); AddMenu("▤", "Tài nguyên", () => new CrudPage(_app, "Tài nguyên", "TaiNguyen"));
         if (_app.Session.VaiTro == VaiTro.QuanTriVien) { AddMenu("◫", "Báo cáo", () => new ReportsPage(_app)); AddMenu("◎", "Tài khoản", () => new AccountsPage(_app)); AddMenu("≡", "Nhật ký", () => new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true)); AddMenu("⚙", "Sao lưu", () => new BackupPage(_app)); }
@@ -63,5 +63,7 @@ public sealed class MainForm : Form
         _activeButton = sender; if (_activeButton is not null) { _activeButton.BackColor = Theme.Primary; _activeButton.ForeColor = Color.White; }
         _pageTitle.Text = title; _content.Controls.Clear(); page.Dock = DockStyle.Fill; _content.Controls.Add(page);
     }
+    private DashboardPage CreateDashboard() { var page = new DashboardPage(_app); page.ViewBookingsRequested += (_, _) => OpenMenu("Lịch chụp"); return page; }
+    private void OpenMenu(string title) { var button = _menu.Controls.OfType<Button>().FirstOrDefault(x => (x.Tag?.ToString() ?? "").EndsWith("|" + title, StringComparison.Ordinal)); button?.PerformClick(); }
     private static string Initials(string name) { var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries); return parts.Length == 0 ? "U" : string.Concat(parts.TakeLast(Math.Min(2, parts.Length)).Select(x => char.ToUpperInvariant(x[0]))); }
 }
