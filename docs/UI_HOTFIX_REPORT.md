@@ -2,6 +2,10 @@
 
 Branch: `codex/modern-login-dashboard`
 
+Status: **DONE — accepted by project owner**
+
+Completion date: **2026-09-19**
+
 ## Scope
 
 - Fix Login overlap and vertical clipping at the supported minimum window size.
@@ -21,8 +25,10 @@ Branch: `codex/modern-login-dashboard`
 - [x] Static year text is visually neutral and no longer looks like a clickable link.
 - [x] Existing authentication, SQL data loading, skeleton, menu and sidebar behavior remain connected.
 - [x] `git diff --check` passes.
-- [ ] Windows visual smoke test at 100%, 125% and 150% DPI — requires Visual Studio/.NET 8 on Windows.
-- [ ] `dotnet build StudioManager.sln` — requires .NET SDK, which is unavailable in the Codex runtime.
+- [x] Windows visual review accepted by the project owner.
+- [x] Phase accepted as Done by the project owner.
+
+> Verification boundary: the Codex runtime did not execute WinForms or `dotnet build` because it has no .NET SDK/Windows renderer. Visual acceptance was provided by the project owner from the Windows environment. Future changes should still repeat build and DPI checks before merging.
 
 ## IMAGE / ASSET PLACEHOLDERS
 
@@ -61,3 +67,10 @@ Branch: `codex/modern-login-dashboard`
 - No random external images were added.
 - The Login promotional panel keeps stable dimensions when the final background image is supplied.
 - A studio availability thumbnail/card from the reference artwork was not added because the current repository has no matching business workflow or room-image asset; adding a decorative nonfunctional card would violate the interaction requirement.
+
+## Final result
+
+- Login and Dashboard UI hotfix scope is closed.
+- No decorative button/link remains in the modified Dashboard cards.
+- Missing visual assets are explicitly recorded above and do not alter the current layout dimensions.
+- Pull Request remains unmerged so the feature branch can be tested or reviewed independently before integration into `main`.
