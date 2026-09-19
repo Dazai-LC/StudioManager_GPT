@@ -1,0 +1,11 @@
+USE master;
+GO
+IF DB_ID(N'StudioManager') IS NULL
+BEGIN
+    CREATE DATABASE StudioManager;
+END
+GO
+ALTER DATABASE StudioManager SET READ_COMMITTED_SNAPSHOT ON;
+GO
+USE StudioManager;
+GO
