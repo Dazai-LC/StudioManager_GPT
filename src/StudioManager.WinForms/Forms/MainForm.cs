@@ -11,7 +11,7 @@ public sealed class MainForm : Form
     private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Theme.Background, Padding = new Padding(26, 20, 26, 24) };
     private readonly Panel _sidebar = new() { Dock = DockStyle.Left, Width = ExpandedWidth, BackColor = Theme.Sidebar, Padding = new Padding(12, 14, 12, 16) };
     private readonly FlowLayoutPanel _menu = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(0, 14, 0, 0) };
-    private readonly Label _logo = new() { Text = "  ◉  STUDIO\n       MANAGER", Dock = DockStyle.Top, Height = 72, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _logo = new() { Text = "  ▣  StudioManager\n       Manage · Create · Grow", Dock = DockStyle.Top, Height = 72, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Button _logout = Theme.Button("⇥  Đăng xuất", Color.FromArgb(30, 41, 59));
     private readonly Label _pageTitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = Theme.Font(11, FontStyle.Bold), ForeColor = Theme.Text };
     private readonly ToolTip _toolTip = new(); private Button? _activeButton; private bool _collapsed;
@@ -52,7 +52,7 @@ public sealed class MainForm : Form
 
     private void ToggleSidebar()
     {
-        _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "◉" : "  ◉  STUDIO\n       MANAGER"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
+        _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "▣" : "  ▣  StudioManager\n       Manage · Create · Grow"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
         foreach (var b in _menu.Controls.OfType<Button>()) { var parts = (b.Tag?.ToString() ?? "|").Split('|'); b.Text = _collapsed ? parts[0] : $"{parts[0]}   {parts.ElementAtOrDefault(1)}"; b.Width = _collapsed ? 52 : 228; b.Padding = _collapsed ? Padding.Empty : new Padding(14, 0, 0, 0); b.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft; }
         _logout.Text = _collapsed ? "⇥" : "⇥  Đăng xuất"; _logout.Width = _collapsed ? 52 : 228; _sidebar.ResumeLayout(true);
     }

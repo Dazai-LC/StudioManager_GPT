@@ -14,14 +14,20 @@ public sealed class RevenueBarChart : Control
         using var gridPen = new Pen(Color.FromArgb(235, 238, 244), 1);
         for (var i = 0; i <= 4; i++) { var y = plot.Top + plot.Height * i / 4; g.DrawLine(gridPen, plot.Left, y, plot.Right, y); }
         if (_data.Count == 0) { DrawCentered(g, "Chưa có dữ liệu doanh thu", Theme.Muted); return; }
-        var max = Math.Max(1m, _data.Max(x => x.Value)); var slot = plot.Width / (float)_data.Count; var barWidth = Math.Min(42f, slot * .54f);
-        using var brush = new LinearGradientBrush(plot, Theme.Primary, Theme.Cyan, LinearGradientMode.Vertical);
+        var max = Math.Max(1m, _data.Max(x => x.Value)); var slot = plot.Width / (float)Math.Max(1, _data.Count - 1);
+        var points = new List<PointF>();
         for (var i = 0; i < _data.Count; i++)
         {
-            var item = _data[i]; var h = (float)(item.Value / max) * (plot.Height - 12); var x = plot.Left + slot * i + (slot - barWidth) / 2; var r = new RectangleF(x, plot.Bottom - h, barWidth, h);
-            using var path = Rounded(r, 7); g.FillPath(brush, path);
-            using var labelFont = Theme.Font(8.2f); using var labelBrush = new SolidBrush(Theme.Muted); var size = g.MeasureString(item.Label, labelFont); g.DrawString(item.Label, labelFont, labelBrush, x + (barWidth - size.Width) / 2, plot.Bottom + 8);
+            var item = _data[i]; var x = plot.Left + slot * i; var y = plot.Bottom - (float)(item.Value / max) * (plot.Height - 16); points.Add(new PointF(x, y));
+            using var labelFont = Theme.Font(8.2f); using var labelBrush = new SolidBrush(Theme.Muted); var size = g.MeasureString(item.Label, labelFont); g.DrawString(item.Label, labelFont, labelBrush, x - size.Width / 2, plot.Bottom + 8);
         }
+        if (points.Count > 1)
+        {
+            using var fillPath = new GraphicsPath(); fillPath.AddLines(points.ToArray()); fillPath.AddLine(points[^1].X, plot.Bottom, points[0].X, plot.Bottom); fillPath.CloseFigure();
+            using var fill = new LinearGradientBrush(plot, Color.FromArgb(100, Theme.Primary), Color.FromArgb(3, Theme.Primary), LinearGradientMode.Vertical); g.FillPath(fill, fillPath);
+            using var line = new Pen(Theme.Primary, 2.6f) { LineJoin = LineJoin.Round }; g.DrawLines(line, points.ToArray());
+        }
+        foreach (var point in points) { using var dot = new SolidBrush(Color.White); using var outline = new Pen(Theme.Primary, 2); g.FillEllipse(dot, point.X - 4, point.Y - 4, 8, 8); g.DrawEllipse(outline, point.X - 4, point.Y - 4, 8, 8); }
     }
     private void DrawCentered(Graphics g, string text, Color color) { using var f = Theme.Font(10); using var b = new SolidBrush(color); var s = g.MeasureString(text, f); g.DrawString(text, f, b, (Width - s.Width) / 2, (Height - s.Height) / 2); }
     private static GraphicsPath Rounded(RectangleF r, float radius) { var p = new GraphicsPath(); var d = radius * 2; p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90); p.AddLine(r.Right, r.Bottom, r.X, r.Bottom); p.CloseFigure(); return p; }
