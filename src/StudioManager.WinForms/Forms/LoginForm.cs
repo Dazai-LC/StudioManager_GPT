@@ -6,7 +6,7 @@ namespace StudioManager.WinForms.Forms;
 public sealed class LoginForm : Form
 {
     private readonly AppFacade _app;
-    private readonly TextBox _username = LoginTextBox("Nhập tên đăng nhập hoặc email");
+    private readonly TextBox _username = LoginTextBox("Nhập tên đăng nhập");
     private readonly TextBox _password = LoginTextBox("Nhập mật khẩu", true);
     private readonly Button _login = new();
     private readonly Label _error = new() { AutoSize = false, Height = 28, ForeColor = Theme.Danger, TextAlign = ContentAlignment.MiddleLeft };
@@ -40,31 +40,25 @@ public sealed class LoginForm : Form
     private Control BuildLoginArea()
     {
         var area = new LoginSurfacePanel { Dock = DockStyle.Fill, Padding = new Padding(54, 34, 54, 24), Margin = Padding.Empty };
-        var help = new Label { Dock = DockStyle.Top, Height = 34, Text = "Chưa có tài khoản?   Liên hệ quản trị viên  ↗", TextAlign = ContentAlignment.TopRight, ForeColor = Theme.Primary, Font = Theme.Font(9) };
         var center = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Color.Transparent };
         center.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 8)); center.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 84)); center.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 8));
-        var content = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 11, BackColor = Color.Transparent, Margin = Padding.Empty };
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 9, BackColor = Color.Transparent, Margin = Padding.Empty };
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 66)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 45)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 37));
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 31)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        content.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 39));
-        center.Controls.Add(content, 1, 0); area.Controls.Add(center); area.Controls.Add(help);
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); content.RowStyles.Add(new RowStyle(SizeType.Absolute, 31)); content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        center.Controls.Add(content, 1, 0); area.Controls.Add(center);
         var logo = new Label { Dock = DockStyle.Fill, Text = "▣", BackColor = Color.Transparent, Font = Theme.Font(32, FontStyle.Bold), ForeColor = Theme.Primary, TextAlign = ContentAlignment.MiddleCenter };
         var title = new Label { Dock = DockStyle.Fill, Text = "StudioManager", BackColor = Color.Transparent, Font = Theme.Font(23, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleCenter };
         var desc = new Label { Dock = DockStyle.Fill, Text = "Đăng nhập để tiếp tục", BackColor = Color.Transparent, Font = Theme.Font(10.5f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.TopCenter };
         var options = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.Transparent };
         var remember = new CheckBox { Dock = DockStyle.Left, AutoSize = true, Text = "Ghi nhớ đăng nhập", Checked = true, ForeColor = Theme.Text, Font = Theme.Font(9.3f) };
-        var forgot = new LinkLabel { Dock = DockStyle.Right, Width = 125, Text = "Quên mật khẩu?", TextAlign = ContentAlignment.MiddleRight, LinkColor = Theme.Primary, ActiveLinkColor = Theme.Primary };
-        forgot.LinkClicked += (_, _) => MessageBox.Show(this, "Vui lòng liên hệ quản trị viên để đặt lại mật khẩu.", "Khôi phục mật khẩu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var forgot = new LinkLabel { Dock = DockStyle.Right, Width = 132, Text = "Quên mật khẩu?", TextAlign = ContentAlignment.MiddleRight, LinkColor = Theme.Primary, ActiveLinkColor = Theme.Primary, Cursor = Cursors.Hand };
+        forgot.LinkClicked += (_, _) => MessageBox.Show(this, "Vui lòng liên hệ Quản trị viên để đặt lại mật khẩu.\n\nQuản trị viên có thể thực hiện tại: Tài khoản → chọn tài khoản → Đặt lại mật khẩu.", "Khôi phục mật khẩu", MessageBoxButtons.OK, MessageBoxIcon.Information);
         options.Controls.Add(forgot); options.Controls.Add(remember); ConfigureLoginButton();
-        var divider = new Label { Dock = DockStyle.Fill, Text = "──────────    Hoặc    ──────────", TextAlign = ContentAlignment.MiddleCenter, ForeColor = Theme.Border };
-        var windows = new Button { Dock = DockStyle.Fill, Text = "▦  Đăng nhập bằng Windows", FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Theme.Text, Font = Theme.Font(9.5f, FontStyle.Bold), Cursor = Cursors.Hand, Margin = Padding.Empty };
-        windows.FlatAppearance.BorderColor = Color.FromArgb(211, 221, 236); windows.FlatAppearance.BorderSize = 1;
-        windows.Click += (_, _) => MessageBox.Show(this, "Tính năng đăng nhập Windows sẽ được cấu hình bởi quản trị viên.", "StudioManager", MessageBoxButtons.OK, MessageBoxIcon.Information);
         var footer = new Label { Dock = DockStyle.Fill, Text = "StudioManager   v1.0.0\n© 2026 StudioManager. All rights reserved.", TextAlign = ContentAlignment.BottomCenter, ForeColor = Theme.Muted, Font = Theme.Font(8), BackColor = Color.Transparent };
         content.Controls.Add(logo, 0, 0); content.Controls.Add(title, 0, 1); content.Controls.Add(desc, 0, 2);
-        content.Controls.Add(InputField("Tài khoản", _username), 0, 3); content.Controls.Add(InputField("Mật khẩu", _password), 0, 4);
-        content.Controls.Add(options, 0, 5); content.Controls.Add(_login, 0, 6); content.Controls.Add(_error, 0, 7); content.Controls.Add(divider, 0, 8); content.Controls.Add(windows, 0, 9); content.Controls.Add(footer, 0, 10);
+        content.Controls.Add(InputField("Tài khoản", _username), 0, 3); content.Controls.Add(InputField("Mật khẩu", _password, true), 0, 4);
+        content.Controls.Add(options, 0, 5); content.Controls.Add(_login, 0, 6); content.Controls.Add(_error, 0, 7); content.Controls.Add(footer, 0, 8);
         _error.Dock = DockStyle.Fill; return area;
     }
 
@@ -83,13 +77,23 @@ public sealed class LoginForm : Form
         row.Controls.Add(new Label { Dock = DockStyle.Fill, Padding = new Padding(16, 4, 0, 0), Text = title + "\n" + subtitle, BackColor = Color.Transparent, ForeColor = Color.White, Font = Theme.Font(9.4f), TextAlign = ContentAlignment.MiddleLeft }); row.Controls.Add(badge); return row;
     }
 
-    private static Panel InputField(string label, TextBox input)
+    private static Panel InputField(string label, TextBox input, bool allowReveal = false)
     {
         var p = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.Transparent };
         var caption = new Label { Dock = DockStyle.Top, Height = 30, Text = label, ForeColor = Theme.Text, Font = Theme.Font(9.5f, FontStyle.Bold), TextAlign = ContentAlignment.BottomLeft };
         var border = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(14, 11, 12, 7), BackColor = Color.White };
         border.Paint += (_, e) => { using var pen = new Pen(Color.FromArgb(207, 219, 236)); e.Graphics.DrawRectangle(pen, 0, 0, border.Width - 1, border.Height - 1); };
-        border.Resize += (_, _) => Theme.Round(border, 8); border.Controls.Add(input); p.Controls.Add(border); p.Controls.Add(caption); return p;
+        border.Resize += (_, _) => Theme.Round(border, 8);
+        if (allowReveal)
+        {
+            var reveal = new Button { Dock = DockStyle.Right, Width = 50, Text = "Hiện", FlatStyle = FlatStyle.Flat, ForeColor = Theme.Primary, BackColor = Color.White, Font = Theme.Font(8.5f, FontStyle.Bold), Cursor = Cursors.Hand };
+            reveal.FlatAppearance.BorderSize = 0;
+            reveal.Click += (_, _) => { input.UseSystemPasswordChar = !input.UseSystemPasswordChar; reveal.Text = input.UseSystemPasswordChar ? "Hiện" : "Ẩn"; };
+            border.Controls.Add(input);
+            border.Controls.Add(reveal);
+        }
+        else border.Controls.Add(input);
+        p.Controls.Add(border); p.Controls.Add(caption); return p;
     }
 
     private static TextBox LoginTextBox(string placeholder, bool password = false) => new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, PlaceholderText = placeholder, UseSystemPasswordChar = password, Font = Theme.Font(10.5f), ForeColor = Theme.Text };

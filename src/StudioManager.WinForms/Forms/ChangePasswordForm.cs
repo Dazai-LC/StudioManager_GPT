@@ -27,7 +27,7 @@ public sealed class ChangePasswordForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.Controls.Add(new Label { Dock = DockStyle.Fill, Text = "🔒  Đổi mật khẩu", ForeColor = Theme.Text, Font = Theme.Font(20, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter }, 0, 0);
         layout.Controls.Add(new Label { Dock = DockStyle.Fill, Text = $"Xin chào {_session.HoTen}. Đây là lần đăng nhập đầu tiên hoặc mật khẩu vừa được đặt lại.", ForeColor = Theme.Muted, Font = Theme.Font(9.2f), TextAlign = ContentAlignment.TopCenter }, 0, 1);
-        layout.Controls.Add(Ui.Field("MẬT KHẨU MỚI", _password, 390), 0, 2); layout.Controls.Add(Ui.Field("XÁC NHẬN MẬT KHẨU", _confirmation, 390), 0, 3);
+        layout.Controls.Add(PasswordField("MẬT KHẨU MỚI", _password), 0, 2); layout.Controls.Add(PasswordField("XÁC NHẬN MẬT KHẨU", _confirmation), 0, 3);
         layout.Controls.Add(new Label { Dock = DockStyle.Fill, Text = "Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.", ForeColor = Theme.Muted, Font = Theme.Font(8.5f), TextAlign = ContentAlignment.MiddleLeft }, 0, 4);
         layout.Controls.Add(_error, 0, 5); _save.Dock = DockStyle.Fill; _save.Margin = new Padding(0, 3, 0, 3); layout.Controls.Add(_save, 0, 6);
         card.Controls.Add(layout); Controls.Add(card); AcceptButton = _save; _save.Click += async (_, _) => await SaveAsync();
@@ -48,4 +48,16 @@ public sealed class ChangePasswordForm : Form
     }
 
     private static TextBox PasswordBox(string placeholder) => new() { PlaceholderText = placeholder, UseSystemPasswordChar = true, Font = Theme.Font(10.5f), BorderStyle = BorderStyle.FixedSingle };
+
+    private static Panel PasswordField(string label, TextBox input)
+    {
+        var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 0, 8) };
+        var caption = new Label { Dock = DockStyle.Top, Height = 24, Text = label, ForeColor = Theme.Muted, Font = Theme.Font(9, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft };
+        var reveal = new Button { Dock = DockStyle.Right, Width = 52, Text = "Hiện", FlatStyle = FlatStyle.Flat, ForeColor = Theme.Primary, BackColor = Color.White, Font = Theme.Font(8.5f, FontStyle.Bold), Cursor = Cursors.Hand };
+        reveal.FlatAppearance.BorderSize = 0; reveal.Click += (_, _) => { input.UseSystemPasswordChar = !input.UseSystemPasswordChar; reveal.Text = input.UseSystemPasswordChar ? "Hiện" : "Ẩn"; };
+        var border = new Panel { Dock = DockStyle.Bottom, Height = 38, BackColor = Color.White, Padding = new Padding(10, 7, 8, 5) };
+        border.Paint += (_, e) => { using var pen = new Pen(Theme.Border); e.Graphics.DrawRectangle(pen, 0, 0, border.Width - 1, border.Height - 1); };
+        input.Dock = DockStyle.Fill;
+        border.Controls.Add(input); border.Controls.Add(reveal); panel.Controls.Add(border); panel.Controls.Add(caption); return panel;
+    }
 }
