@@ -15,6 +15,7 @@ public interface IStudioRepository
 {
     Task<TaiKhoan?> FindAccountAsync(string username, CancellationToken ct = default);
     Task UpdateLastLoginAsync(int id, DateTime time, CancellationToken ct = default);
+    Task<Result> ChangeOwnPasswordAsync(int accountId, string passwordHash, CancellationToken ct = default);
     Task<IReadOnlyList<LichChup>> SearchBookingsAsync(string? keyword, DateTime? from, DateTime? to, string? status, CancellationToken ct = default);
     Task<LichChup?> GetBookingAsync(long id, CancellationToken ct = default);
     Task<bool> HasConflictAsync(long? excludeId, int photographerId, int roomId, DateTime start, DateTime end, CancellationToken ct = default);

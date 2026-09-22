@@ -4,12 +4,12 @@ namespace StudioManager.WinForms;
 
 public static class Theme
 {
-    public static readonly Color Background = Color.FromArgb(244, 247, 252);
+    public static readonly Color Background = Color.FromArgb(246, 249, 253);
     public static readonly Color Surface = Color.White;
-    public static readonly Color Sidebar = Color.FromArgb(15, 23, 42);
-    public static readonly Color SidebarHover = Color.FromArgb(30, 41, 59);
-    public static readonly Color Primary = Color.FromArgb(79, 70, 229);
-    public static readonly Color PrimaryLight = Color.FromArgb(238, 242, 255);
+    public static readonly Color Sidebar = Color.FromArgb(21, 42, 66);
+    public static readonly Color SidebarHover = Color.FromArgb(43, 77, 113);
+    public static readonly Color Primary = Color.FromArgb(55, 116, 236);
+    public static readonly Color PrimaryLight = Color.FromArgb(232, 241, 255);
     public static readonly Color Text = Color.FromArgb(31, 41, 55);
     public static readonly Color Muted = Color.FromArgb(107, 114, 128);
     public static readonly Color Border = Color.FromArgb(229, 231, 235);

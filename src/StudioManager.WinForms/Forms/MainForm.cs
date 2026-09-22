@@ -11,7 +11,7 @@ public sealed class MainForm : Form
     private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Theme.Background, Padding = new Padding(26, 20, 26, 24) };
     private readonly Panel _sidebar = new() { Dock = DockStyle.Left, Width = ExpandedWidth, BackColor = Theme.Sidebar, Padding = new Padding(12, 14, 12, 16) };
     private readonly FlowLayoutPanel _menu = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(0, 14, 0, 0) };
-    private readonly Label _logo = new() { Text = "  ◉  STUDIO\n       MANAGER", Dock = DockStyle.Top, Height = 72, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _logo = new() { Text = "  ▣  StudioManager\n       Manage · Create · Grow", Dock = DockStyle.Top, Height = 72, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Button _logout = Theme.Button("⇥  Đăng xuất", Color.FromArgb(30, 41, 59));
     private readonly Label _pageTitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = Theme.Font(11, FontStyle.Bold), ForeColor = Theme.Text };
     private readonly ToolTip _toolTip = new(); private Button? _activeButton; private bool _collapsed;
@@ -19,13 +19,13 @@ public sealed class MainForm : Form
     public MainForm(AppFacade app)
     {
         _app = app; Text = "Studio Manager"; WindowState = FormWindowState.Maximized; MinimumSize = new(1180, 720); AutoScaleMode = AutoScaleMode.Dpi; BackColor = Theme.Background; Font = Theme.Font();
-        BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); ShowPage("Tổng quan", new DashboardPage(_app), _menu.Controls.OfType<Button>().FirstOrDefault());
+        BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); ShowPage("Tổng quan", CreateDashboard(), _menu.Controls.OfType<Button>().FirstOrDefault());
     }
 
     private void BuildSidebar()
     {
         _logo.Font = Theme.Font(12, FontStyle.Bold);
-        AddMenu("⌂", "Tổng quan", () => new DashboardPage(_app)); AddMenu("◷", "Lịch chụp", () => new BookingsPage(_app)); AddMenu("♙", "Khách hàng", () => new CrudPage(_app, "Khách hàng", "KhachHang"));
+        AddMenu("⌂", "Tổng quan", CreateDashboard); AddMenu("◷", "Lịch chụp", () => new BookingsPage(_app)); AddMenu("♙", "Khách hàng", () => new CrudPage(_app, "Khách hàng", "KhachHang"));
         if (_app.Session!.VaiTro == VaiTro.QuanTriVien) AddMenu("♟", "Nhân viên", () => new CrudPage(_app, "Nhân viên", "NhanVien"));
         AddMenu("▦", "Gói chụp", () => new CrudPage(_app, "Gói chụp", "GoiChup")); AddMenu("◇", "Dịch vụ", () => new CrudPage(_app, "Dịch vụ bổ sung", "DichVu")); AddMenu("▣", "Phòng chụp", () => new CrudPage(_app, "Phòng chụp", "PhongChup")); AddMenu("▤", "Tài nguyên", () => new CrudPage(_app, "Tài nguyên", "TaiNguyen"));
         if (_app.Session.VaiTro == VaiTro.QuanTriVien) { AddMenu("◫", "Báo cáo", () => new ReportsPage(_app)); AddMenu("◎", "Tài khoản", () => new AccountsPage(_app)); AddMenu("≡", "Nhật ký", () => new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true)); AddMenu("⚙", "Sao lưu", () => new BackupPage(_app)); }
@@ -52,7 +52,7 @@ public sealed class MainForm : Form
 
     private void ToggleSidebar()
     {
-        _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "◉" : "  ◉  STUDIO\n       MANAGER"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
+        _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "▣" : "  ▣  StudioManager\n       Manage · Create · Grow"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
         foreach (var b in _menu.Controls.OfType<Button>()) { var parts = (b.Tag?.ToString() ?? "|").Split('|'); b.Text = _collapsed ? parts[0] : $"{parts[0]}   {parts.ElementAtOrDefault(1)}"; b.Width = _collapsed ? 52 : 228; b.Padding = _collapsed ? Padding.Empty : new Padding(14, 0, 0, 0); b.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft; }
         _logout.Text = _collapsed ? "⇥" : "⇥  Đăng xuất"; _logout.Width = _collapsed ? 52 : 228; _sidebar.ResumeLayout(true);
     }
@@ -63,5 +63,7 @@ public sealed class MainForm : Form
         _activeButton = sender; if (_activeButton is not null) { _activeButton.BackColor = Theme.Primary; _activeButton.ForeColor = Color.White; }
         _pageTitle.Text = title; _content.Controls.Clear(); page.Dock = DockStyle.Fill; _content.Controls.Add(page);
     }
+    private DashboardPage CreateDashboard() { var page = new DashboardPage(_app); page.ViewBookingsRequested += (_, _) => OpenMenu("Lịch chụp"); return page; }
+    private void OpenMenu(string title) { var button = _menu.Controls.OfType<Button>().FirstOrDefault(x => (x.Tag?.ToString() ?? "").EndsWith("|" + title, StringComparison.Ordinal)); button?.PerformClick(); }
     private static string Initials(string name) { var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries); return parts.Length == 0 ? "U" : string.Concat(parts.TakeLast(Math.Min(2, parts.Length)).Select(x => char.ToUpperInvariant(x[0]))); }
 }
