@@ -99,7 +99,19 @@ public sealed class LoginForm : Form
     private async Task LoginAsync()
     {
         _error.Text = ""; _login.Enabled = false; _login.Text = "Đang đăng nhập...";
-        try { var result = await _app.Auth.LoginAsync(_username.Text.Trim(), _password.Text); if (!result.Success || result.Data is null) { _error.Text = result.Message; return; } _app.Session = result.Data; Hide(); using var main = new MainForm(_app); main.ShowDialog(); _app.Session = null; _password.Clear(); Show(); }
+        try
+        {
+            var result = await _app.Auth.LoginAsync(_username.Text.Trim(), _password.Text);
+            if (!result.Success || result.Data is null) { _error.Text = result.Message; return; }
+            _app.Session = result.Data;
+            if (result.Data.PhaiDoiMatKhau)
+            {
+                using var change = new ChangePasswordForm(_app, result.Data);
+                if (change.ShowDialog(this) != DialogResult.OK) { _app.Session = null; _password.Clear(); _error.Text = "Bạn phải đổi mật khẩu trước khi sử dụng hệ thống."; return; }
+                _app.Session = result.Data with { PhaiDoiMatKhau = false };
+            }
+            Hide(); using var main = new MainForm(_app); main.ShowDialog(); _app.Session = null; _password.Clear(); Show();
+        }
         catch (Exception ex) { _error.Text = "Không thể kết nối SQL Server. " + ex.Message; }
         finally { _login.Enabled = true; _login.Text = "⇥  Đăng nhập"; }
     }

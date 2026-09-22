@@ -44,6 +44,18 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         cmd.Parameters.AddWithValue("@Now", time); cmd.Parameters.AddWithValue("@Id", id); await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    public async Task<Result> ChangeOwnPasswordAsync(int accountId, string passwordHash, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var cn = Connection(); await cn.OpenAsync(ct);
+            await using var cmd = new SqlCommand("UPDATE TaiKhoan SET MatKhauHash=@Hash,PhaiDoiMatKhau=0,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id AND TrangThai='HOAT_DONG'", cn);
+            cmd.Parameters.Add("@Hash", SqlDbType.VarChar, 500).Value = passwordHash; cmd.Parameters.AddWithValue("@Id", accountId);
+            return await cmd.ExecuteNonQueryAsync(ct) == 1 ? Result.Ok("Đổi mật khẩu thành công.") : Result.Fail("NOT_FOUND", "Tài khoản không tồn tại hoặc đã bị khóa.");
+        }
+        catch (Exception ex) { return Result.Fail("DB_ERROR", Friendly(ex)); }
+    }
+
     public async Task<IReadOnlyList<LichChup>> SearchBookingsAsync(string? keyword, DateTime? from, DateTime? to, string? status, CancellationToken ct = default)
     {
         const string sql = @"

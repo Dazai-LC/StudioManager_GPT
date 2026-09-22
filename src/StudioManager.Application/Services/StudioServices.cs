@@ -13,7 +13,20 @@ public sealed class AuthService(IStudioRepository repo, IPasswordHasher hasher, 
             return Result<UserSession>.Fail("INVALID_LOGIN", "Tên đăng nhập hoặc mật khẩu không chính xác.");
         if (!account.HoatDong) return Result<UserSession>.Fail("LOCKED", "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.");
         await repo.UpdateLastLoginAsync(account.Id, clock.Now, ct);
-        return Result<UserSession>.Ok(new(account.Id, account.TenDangNhap, account.HoTen, account.VaiTro));
+        return Result<UserSession>.Ok(new(account.Id, account.TenDangNhap, account.HoTen, account.VaiTro, account.PhaiDoiMatKhau));
+    }
+
+    public async Task<Result> ChangePasswordAsync(int accountId, string newPassword, string confirmation, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || string.IsNullOrWhiteSpace(confirmation))
+            return Result.Fail("REQUIRED", "Vui lòng nhập đầy đủ mật khẩu mới và xác nhận mật khẩu.");
+        if (newPassword.Length < 8)
+            return Result.Fail("WEAK_PASSWORD", "Mật khẩu mới phải có ít nhất 8 ký tự.");
+        if (!newPassword.Any(char.IsUpper) || !newPassword.Any(char.IsLower) || !newPassword.Any(char.IsDigit))
+            return Result.Fail("WEAK_PASSWORD", "Mật khẩu phải có chữ hoa, chữ thường và chữ số.");
+        if (!string.Equals(newPassword, confirmation, StringComparison.Ordinal))
+            return Result.Fail("PASSWORD_MISMATCH", "Mật khẩu xác nhận không khớp.");
+        return await repo.ChangeOwnPasswordAsync(accountId, hasher.Hash(newPassword), ct);
     }
 }
 
