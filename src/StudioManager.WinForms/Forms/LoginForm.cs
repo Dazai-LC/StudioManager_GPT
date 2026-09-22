@@ -110,7 +110,13 @@ public sealed class LoginForm : Form
                 if (change.ShowDialog(this) != DialogResult.OK) { _app.Session = null; _password.Clear(); _error.Text = "Bạn phải đổi mật khẩu trước khi sử dụng hệ thống."; return; }
                 _app.Session = result.Data with { PhaiDoiMatKhau = false };
             }
-            Hide(); using var main = new MainForm(_app); main.ShowDialog(); _app.Session = null; _password.Clear(); Show();
+            Hide();
+            using var initialization = new ApplicationInitializationForm(_app);
+            if (initialization.ShowDialog() != DialogResult.OK || initialization.DashboardData is null)
+            {
+                _app.Session = null; _password.Clear(); Show(); return;
+            }
+            using var main = new MainForm(_app, initialization.DashboardData); main.ShowDialog(); _app.Session = null; _password.Clear(); Show();
         }
         catch (Exception ex) { _error.Text = "Không thể kết nối SQL Server. " + ex.Message; }
         finally { _login.Enabled = true; _login.Text = "⇥  Đăng nhập"; }

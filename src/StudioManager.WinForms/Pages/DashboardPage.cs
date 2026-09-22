@@ -1,4 +1,5 @@
 using StudioManager.Application.Services;
+using StudioManager.Application;
 using StudioManager.Domain;
 using StudioManager.WinForms.Controls;
 
@@ -7,6 +8,7 @@ namespace StudioManager.WinForms.Pages;
 public sealed class DashboardPage : UserControl
 {
     private readonly AppFacade _app;
+    private DashboardData? _initialData;
     private readonly StatCard _orders = new("TỔNG ĐƠN (THÁNG NÀY)", Theme.Primary, "▣");
     private readonly StatCard _revenueCard = new("DOANH THU (THÁNG NÀY)", Theme.Success, "$ ");
     private readonly StatCard _projects = new("DỰ ÁN ĐANG THỰC HIỆN", Theme.Purple, "▥");
@@ -20,9 +22,9 @@ public sealed class DashboardPage : UserControl
     private readonly ToolTip _toolTip = new() { AutoPopDelay = 8000, InitialDelay = 350, ReshowDelay = 150 };
     public event EventHandler? ViewBookingsRequested;
 
-    public DashboardPage(AppFacade app)
+    public DashboardPage(AppFacade app, DashboardData? initialData = null)
     {
-        _app = app; BackColor = Theme.Background; AutoScroll = true;
+        _app = app; _initialData = initialData; BackColor = Theme.Background; AutoScroll = true;
         var body = new Panel { Dock = DockStyle.Top, Height = 790 };
         var header = BuildGreeting();
         var cards = new TableLayoutPanel { Dock = DockStyle.Top, Height = 140, ColumnCount = 4, Padding = new Padding(0, 4, 0, 8) };
@@ -72,24 +74,30 @@ public sealed class DashboardPage : UserControl
 
     private async Task LoadAsync()
     {
+        if (_initialData is not null) { var initial = _initialData; _initialData = null; Bind(initial); _skeleton.Stop(); return; }
         _skeleton.Start();
         try
         {
             var task = _app.Repository.GetDashboardAsync(); await Task.WhenAll(task, Task.Delay(520)); var d = await task;
-            var monthlyRevenue = d.DoanhThu6Thang.LastOrDefault().ThucThu;
-            _orders.Value = (d.LichHomNay + d.LichSapToi + d.DangXuLy).ToString(); _orders.Trend = "↑ Dữ liệu cập nhật trực tiếp";
-            _revenueCard.Value = $"{monthlyRevenue:N0} đ"; _revenueCard.Trend = "↑ Thực thu trong tháng";
-            _projects.Value = (d.DangXuLy + d.ChoGiao).ToString(); _projects.Trend = $"↑ {d.ChoGiao} lịch chờ giao";
-            _debt.Value = $"{d.CongNo:N0} đ"; _debt.Trend = "Cần theo dõi thanh toán";
-            _revenue.Data = d.DoanhThu6Thang.Select(x => (x.Thang, x.ThucThu)).ToList(); _status.Data = d.TheoTrangThai;
-            var upcoming = d.LichGanNhat.OrderBy(x => x.BatDau).Take(5).ToList();
-            _schedule.Controls.Clear(); foreach (var x in upcoming) _schedule.Controls.Add(ScheduleRow(x));
-            _activity.Controls.Clear(); foreach (var x in upcoming.Take(5)) _activity.Controls.Add(ActivityRow(x));
-            ResizeRows(_schedule); ResizeRows(_activity);
-            _grid.DataSource = upcoming.Select(x => new { Mã_đơn = x.Ma, Khách_hàng = x.KhachHang, Dịch_vụ = x.TenGoiChot, Ngày_chụp = x.BatDau.ToString("dd/MM/yyyy"), Trạng_thái = x.TrangThai.HienThi(), Tổng_tiền = $"{x.TongThanhToan:N0} đ" }).ToList();
+            Bind(d);
         }
         catch (Exception ex) { Ui.Error(this, ex.Message); }
         finally { _skeleton.Stop(); }
+    }
+
+    private void Bind(DashboardData d)
+    {
+        var monthlyRevenue = d.DoanhThu6Thang.LastOrDefault().ThucThu;
+        _orders.Value = (d.LichHomNay + d.LichSapToi + d.DangXuLy).ToString(); _orders.Trend = "↑ Dữ liệu cập nhật trực tiếp";
+        _revenueCard.Value = $"{monthlyRevenue:N0} đ"; _revenueCard.Trend = "↑ Thực thu trong tháng";
+        _projects.Value = (d.DangXuLy + d.ChoGiao).ToString(); _projects.Trend = $"↑ {d.ChoGiao} lịch chờ giao";
+        _debt.Value = $"{d.CongNo:N0} đ"; _debt.Trend = "Cần theo dõi thanh toán";
+        _revenue.Data = d.DoanhThu6Thang.Select(x => (x.Thang, x.ThucThu)).ToList(); _status.Data = d.TheoTrangThai;
+        var upcoming = d.LichGanNhat.OrderBy(x => x.BatDau).Take(5).ToList();
+        _schedule.Controls.Clear(); foreach (var x in upcoming) _schedule.Controls.Add(ScheduleRow(x));
+        _activity.Controls.Clear(); foreach (var x in upcoming.Take(5)) _activity.Controls.Add(ActivityRow(x));
+        ResizeRows(_schedule); ResizeRows(_activity);
+        _grid.DataSource = upcoming.Select(x => new { Mã_đơn = x.Ma, Khách_hàng = x.KhachHang, Dịch_vụ = x.TenGoiChot, Ngày_chụp = x.BatDau.ToString("dd/MM/yyyy"), Trạng_thái = x.TrangThai.HienThi(), Tổng_tiền = $"{x.TongThanhToan:N0} đ" }).ToList();
     }
 
     private Control ScheduleRow(LichChup x)

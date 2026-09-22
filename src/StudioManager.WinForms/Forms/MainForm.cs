@@ -1,4 +1,5 @@
 using StudioManager.Application.Services;
+using StudioManager.Application;
 using StudioManager.Domain;
 using StudioManager.WinForms.Pages;
 
@@ -8,6 +9,7 @@ public sealed class MainForm : Form
 {
     private const int ExpandedWidth = 252; private const int CollapsedWidth = 76;
     private readonly AppFacade _app;
+    private DashboardData? _initialDashboardData;
     private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Theme.Background, Padding = new Padding(26, 20, 26, 24) };
     private readonly Panel _sidebar = new() { Dock = DockStyle.Left, Width = ExpandedWidth, BackColor = Theme.Sidebar, Padding = new Padding(12, 14, 12, 16) };
     private readonly FlowLayoutPanel _menu = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(0, 14, 0, 0) };
@@ -16,9 +18,9 @@ public sealed class MainForm : Form
     private readonly Label _pageTitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = Theme.Font(11, FontStyle.Bold), ForeColor = Theme.Text };
     private readonly ToolTip _toolTip = new(); private Button? _activeButton; private bool _collapsed;
 
-    public MainForm(AppFacade app)
+    public MainForm(AppFacade app, DashboardData? initialDashboardData = null)
     {
-        _app = app; Text = "Studio Manager"; WindowState = FormWindowState.Maximized; MinimumSize = new(1180, 720); AutoScaleMode = AutoScaleMode.Dpi; BackColor = Theme.Background; Font = Theme.Font();
+        _app = app; _initialDashboardData = initialDashboardData; Text = "Studio Manager"; WindowState = FormWindowState.Maximized; MinimumSize = new(1180, 720); AutoScaleMode = AutoScaleMode.Dpi; BackColor = Theme.Background; Font = Theme.Font();
         BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); ShowPage("Tổng quan", CreateDashboard(), _menu.Controls.OfType<Button>().FirstOrDefault());
     }
 
@@ -63,7 +65,7 @@ public sealed class MainForm : Form
         _activeButton = sender; if (_activeButton is not null) { _activeButton.BackColor = Theme.Primary; _activeButton.ForeColor = Color.White; }
         _pageTitle.Text = title; _content.Controls.Clear(); page.Dock = DockStyle.Fill; _content.Controls.Add(page);
     }
-    private DashboardPage CreateDashboard() { var page = new DashboardPage(_app); page.ViewBookingsRequested += (_, _) => OpenMenu("Lịch chụp"); return page; }
+    private DashboardPage CreateDashboard() { var page = new DashboardPage(_app, _initialDashboardData); _initialDashboardData = null; page.ViewBookingsRequested += (_, _) => OpenMenu("Lịch chụp"); return page; }
     private void OpenMenu(string title) { var button = _menu.Controls.OfType<Button>().FirstOrDefault(x => (x.Tag?.ToString() ?? "").EndsWith("|" + title, StringComparison.Ordinal)); button?.PerformClick(); }
     private static string Initials(string name) { var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries); return parts.Length == 0 ? "U" : string.Concat(parts.TakeLast(Math.Min(2, parts.Length)).Select(x => char.ToUpperInvariant(x[0]))); }
 }
