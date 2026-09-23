@@ -252,7 +252,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             "NhiepAnhGia"=>("SELECT NhanVienId,MaNhanVien,HoTen,SoDienThoai FROM NhanVien WHERE ChucVu='NHIEP_ANH_GIA' AND (@Active=0 OR TrangThai='DANG_LAM') ORDER BY HoTen","active"),
             "PhongChup"=>("SELECT PhongChupId,MaPhong,TenPhong,MoTa FROM PhongChup WHERE (@Active=0 OR TrangThai='HOAT_DONG') ORDER BY TenPhong","active"),
             "DichVu"=>("SELECT DichVuId,MaDichVu,TenDichVu,FORMAT(DonGia,'N0') FROM DichVu WHERE (@Active=0 OR TrangThai='DANG_CUNG_CAP') ORDER BY TenDichVu","active"),
-            "TaiNguyen"=>("SELECT TaiNguyenId,MaTaiNguyen,TenTaiNguyen,CONVERT(varchar(20),TongSoLuong) FROM TaiNguyen WHERE (@Active=0 OR TrangThai='HOAT_DONG') ORDER BY TenTaiNguyen","active"),
+            "TaiNguyen"=>("SELECT TaiNguyenId,MaTaiNguyen,TenTaiNguyen,CONCAT(CASE LoaiTaiNguyen WHEN 'THIET_BI' THEN N'Thiết bị' WHEN 'TRANG_PHUC' THEN N'Trang phục' ELSE LoaiTaiNguyen END,N' • SL: ',TongSoLuong) FROM TaiNguyen WHERE (@Active=0 OR TrangThai='HOAT_DONG') ORDER BY TenTaiNguyen","active"),
             "NhanVien"=>("SELECT NhanVienId,MaNhanVien,HoTen,SoDienThoai FROM NhanVien WHERE (@Active=0 OR TrangThai='DANG_LAM') ORDER BY HoTen","active"),
             _=>throw new ArgumentOutOfRangeException(nameof(type))
         };
@@ -320,7 +320,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         var sql=type switch
         {
             "DichVu"=>"SELECT l.LichChupDichVuId AS Id,l.TenDichVuChot AS [Dịch vụ],l.SoLuong AS [Số lượng],l.DonViTinhChot AS [Đơn vị],l.DonGiaChot AS [Đơn giá],l.SoLuong*l.DonGiaChot AS [Thành tiền] FROM LichChupDichVu l WHERE l.LichChupId=@Id ORDER BY l.LichChupDichVuId",
-            "TaiNguyen"=>"SELECT p.PhanCongId AS Id,t.TenTaiNguyen AS [Tài nguyên],p.SoLuong AS [Số lượng],p.BatDauSuDung AS [Bắt đầu],p.KetThucSuDung AS [Kết thúc],p.TrangThai AS [Trạng thái] FROM PhanCongTaiNguyen p JOIN TaiNguyen t ON t.TaiNguyenId=p.TaiNguyenId WHERE p.LichChupId=@Id ORDER BY p.PhanCongId",
+            "TaiNguyen"=>"SELECT p.PhanCongId AS Id,t.TenTaiNguyen AS [Tài nguyên],CASE t.LoaiTaiNguyen WHEN 'THIET_BI' THEN N'Thiết bị' WHEN 'TRANG_PHUC' THEN N'Trang phục' ELSE t.LoaiTaiNguyen END AS [Loại tài nguyên],p.SoLuong AS [Số lượng],p.BatDauSuDung AS [Bắt đầu],p.KetThucSuDung AS [Kết thúc],p.TrangThai AS [Trạng thái] FROM PhanCongTaiNguyen p JOIN TaiNguyen t ON t.TaiNguyenId=p.TaiNguyenId WHERE p.LichChupId=@Id ORDER BY p.PhanCongId",
             "ThanhToan"=>"SELECT ThanhToanId AS Id,MaThanhToan AS [Mã],LoaiThu AS [Loại],SoTien AS [Số tiền],NgayGiaoDich AS [Ngày],GhiChu AS [Ghi chú] FROM ThanhToan WHERE LichChupId=@Id ORDER BY NgayGiaoDich",
             "HoanTien"=>"SELECT HoanTienId AS Id,MaHoanTien AS [Mã],SoTien AS [Số tiền],NgayGiaoDich AS [Ngày],LyDo AS [Lý do] FROM HoanTien WHERE LichChupId=@Id ORDER BY NgayGiaoDich",
             _=>throw new ArgumentOutOfRangeException(nameof(type))
