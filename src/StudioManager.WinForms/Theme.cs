@@ -8,16 +8,16 @@ public static class Theme
     public static readonly Color Surface = Color.White;
     public static readonly Color Sidebar = Color.FromArgb(21, 42, 66);
     public static readonly Color SidebarHover = Color.FromArgb(43, 77, 113);
-    public static readonly Color Primary = Color.FromArgb(55, 116, 236);
+    public static readonly Color Primary = Color.FromArgb(47, 99, 214);
     public static readonly Color PrimaryLight = Color.FromArgb(232, 241, 255);
     public static readonly Color Text = Color.FromArgb(31, 41, 55);
     public static readonly Color Muted = Color.FromArgb(107, 114, 128);
     public static readonly Color Border = Color.FromArgb(229, 231, 235);
-    public static readonly Color Success = Color.FromArgb(16, 185, 129);
-    public static readonly Color Warning = Color.FromArgb(245, 158, 11);
-    public static readonly Color Danger = Color.FromArgb(239, 68, 68);
-    public static readonly Color Cyan = Color.FromArgb(6, 182, 212);
-    public static readonly Color Purple = Color.FromArgb(139, 92, 246);
+    public static readonly Color Success = Color.FromArgb(5, 150, 105);
+    public static readonly Color Warning = Color.FromArgb(217, 119, 6);
+    public static readonly Color Danger = Color.FromArgb(220, 38, 38);
+    public static readonly Color Cyan = Color.FromArgb(8, 145, 178);
+    public static readonly Color Purple = Color.FromArgb(124, 58, 237);
 
     public static Font Font(float size = 10, FontStyle style = FontStyle.Regular) => new("Segoe UI", size, style);
     public static void Round(Control c, int radius = 12)
@@ -29,9 +29,15 @@ public static class Theme
     }
     public static Button Button(string text, Color? color = null)
     {
-        var b = new Button { Text = text, AutoSize = false, Height = 40, Width = 122, FlatStyle = FlatStyle.Flat, BackColor = color ?? Primary, ForeColor = Color.White, Font = Font(9.5f, FontStyle.Bold), Cursor = Cursors.Hand, Padding = new Padding(8, 0, 8, 0), Margin = new Padding(5, 4, 5, 4) };
-        b.FlatAppearance.BorderSize = 0; b.Resize += (_, _) => Round(b, 8); return b;
+        var background = color ?? Primary;
+        var b = new Button { Text = text, AutoSize = false, Height = 38, Width = 126, FlatStyle = FlatStyle.Flat, BackColor = background, ForeColor = Color.White, Font = Font(9.2f, FontStyle.Bold), Cursor = Cursors.Hand, Padding = new Padding(12, 0, 12, 0), Margin = new Padding(5, 4, 5, 4), UseVisualStyleBackColor = false };
+        b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.MouseOverBackColor = Blend(background,Color.White,0.12f);
+        b.FlatAppearance.MouseDownBackColor = Blend(background,Color.Black,0.14f);
+        b.Resize += (_, _) => Round(b,10); return b;
     }
+
+    private static Color Blend(Color source,Color target,float amount)=>Color.FromArgb(source.A,(int)(source.R+(target.R-source.R)*amount),(int)(source.G+(target.G-source.G)*amount),(int)(source.B+(target.B-source.B)*amount));
     public static DataGridView Grid()
     {
         var g = new DataGridView { Dock = DockStyle.Fill, BackgroundColor = Surface, BorderStyle = BorderStyle.None, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AllowUserToResizeRows = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, Font = Font(9.5f), RowTemplate = { Height = 38 }, EnableHeadersVisualStyles = false };
