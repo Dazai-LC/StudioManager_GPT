@@ -78,7 +78,7 @@ public sealed class DashboardPage : UserControl
         _skeleton.Start();
         try
         {
-            var task = _app.Repository.GetDashboardAsync(); await Task.WhenAll(task, Task.Delay(520)); var d = await task;
+            var task = _app.Dashboard.LoadAsync(); await Task.WhenAll(task, Task.Delay(520)); var d = await task;
             Bind(d);
         }
         catch (Exception ex) { Ui.Error(this, ex.Message); }
