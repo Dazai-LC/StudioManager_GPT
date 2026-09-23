@@ -15,7 +15,51 @@ public sealed class BookingsPage : UserControl
         var card=new CardPanel{Dock=DockStyle.Fill};card.Controls.Add(_grid);Controls.Add(card);Controls.Add(bar);Controls.Add(header);_grid.CellDoubleClick+=async(_,_)=>await DetailAsync();Load+=async(_,_)=>await LoadAsync();
     }
     private LichChup? Selected()=>_grid.CurrentRow?.Cells["Id"].Value is object v?_items.FirstOrDefault(x=>x.Id==Convert.ToInt64(v)):null;
-    private async Task LoadAsync(){try{_items=await _app.Bookings.SearchAsync(string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),null,null,null);_grid.DataSource=_items.Select(x=>new{x.Id,x.Ma,x.KhachHang,Bắt_đầu=x.BatDau.ToString("dd/MM/yyyy HH:mm"),Kết_thúc=x.KetThuc.ToString("HH:mm"),x.NhiepAnhGia,Phòng=x.Phong,Trạng_thái=x.TrangThai.HienThi(),Tổng_tiền=x.TongThanhToan,Còn_lại=x.ConLai}).ToList();if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;foreach(var c in new[]{"Tổng_tiền","Còn_lại"})if(_grid.Columns.Contains(c))_grid.Columns[c].DefaultCellStyle.Format="N0";}catch(Exception ex){Ui.Error(this,ex.Message);}}
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _items=await _app.Bookings.SearchAsync(string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),null,null,null);
+            _grid.DataSource=_items.Select(x=>new
+            {
+                x.Id,
+                MaLich=x.Ma,
+                KhachHang=x.KhachHang,
+                BatDau=x.BatDau.ToString("dd/MM/yyyy HH:mm"),
+                KetThuc=x.KetThuc.ToString("dd/MM/yyyy HH:mm"),
+                NhiepAnhGia=x.NhiepAnhGia,
+                Phong=x.Phong,
+                TrangThai=x.TrangThai.HienThi(),
+                TongTien=x.TongThanhToan,
+                ConLai=x.ConLai
+            }).ToList();
+            ConfigureGrid();
+        }
+        catch(Exception ex){Ui.Error(this,ex.Message);}
+    }
+
+    private void ConfigureGrid()
+    {
+        if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;
+        SetColumn("MaLich","Mã lịch",115);
+        SetColumn("KhachHang","Khách hàng",150);
+        SetColumn("BatDau","Bắt đầu",145);
+        SetColumn("KetThuc","Kết thúc",145);
+        SetColumn("NhiepAnhGia","Nhiếp ảnh gia",145);
+        SetColumn("Phong","Phòng",110);
+        SetColumn("TrangThai","Trạng thái",125);
+        SetColumn("TongTien","Tổng tiền",130,"N0");
+        SetColumn("ConLai","Còn lại",125,"N0");
+    }
+
+    private void SetColumn(string name,string header,int minimumWidth,string? format=null)
+    {
+        if(!_grid.Columns.Contains(name))return;
+        var column=_grid.Columns[name];
+        column.HeaderText=header;
+        column.MinimumWidth=minimumWidth;
+        if(format is not null)column.DefaultCellStyle.Format=format;
+    }
     private async Task CreateAsync(){using var f=new BookingDialog(_app);if(f.ShowDialog(this)!=DialogResult.OK||f.Input is null)return;var r=await _app.Bookings.CreateAsync(f.Input,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else{Ui.Info(this,r.Message);await LoadAsync();}}
     private async Task EditAsync(){var b=Selected();if(b is null)return;string? reason=null;if(b.TrangThai!=TrangThaiLich.DaDatLich){if(_app.Session!.VaiTro!=VaiTro.QuanTriVien){Ui.Error(this,"Chỉ được sửa thông tin cốt lõi khi lịch đang Đã đặt lịch.");return;}using var reasonDialog=new TextPrompt("Lý do hiệu chỉnh","Nhập lý do hiệu chỉnh ngoại lệ:");if(reasonDialog.ShowDialog(this)!=DialogResult.OK)return;reason=reasonDialog.Value;}using var f=new BookingDialog(_app,b);if(f.ShowDialog(this)!=DialogResult.OK||f.Input is null)return;var r=await _app.Bookings.UpdateAsync(b.Id,f.Input,reason,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else{Ui.Info(this,r.Message);await LoadAsync();}}
     private async Task DetailAsync(){var b=Selected();if(b is null)return;using var d=new BookingDetailDialog(_app,b);d.ShowDialog(this);await LoadAsync();}
@@ -26,11 +70,34 @@ public sealed class BookingsPage : UserControl
 
 internal sealed class BookingDetailDialog : Form
 {
-    private readonly AppFacade _app;private readonly LichChup _booking;private readonly DataGridView _services=Theme.Grid(),_resources=Theme.Grid(),_payments=Theme.Grid();private readonly Label _summary=new(){Dock=DockStyle.Top,Height=92,Font=Theme.Font(11),ForeColor=Theme.Text,Padding=new Padding(16)};
+    private readonly AppFacade _app;private readonly LichChup _booking;private readonly DataGridView _services=Theme.Grid(),_resources=Theme.Grid(),_payments=Theme.Grid();private readonly ToolTip _toolTip=new();
     public BookingDetailDialog(AppFacade app,LichChup booking)
     {
-        _app=app;_booking=booking;Text=$"Chi tiết {booking.Ma}";StartPosition=FormStartPosition.CenterParent;ClientSize=new(940,650);MinimumSize=new(850,600);BackColor=Theme.Background;Font=Theme.Font();_summary.Text=$"{booking.KhachHang}  •  {booking.TenGoiChot}\n{booking.BatDau:dd/MM/yyyy HH:mm} - {booking.KetThuc:HH:mm}  •  {booking.NhiepAnhGia}  •  {booking.Phong}\nTổng: {booking.TongThanhToan:N0} đ  |  Đã thu: {booking.DaThu:N0} đ  |  Còn lại: {booking.ConLai:N0} đ";Controls.Add(_summary);
-        var tabs=new TabControl{Dock=DockStyle.Fill,Font=Theme.Font(10)};tabs.TabPages.Add(BuildServices());tabs.TabPages.Add(BuildResources());tabs.TabPages.Add(BuildPayments());Controls.Add(tabs);tabs.BringToFront();Load+=async(_,_)=>await ReloadAsync();
+        _app=app;_booking=booking;Text=$"Chi tiết {booking.Ma}";StartPosition=FormStartPosition.CenterParent;ClientSize=new(940,650);MinimumSize=new(850,600);BackColor=Theme.Background;Font=Theme.Font();
+        var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Padding=new Padding(14)};
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,122));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        var tabs=new TabControl{Dock=DockStyle.Fill,Font=Theme.Font(10)};tabs.TabPages.Add(BuildServices());tabs.TabPages.Add(BuildResources());tabs.TabPages.Add(BuildPayments());
+        layout.Controls.Add(BuildSummary(),0,0);layout.Controls.Add(tabs,0,1);Controls.Add(layout);Load+=async(_,_)=>await ReloadAsync();
+    }
+
+    private Control BuildSummary()
+    {
+        var card=new CardPanel{Dock=DockStyle.Fill,Padding=new Padding(18,12,18,12),Margin=Padding.Empty};
+        var lines=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3};
+        lines.RowStyles.Add(new RowStyle(SizeType.Percent,34));lines.RowStyles.Add(new RowStyle(SizeType.Percent,33));lines.RowStyles.Add(new RowStyle(SizeType.Percent,33));
+        var title=$"{_booking.Ma}  •  {_booking.KhachHang}  •  {_booking.TenGoiChot}";
+        var schedule=$"Thời gian: {_booking.BatDau:dd/MM/yyyy HH:mm} — {_booking.KetThuc:dd/MM/yyyy HH:mm}  •  {_booking.NhiepAnhGia}  •  {_booking.Phong}";
+        var finance=$"Tổng tiền: {_booking.TongThanhToan:N0} đ  |  Đã thu: {_booking.DaThu:N0} đ  |  Còn lại: {_booking.ConLai:N0} đ";
+        lines.Controls.Add(SummaryLine(title,Theme.Text,Theme.Font(11,FontStyle.Bold)),0,0);
+        lines.Controls.Add(SummaryLine(schedule,Theme.Muted,Theme.Font(9.5f)),0,1);
+        lines.Controls.Add(SummaryLine(finance,Theme.Primary,Theme.Font(10,FontStyle.Bold)),0,2);
+        card.Controls.Add(lines);return card;
+    }
+
+    private Label SummaryLine(string text,Color color,Font font)
+    {
+        var label=new Label{Dock=DockStyle.Fill,Text=text,AutoEllipsis=true,ForeColor=color,Font=font,TextAlign=ContentAlignment.MiddleLeft};
+        _toolTip.SetToolTip(label,text);return label;
     }
     private TabPage BuildServices(){var p=new TabPage("Dịch vụ & giảm giá"){BackColor=Theme.Background,Padding=new Padding(14)};var bar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=54};var add=Theme.Button("+ Thêm dịch vụ");add.Click+=async(_,_)=>await AddServiceAsync();var discount=Theme.Button("Nhập giảm giá",Theme.Warning);discount.Click+=async(_,_)=>await DiscountAsync();bar.Controls.Add(add);bar.Controls.Add(discount);p.Controls.Add(_services);p.Controls.Add(bar);return p;}
     private TabPage BuildResources(){var p=new TabPage("Tài nguyên"){BackColor=Theme.Background,Padding=new Padding(14)};var add=Theme.Button("+ Phân công");add.Dock=DockStyle.Top;add.Click+=async(_,_)=>await AssignResourceAsync();p.Controls.Add(_resources);p.Controls.Add(add);return p;}
