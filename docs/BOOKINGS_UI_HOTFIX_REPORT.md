@@ -10,12 +10,20 @@ Branch: `fix/booking-detail-grid-ui`
 - Updated the shared button treatment: calmer semantic colors, consistent 10px corner radius, balanced padding, and distinct hover/pressed colors. Existing handlers and role visibility are unchanged.
 - Long summary text in the detail form uses ellipsis only when necessary and exposes the complete value through a tooltip.
 
+## Follow-up: text clipping and button consistency
+
+- The shared `Theme.Button` now calculates its initial width from the rendered label plus horizontal breathing room. Buttons with longer Vietnamese labels, including **Nhập giảm giá**, are no longer constrained to the old fixed default width.
+- The **Tìm** action on the Bookings toolbar is now **Tìm kiếm** and uses the same button factory sizing, corner radius, colors, padding and interaction states as other toolbar actions.
+- Removed narrow hard-coded widths from the generic CRUD toolbar. Search, refresh, detail and export actions retain a readable width from the shared factory at supported DPI settings.
+- The booking detail action bar can wrap if space is constrained; it no longer relies on a fixed 54px strip that can crop a longer button label.
+
 ## UI quality checklist
 
 - [x] Detail summary and tabs have separate layout rows; no sibling control can overlap the summary.
 - [x] Start/end text in the grid includes date and time.
 - [x] Grid headings use Vietnamese display labels instead of source/property names.
 - [x] Existing buttons retain their handlers; this change only updates shared visual treatment.
+- [x] Toolbar and detail action labels obtain their initial width from their actual rendered text rather than a fixed default.
 - [x] `git diff --check` passes.
 - [ ] Windows build and visual smoke test at 100%, 125%, and 150% DPI — pending local Windows environment.
 
