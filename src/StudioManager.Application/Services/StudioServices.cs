@@ -33,8 +33,8 @@ public sealed class AuthService(IStudioRepository repo, IPasswordHasher hasher, 
 public sealed class BookingService(IStudioRepository repo, IClock clock)
 {
     public Task<LichChup?> GetAsync(long id, CancellationToken ct = default) => repo.GetBookingAsync(id, ct);
-    public Task<IReadOnlyList<LichChup>> SearchAsync(string? q, DateTime? from, DateTime? to, string? status, CancellationToken ct = default)
-        => repo.SearchBookingsAsync(q, from, to, status, ct);
+    public Task<IReadOnlyList<LichChup>> SearchAsync(BookingSearchFilter filter, CancellationToken ct = default)
+        => repo.SearchBookingsAsync(filter, ct);
 
     public async Task<Result<long>> CreateAsync(BookingInput input, UserSession user, CancellationToken ct = default)
     {
