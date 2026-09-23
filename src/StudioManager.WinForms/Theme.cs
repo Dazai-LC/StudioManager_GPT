@@ -30,7 +30,9 @@ public static class Theme
     public static Button Button(string text, Color? color = null)
     {
         var background = color ?? Primary;
-        var b = new Button { Text = text, AutoSize = false, Height = 38, Width = 126, FlatStyle = FlatStyle.Flat, BackColor = background, ForeColor = Color.White, Font = Font(9.2f, FontStyle.Bold), Cursor = Cursors.Hand, Padding = new Padding(12, 0, 12, 0), Margin = new Padding(5, 4, 5, 4), UseVisualStyleBackColor = false };
+        using var measureFont = Font(9.2f, FontStyle.Bold);
+        var width = Math.Max(118, TextRenderer.MeasureText(text, measureFont).Width + 32);
+        var b = new Button { Text = text, AutoSize = false, Height = 38, Width = width, FlatStyle = FlatStyle.Flat, BackColor = background, ForeColor = Color.White, Font = Font(9.2f, FontStyle.Bold), Cursor = Cursors.Hand, Padding = new Padding(12, 0, 12, 0), Margin = new Padding(5, 4, 5, 4), UseVisualStyleBackColor = false };
         b.FlatAppearance.BorderSize = 0;
         b.FlatAppearance.MouseOverBackColor = Blend(background,Color.White,0.12f);
         b.FlatAppearance.MouseDownBackColor = Blend(background,Color.Black,0.14f);
