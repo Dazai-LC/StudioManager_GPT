@@ -54,3 +54,9 @@ AccountsPage
 5. Kiểm tra `NhatKyHeThong` có `DANG_NHAP`, `KHOA_TAI_KHOAN`/`MO_KHOA_TAI_KHOAN`, `TAO_TAI_KHOAN`, `RESET_MAT_KHAU`, `DOI_MAT_KHAU`.
 
 `Implemented` chỉ được đánh dấu Pass cho AT01–AT06 sau khi các evidence này được chạy trên Windows/SQL Server.
+
+## Kết quả nghiệm thu
+
+- Ngày xác nhận: 23/09/2026.
+- Kết quả: **Pass** theo xác nhận nghiệm thu của người dùng trên Windows/SQL Server.
+- Commit nghiệm thu trên remote: `3b74009277f7e529dfbff725e2ecc6c41d12653c`.

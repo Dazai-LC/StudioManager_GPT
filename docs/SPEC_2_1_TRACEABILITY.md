@@ -6,7 +6,7 @@
 
 | Requirement | Hiện trạng/điểm code | Test/gate | Evidence | Trạng thái |
 |---|---|---|---|---|
-| FR01 | `AuthService`, `LoginForm`, `AccountsPage`, `TaiKhoan` | AT01-AT06 | Có khung, còn direct repository/audit/quyền Service thiếu | Partial / Not verified |
+| FR01 | `AuthService`, `LoginForm`, `AccountsPage`, `TaiKhoan` | AT01-AT06 | Login, PBKDF2, bắt đổi mật khẩu, guard Admin, khóa/mở khóa transactional và audit đã có; nghiệm thu Phase 1 đã được người dùng xác nhận | Pass — user acceptance |
 | FR02 | `CrudPage`, `SaveSimpleAsync`, `DeactivateAsync` | AT07-AT09 | Có CRUD/xóa có điều kiện; thiếu history/audit chuẩn | Partial / Not verified |
 | FR03 | `CrudPage`, lookup `NhanVien` | AT10 | Có trạng thái; thiếu service guard đầy đủ | Partial / Not verified |
 | FR04 | `CrudPage`, `SimpleEntitySpec`, lookups | AT11 | Có schema/CRUD; validation & audit chưa đầy đủ | Partial / Not verified |
@@ -36,7 +36,7 @@
 
 | Gate | Acceptance tests | Hiện trạng evidence |
 |---|---|---|
-| Giai đoạn 2 | AT01-AT06 | Not verified |
+| Giai đoạn 2 | AT01-AT06 | Pass — user acceptance trên Windows/SQL Server, 23/09/2026; branch `feature/spec-v2.1-accounts-security`, commit `3b740092` |
 | Giai đoạn 3 | AT07-AT11 | Not verified |
 | Giai đoạn 4 | AT12-AT23 | Not verified |
 | Giai đoạn 5 | AT24-AT25 | Not verified |
@@ -65,3 +65,4 @@
 - Windows/.NET 8: `dotnet clean`, `dotnet restore` và `dotnet build StudioManager.sln` thành công trên branch `feature/spec-v2.1-compliance`.
 - Windows/.NET 8: `dotnet test StudioManager.sln` thành công: **10/10 tests passed**, 0 failed, 0 skipped (23/09/2026).
 - SQL migration `05_UpgradeToSpec2_1.sql`: lần chạy đầu bị chặn trước khi tạo filtered index do session SQL Server tắt `QUOTED_IDENTIFIER`. Script đã được cập nhật để tự bật các SET options bắt buộc và lần chạy lại đã hoàn tất không lỗi trên `StudioManager` (23/09/2026).
+- Phase 1 / FR01: người dùng đã xác nhận Pass các luồng login, đổi mật khẩu bắt buộc, tạo/reset tài khoản, khóa/mở khóa, guard self-action và audit sau khi kéo branch `feature/spec-v2.1-accounts-security` (23/09/2026). Không suy diễn kết quả này sang các gate AT07–AT41.
