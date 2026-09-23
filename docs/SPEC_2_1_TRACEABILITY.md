@@ -64,4 +64,4 @@
 
 - Windows/.NET 8: `dotnet clean`, `dotnet restore` và `dotnet build StudioManager.sln` thành công trên branch `feature/spec-v2.1-compliance`.
 - Windows/.NET 8: `dotnet test StudioManager.sln` thành công: **10/10 tests passed**, 0 failed, 0 skipped (23/09/2026).
-- SQL migration `05_UpgradeToSpec2_1.sql`: lần chạy đầu bị chặn trước khi tạo filtered index do session SQL Server tắt `QUOTED_IDENTIFIER`. Script đã được cập nhật để tự bật các SET options bắt buộc; cần chạy lại rồi mới chuyển trạng thái migration thành Pass.
+- SQL migration `05_UpgradeToSpec2_1.sql`: lần chạy đầu bị chặn trước khi tạo filtered index do session SQL Server tắt `QUOTED_IDENTIFIER`. Script đã được cập nhật để tự bật các SET options bắt buộc và lần chạy lại đã hoàn tất không lỗi trên `StudioManager` (23/09/2026).
