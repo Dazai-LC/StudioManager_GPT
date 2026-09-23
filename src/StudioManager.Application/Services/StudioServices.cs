@@ -106,6 +106,7 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
 
     public async Task<Result> DeactivateAsync(string entity, long id, UserSession user, CancellationToken ct = default)
     {
+        if (entity == "TaiKhoan") return Result.Fail("USE_ACCOUNT_ACTION", "Hãy dùng thao tác khóa/mở khóa tài khoản.");
         if (!CanWrite(entity, user)) return Result.Fail("FORBIDDEN", "Bạn không có quyền thực hiện thao tác này.");
         return await repo.DeactivateAsync(entity, id, user, ct);
     }
@@ -115,7 +116,8 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
 
     public async Task<Result> CreateAccountAsync(string username, string password, int? employeeId, VaiTro role, UserSession user, CancellationToken ct = default)
     {
-        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được tạo tài khoản.");
+        var access = await RequireAdminAsync(user, ct);
+        if (access is not null) return access;
         if (username.Length < 3 || username.Length > 50 || username.Any(char.IsWhiteSpace)) return Result.Fail("INVALID_USERNAME", "Tên đăng nhập dài 3-50 ký tự và không chứa khoảng trắng.");
         var passwordResult = ValidatePassword(password);
         if (!passwordResult.Success) return passwordResult;
@@ -124,10 +126,29 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
 
     public async Task<Result> ResetPasswordAsync(int accountId, string password, UserSession user, CancellationToken ct = default)
     {
-        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được đặt lại mật khẩu.");
+        if (accountId == user.TaiKhoanId) return Result.Fail("SELF_RESET", "Hãy dùng chức năng đổi mật khẩu cho chính tài khoản đang đăng nhập.");
+        var access = await RequireAdminAsync(user, ct);
+        if (access is not null) return access;
         var passwordResult = ValidatePassword(password);
         if (!passwordResult.Success) return passwordResult;
         return await repo.ResetPasswordAsync(accountId, hasher.Hash(password), user, ct);
+    }
+
+    public async Task<Result> ToggleAccountLockAsync(int accountId, UserSession user, CancellationToken ct = default)
+    {
+        if (accountId == user.TaiKhoanId) return Result.Fail("SELF_LOCK", "Không thể khóa tài khoản đang đăng nhập.");
+        var access = await RequireAdminAsync(user, ct);
+        if (access is not null) return access;
+        return await repo.ToggleAccountLockAsync(accountId, user, ct);
+    }
+
+    private async Task<Result?> RequireAdminAsync(UserSession user, CancellationToken ct)
+    {
+        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được thực hiện thao tác này.");
+        var current = await repo.GetAccountByIdAsync(user.TaiKhoanId, ct);
+        if (current is null || !current.HoatDong) return Result.Fail("SESSION_INVALID", "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
+        if (current.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Tài khoản hiện tại không còn quyền Quản trị viên.");
+        return null;
     }
 
     private static Result ValidatePassword(string password)
@@ -138,7 +159,7 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
     }
 
     private static bool CanRead(string entity, UserSession user)
-        => entity != "NhatKy" || user.VaiTro == VaiTro.QuanTriVien;
+        => entity switch { "NhatKy" or "TaiKhoan" => user.VaiTro == VaiTro.QuanTriVien, _ => true };
 
     private static bool CanWrite(string entity, UserSession user)
         => entity == "KhachHang" || user.VaiTro == VaiTro.QuanTriVien;

@@ -37,11 +37,28 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             r.GetString(4) == "QUAN_TRI_VIEN" ? VaiTro.QuanTriVien : VaiTro.NhanVien, r.GetString(5) == "HOAT_DONG", r.GetBoolean(6), r.GetString(7));
     }
 
+    public async Task<TaiKhoan?> GetAccountByIdAsync(int accountId, CancellationToken ct = default)
+    {
+        const string sql = @"
+            SELECT tk.TaiKhoanId,tk.NhanVienId,tk.TenDangNhap,tk.MatKhauHash,tk.VaiTro,tk.TrangThai,tk.PhaiDoiMatKhau,
+                   COALESCE(nv.HoTen,tk.TenDangNhap) HoTen
+            FROM TaiKhoan tk LEFT JOIN NhanVien nv ON nv.NhanVienId=tk.NhanVienId
+            WHERE tk.TaiKhoanId=@Id";
+        await using var cn = Connection(); await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(sql, cn); cmd.Parameters.AddWithValue("@Id", accountId);
+        await using var r = await cmd.ExecuteReaderAsync(ct); if (!await r.ReadAsync(ct)) return null;
+        return new(r.GetInt32(0), r.IsDBNull(1) ? null : r.GetInt32(1), r.GetString(2), r.GetString(3),
+            r.GetString(4) == "QUAN_TRI_VIEN" ? VaiTro.QuanTriVien : VaiTro.NhanVien, r.GetString(5) == "HOAT_DONG", r.GetBoolean(6), r.GetString(7));
+    }
+
     public async Task UpdateLastLoginAsync(int id, DateTime time, CancellationToken ct = default)
     {
-        await using var cn = Connection(); await cn.OpenAsync(ct);
-        await using var cmd = new SqlCommand("UPDATE TaiKhoan SET LanDangNhapCuoi=@Now,UpdatedAt=@Now WHERE TaiKhoanId=@Id", cn);
-        cmd.Parameters.AddWithValue("@Now", time); cmd.Parameters.AddWithValue("@Id", id); await cmd.ExecuteNonQueryAsync(ct);
+        await using var cn = Connection(); await cn.OpenAsync(ct); await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(ct);
+        await using var cmd = new SqlCommand("UPDATE TaiKhoan SET LanDangNhapCuoi=@Now,UpdatedAt=@Now WHERE TaiKhoanId=@Id AND TrangThai='HOAT_DONG'", cn, tx);
+        cmd.Parameters.AddWithValue("@Now", time); cmd.Parameters.AddWithValue("@Id", id);
+        if (await cmd.ExecuteNonQueryAsync(ct) != 1) throw new InvalidOperationException("Tài khoản không còn hoạt động.");
+        await AuditAsync(cn, tx, new UserSession(id, "", "", VaiTro.NhanVien), "DANG_NHAP", "TaiKhoan", id.ToString(), null, null, null, ct);
+        await tx.CommitAsync(ct);
     }
 
     public async Task<Result> ChangeOwnPasswordAsync(int accountId, string passwordHash, CancellationToken ct = default)
@@ -296,10 +313,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         {
             try{await using var customerCn=Connection();await customerCn.OpenAsync(ct);await using var customerCmd=new SqlCommand("DELETE FROM KhachHang WHERE KhachHangId=@Id AND NOT EXISTS(SELECT 1 FROM LichChup WHERE KhachHangId=@Id)",customerCn);customerCmd.Parameters.AddWithValue("@Id",id);return await customerCmd.ExecuteNonQueryAsync(ct)==1?Result.Ok("Đã xóa khách hàng."):Result.Fail("HAS_HISTORY","Khách hàng đã có lịch sử nên không thể xóa.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
         }
-        if(entity=="TaiKhoan")
-        {
-            try{await using var accountCn=Connection();await accountCn.OpenAsync(ct);await using var accountCmd=new SqlCommand("UPDATE TaiKhoan SET TrangThai=CASE WHEN TrangThai='HOAT_DONG' THEN 'BI_KHOA' ELSE 'HOAT_DONG' END,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id",accountCn);accountCmd.Parameters.AddWithValue("@Id",id);await accountCmd.ExecuteNonQueryAsync(ct);return Result.Ok("Đã thay đổi trạng thái tài khoản.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
-        }
+        if(entity=="TaiKhoan") return Result.Fail("USE_ACCOUNT_ACTION", "Hãy dùng thao tác khóa/mở khóa tài khoản.");
         var map=entity switch{"NhanVien"=>("NhanVienId","TrangThai","NGUNG_LAM"),"GoiChup"=>("GoiChupId","TrangThai","NGUNG_AP_DUNG"),"DichVu"=>("DichVuId","TrangThai","NGUNG_CUNG_CAP"),"PhongChup"=>("PhongChupId","TrangThai","NGUNG_SU_DUNG"),"TaiNguyen"=>("TaiNguyenId","TrangThai","NGUNG_SU_DUNG"),_=>throw new ArgumentOutOfRangeException(nameof(entity))};
         try{await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand($"UPDATE {entity} SET {map.Item2}=@S,UpdatedAt=GETDATE() WHERE {map.Item1}=@Id",cn);cmd.Parameters.AddWithValue("@S",map.Item3);cmd.Parameters.AddWithValue("@Id",id);await cmd.ExecuteNonQueryAsync(ct);return Result.Ok("Đã ngừng sử dụng dữ liệu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
@@ -313,6 +327,31 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     {
         if(user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Không đủ quyền.");
         try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);await using var cmd=new SqlCommand("UPDATE TaiKhoan SET MatKhauHash=@H,PhaiDoiMatKhau=1,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id",cn,tx);cmd.Parameters.AddWithValue("@H",passwordHash);cmd.Parameters.AddWithValue("@Id",accountId);if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("NOT_FOUND","Không tìm thấy tài khoản.");await AuditAsync(cn,tx,user,"RESET_MAT_KHAU","TaiKhoan",accountId.ToString(),null,"PhaiDoiMatKhau=1",null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã đặt lại mật khẩu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+    }
+
+    public async Task<Result> ToggleAccountLockAsync(int accountId,UserSession user,CancellationToken ct=default)
+    {
+        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Không đủ quyền.");
+        if (accountId == user.TaiKhoanId) return Result.Fail("SELF_LOCK", "Không thể khóa tài khoản đang đăng nhập.");
+        try
+        {
+            await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            string? current;
+            await using (var read=new SqlCommand("SELECT TrangThai FROM TaiKhoan WITH(UPDLOCK,HOLDLOCK) WHERE TaiKhoanId=@Id",cn,tx))
+            {
+                read.Parameters.AddWithValue("@Id",accountId); current=(string?)await read.ExecuteScalarAsync(ct);
+            }
+            if(current is null) return Result.Fail("NOT_FOUND","Không tìm thấy tài khoản.");
+            var next=current=="HOAT_DONG"?"BI_KHOA":"HOAT_DONG";
+            await using (var update=new SqlCommand("UPDATE TaiKhoan SET TrangThai=@Next,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id",cn,tx))
+            {
+                update.Parameters.AddWithValue("@Next",next); update.Parameters.AddWithValue("@Id",accountId); await update.ExecuteNonQueryAsync(ct);
+            }
+            var action=next=="BI_KHOA"?"KHOA_TAI_KHOAN":"MO_KHOA_TAI_KHOAN";
+            await AuditAsync(cn,tx,user,action,"TaiKhoan",accountId.ToString(),current,next,null,ct);
+            await tx.CommitAsync(ct); return Result.Ok(next=="BI_KHOA"?"Đã khóa tài khoản.":"Đã mở khóa tài khoản.");
+        }
+        catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<IReadOnlyList<IDictionary<string,object?>>> GetBookingChildrenAsync(long bookingId,string type,CancellationToken ct=default)

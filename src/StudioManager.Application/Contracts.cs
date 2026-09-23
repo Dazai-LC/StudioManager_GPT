@@ -15,6 +15,7 @@ public sealed record ReportData(decimal DoanhThu, decimal TongThu, decimal TongH
 public interface IStudioRepository
 {
     Task<TaiKhoan?> FindAccountAsync(string username, CancellationToken ct = default);
+    Task<TaiKhoan?> GetAccountByIdAsync(int accountId, CancellationToken ct = default);
     Task UpdateLastLoginAsync(int id, DateTime time, CancellationToken ct = default);
     Task<Result> ChangeOwnPasswordAsync(int accountId, string passwordHash, CancellationToken ct = default);
     Task<IReadOnlyList<LichChup>> SearchBookingsAsync(BookingSearchFilter filter, CancellationToken ct = default);
@@ -34,6 +35,7 @@ public interface IStudioRepository
     Task<Result> DeactivateAsync(string entity, long id, UserSession user, CancellationToken ct = default);
     Task<Result> CreateAccountAsync(string username, string passwordHash, int? employeeId, VaiTro role, UserSession user, CancellationToken ct = default);
     Task<Result> ResetPasswordAsync(int accountId, string passwordHash, UserSession user, CancellationToken ct = default);
+    Task<Result> ToggleAccountLockAsync(int accountId, UserSession user, CancellationToken ct = default);
     Task<IReadOnlyList<IDictionary<string, object?>>> GetBookingChildrenAsync(long bookingId, string type, CancellationToken ct = default);
     Task<Result> AddBookingServiceAsync(long bookingId, int serviceId, decimal quantity, UserSession user, CancellationToken ct = default);
     Task<Result> RemoveBookingServiceAsync(long bookingId, long bookingServiceId, UserSession user, CancellationToken ct = default);
