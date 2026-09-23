@@ -285,12 +285,28 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             "GoiChup"=>"SELECT GoiChupId AS Id,MaGoiChup AS [Mã],TenGoiChup AS [Tên gói],GiaGoi AS [Giá],ThoiLuongPhut AS [Thời lượng],TrangThai AS [Trạng thái],MoTa AS [Mô tả] FROM GoiChup WHERE @Q IS NULL OR MaGoiChup LIKE '%'+@Q+'%' OR TenGoiChup LIKE N'%'+@Q+'%' ORDER BY GoiChupId DESC",
             "DichVu"=>"SELECT DichVuId AS Id,MaDichVu AS [Mã],TenDichVu AS [Tên dịch vụ],DonViTinh AS [Đơn vị],DonGia AS [Đơn giá],TrangThai AS [Trạng thái],MoTa AS [Mô tả] FROM DichVu WHERE @Q IS NULL OR MaDichVu LIKE '%'+@Q+'%' OR TenDichVu LIKE N'%'+@Q+'%' ORDER BY DichVuId DESC",
             "PhongChup"=>"SELECT PhongChupId AS Id,MaPhong AS [Mã],TenPhong AS [Tên phòng],TrangThai AS [Trạng thái],MoTa AS [Mô tả] FROM PhongChup WHERE @Q IS NULL OR MaPhong LIKE '%'+@Q+'%' OR TenPhong LIKE N'%'+@Q+'%' ORDER BY PhongChupId DESC",
-            "TaiNguyen"=>"SELECT TaiNguyenId AS Id,MaTaiNguyen AS [Mã],TenTaiNguyen AS [Tên tài nguyên],LoaiTaiNguyen AS [Loại],TongSoLuong AS [Số lượng],TrangThai AS [Trạng thái],GhiChu AS [Ghi chú] FROM TaiNguyen WHERE @Q IS NULL OR MaTaiNguyen LIKE '%'+@Q+'%' OR TenTaiNguyen LIKE N'%'+@Q+'%' ORDER BY TaiNguyenId DESC",
+            "TaiNguyen"=>"SELECT t.TaiNguyenId AS Id,t.MaTaiNguyen AS [Mã],t.TenTaiNguyen AS [Tên tài nguyên],t.LoaiTaiNguyen AS [Loại],t.TongSoLuong AS [Số lượng],t.DichVuThueId AS [Dịch vụ thuê ID],dv.TenDichVu AS [Dịch vụ thuê],t.TrangThai AS [Trạng thái],t.GhiChu AS [Ghi chú] FROM TaiNguyen t LEFT JOIN DichVu dv ON dv.DichVuId=t.DichVuThueId WHERE @Q IS NULL OR t.MaTaiNguyen LIKE '%'+@Q+'%' OR t.TenTaiNguyen LIKE N'%'+@Q+'%' ORDER BY t.TaiNguyenId DESC",
             "TaiKhoan"=>"SELECT TaiKhoanId AS Id,TenDangNhap AS [Tên đăng nhập],VaiTro AS [Vai trò],TrangThai AS [Trạng thái],PhaiDoiMatKhau AS [Đổi mật khẩu],LanDangNhapCuoi AS [Đăng nhập cuối] FROM TaiKhoan WHERE @Q IS NULL OR TenDangNhap LIKE '%'+@Q+'%' ORDER BY TaiKhoanId DESC",
             "NhatKy"=>"SELECT TOP 500 NhatKyId AS Id,ThoiDiem AS [Thời điểm],tk.TenDangNhap AS [Tài khoản],HanhDong AS [Hành động],LoaiDoiTuong AS [Đối tượng],DoiTuongId AS [Mã đối tượng],LyDo AS [Lý do] FROM NhatKyHeThong n JOIN TaiKhoan tk ON tk.TaiKhoanId=n.TaiKhoanId WHERE @Q IS NULL OR HanhDong LIKE '%'+@Q+'%' OR DoiTuongId LIKE '%'+@Q+'%' ORDER BY NhatKyId DESC",
             _=>throw new ArgumentOutOfRangeException(nameof(entity))
         };
         await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn);AddNullable(cmd,"@Q",keyword);var rows=new List<IDictionary<string,object?>>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct)){var d=new Dictionary<string,object?>();for(int i=0;i<r.FieldCount;i++)d[r.GetName(i)]=r.IsDBNull(i)?null:r.GetValue(i);rows.Add(d);}return rows;
+    }
+
+    public async Task<IReadOnlyList<IDictionary<string,object?>>> GetEntityBookingHistoryAsync(string entity,long id,CancellationToken ct=default)
+    {
+        var condition=entity switch
+        {
+            "KhachHang"=>"l.KhachHangId=@Id",
+            "NhanVien"=>"l.NhiepAnhGiaId=@Id",
+            "PhongChup"=>"l.PhongChupId=@Id",
+            _=>throw new ArgumentOutOfRangeException(nameof(entity))
+        };
+        var sql=$@"SELECT l.LichChupId AS Id,l.MaLichChup AS [Mã lịch],kh.HoTen AS [Khách hàng],l.TenGoiChot AS [Gói chụp],l.BatDau AS [Bắt đầu],l.KetThuc AS [Kết thúc],
+                    CASE l.TrangThai WHEN 'DA_DAT_LICH' THEN N'Đã đặt lịch' WHEN 'DA_CHUP' THEN N'Đã chụp' WHEN 'DANG_CHINH_SUA' THEN N'Đang chỉnh sửa ảnh' WHEN 'CHO_GIAO_ANH' THEN N'Chờ giao ảnh' WHEN 'DA_GIAO_ANH' THEN N'Đã giao ảnh' WHEN 'HOAN_THANH' THEN N'Hoàn thành' ELSE N'Đã hủy' END AS [Trạng thái]
+                    FROM LichChup l JOIN KhachHang kh ON kh.KhachHangId=l.KhachHangId WHERE {condition} ORDER BY l.BatDau DESC";
+        await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn);cmd.Parameters.AddWithValue("@Id",id);
+        var rows=new List<IDictionary<string,object?>>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct)){var d=new Dictionary<string,object?>();for(var i=0;i<r.FieldCount;i++)d[r.GetName(i)]=r.IsDBNull(i)?null:r.GetValue(i);rows.Add(d);}return rows;
     }
 
     public async Task<Result> SaveSimpleAsync(string entity,long? id,IReadOnlyDictionary<string,object?> v,UserSession user,CancellationToken ct=default)
@@ -299,10 +315,21 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         {
             if(user.VaiTro!=VaiTro.QuanTriVien&&entity!="KhachHang")return Result.Fail("FORBIDDEN","Bạn không có quyền thay đổi danh mục này.");
             var spec=SimpleEntitySpec.For(entity);await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
-            var columns=spec.Columns.Where(c=>v.ContainsKey(c)).ToList();string sql;
-            if(id is null){var code=spec.Prefix+Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();sql=$"INSERT {entity}({spec.CodeColumn},{string.Join(',',columns)},CreatedAt,UpdatedAt) VALUES(@Code,{string.Join(',',columns.Select(x=>"@"+x))},GETDATE(),GETDATE()); SELECT CAST(SCOPE_IDENTITY() AS bigint)";}
-            else sql=$"UPDATE {entity} SET {string.Join(',',columns.Select(x=>$"{x}=@{x}"))},UpdatedAt=GETDATE() WHERE {spec.IdColumn}=@Id; SELECT CAST(@Id AS bigint)";
-            await using var cmd=new SqlCommand(sql,cn,tx);if(id is null)cmd.Parameters.AddWithValue("@Code",spec.Prefix+Guid.NewGuid().ToString("N")[..6].ToUpperInvariant());else cmd.Parameters.AddWithValue("@Id",id.Value);foreach(var col in columns)cmd.Parameters.AddWithValue("@"+col,v[col]??DBNull.Value);var saved=Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));await AuditAsync(cn,tx,user,id is null?"THEM_DANH_MUC":"SUA_DANH_MUC",entity,saved.ToString(),null,JsonSerializer.Serialize(v),null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã lưu dữ liệu.");
+            var columns=spec.Columns.Where(c=>v.ContainsKey(c)).ToList();string sql;string? oldValue=null;long saved;
+            if(id is null)
+            {
+                var code=spec.Prefix+Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
+                sql=$"INSERT {entity}({spec.CodeColumn},{string.Join(',',columns)},CreatedAt,UpdatedAt) VALUES(@Code,{string.Join(',',columns.Select(x=>"@"+x))},GETDATE(),GETDATE()); SELECT CAST(SCOPE_IDENTITY() AS bigint)";
+                await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@Code",code);foreach(var col in columns)cmd.Parameters.AddWithValue("@"+col,v[col]??DBNull.Value);saved=Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
+            }
+            else
+            {
+                await using(var oldCmd=new SqlCommand($"SELECT * FROM {entity} WHERE {spec.IdColumn}=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id.Value);oldValue=(string?)await oldCmd.ExecuteScalarAsync(ct);}
+                if(oldValue is null)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu cần cập nhật.");
+                sql=$"UPDATE {entity} SET {string.Join(',',columns.Select(x=>$"{x}=@{x}"))},UpdatedAt=GETDATE() WHERE {spec.IdColumn}=@Id; SELECT @@ROWCOUNT";
+                await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@Id",id.Value);foreach(var col in columns)cmd.Parameters.AddWithValue("@"+col,v[col]??DBNull.Value);if(Convert.ToInt32(await cmd.ExecuteScalarAsync(ct))!=1)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu cần cập nhật.");saved=id.Value;
+            }
+            await AuditAsync(cn,tx,user,id is null?"THEM_DANH_MUC":"SUA_DANH_MUC",entity,saved.ToString(),oldValue,JsonSerializer.Serialize(v),null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã lưu dữ liệu.");
         }catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
@@ -311,11 +338,11 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         if(user.VaiTro!=VaiTro.QuanTriVien&&entity!="KhachHang")return Result.Fail("FORBIDDEN","Không đủ quyền.");
         if(entity=="KhachHang")
         {
-            try{await using var customerCn=Connection();await customerCn.OpenAsync(ct);await using var customerCmd=new SqlCommand("DELETE FROM KhachHang WHERE KhachHangId=@Id AND NOT EXISTS(SELECT 1 FROM LichChup WHERE KhachHangId=@Id)",customerCn);customerCmd.Parameters.AddWithValue("@Id",id);return await customerCmd.ExecuteNonQueryAsync(ct)==1?Result.Ok("Đã xóa khách hàng."):Result.Fail("HAS_HISTORY","Khách hàng đã có lịch sử nên không thể xóa.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+            try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);string? old;await using(var oldCmd=new SqlCommand("SELECT * FROM KhachHang WHERE KhachHangId=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id);old=(string?)await oldCmd.ExecuteScalarAsync(ct);}if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy khách hàng.");await using var customerCmd=new SqlCommand("DELETE FROM KhachHang WHERE KhachHangId=@Id AND NOT EXISTS(SELECT 1 FROM LichChup WHERE KhachHangId=@Id)",cn,tx);customerCmd.Parameters.AddWithValue("@Id",id);if(await customerCmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("HAS_HISTORY","Khách hàng đã có lịch sử nên không thể xóa.");await AuditAsync(cn,tx,user,"XOA_KHACH_HANG","KhachHang",id.ToString(),old,null,null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã xóa khách hàng.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
         }
         if(entity=="TaiKhoan") return Result.Fail("USE_ACCOUNT_ACTION", "Hãy dùng thao tác khóa/mở khóa tài khoản.");
         var map=entity switch{"NhanVien"=>("NhanVienId","TrangThai","NGUNG_LAM"),"GoiChup"=>("GoiChupId","TrangThai","NGUNG_AP_DUNG"),"DichVu"=>("DichVuId","TrangThai","NGUNG_CUNG_CAP"),"PhongChup"=>("PhongChupId","TrangThai","NGUNG_SU_DUNG"),"TaiNguyen"=>("TaiNguyenId","TrangThai","NGUNG_SU_DUNG"),_=>throw new ArgumentOutOfRangeException(nameof(entity))};
-        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand($"UPDATE {entity} SET {map.Item2}=@S,UpdatedAt=GETDATE() WHERE {map.Item1}=@Id",cn);cmd.Parameters.AddWithValue("@S",map.Item3);cmd.Parameters.AddWithValue("@Id",id);await cmd.ExecuteNonQueryAsync(ct);return Result.Ok("Đã ngừng sử dụng dữ liệu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);string? old;await using(var oldCmd=new SqlCommand($"SELECT * FROM {entity} WHERE {map.Item1}=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id);old=(string?)await oldCmd.ExecuteScalarAsync(ct);}if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu.");await using var cmd=new SqlCommand($"UPDATE {entity} SET {map.Item2}=@S,UpdatedAt=GETDATE() WHERE {map.Item1}=@Id AND {map.Item2}<>@S",cn,tx);cmd.Parameters.AddWithValue("@S",map.Item3);cmd.Parameters.AddWithValue("@Id",id);if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("ALREADY_INACTIVE","Dữ liệu này đã ngừng sử dụng.");await AuditAsync(cn,tx,user,"NGUNG_SU_DUNG_DANH_MUC",entity,id.ToString(),old,map.Item3,null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã ngừng sử dụng dữ liệu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> CreateAccountAsync(string username,string passwordHash,int? employeeId,VaiTro role,UserSession user,CancellationToken ct=default)

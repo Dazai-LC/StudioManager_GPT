@@ -31,6 +31,7 @@ public interface IStudioRepository
     Task<ReportData> GetReportAsync(DateTime from, DateTime to, CancellationToken ct = default);
     Task<IReadOnlyList<LookupItem>> GetLookupsAsync(string type, bool activeOnly = true, CancellationToken ct = default);
     Task<IReadOnlyList<IDictionary<string, object?>>> QueryGridAsync(string entity, string? keyword, CancellationToken ct = default);
+    Task<IReadOnlyList<IDictionary<string, object?>>> GetEntityBookingHistoryAsync(string entity, long id, CancellationToken ct = default);
     Task<Result> SaveSimpleAsync(string entity, long? id, IReadOnlyDictionary<string, object?> values, UserSession user, CancellationToken ct = default);
     Task<Result> DeactivateAsync(string entity, long id, UserSession user, CancellationToken ct = default);
     Task<Result> CreateAccountAsync(string username, string passwordHash, int? employeeId, VaiTro role, UserSession user, CancellationToken ct = default);

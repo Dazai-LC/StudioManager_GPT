@@ -28,9 +28,12 @@ public sealed class MainForm : Form
     {
         _logo.Font = Theme.Font(12, FontStyle.Bold);
         AddMenu("⌂", "Tổng quan", CreateDashboard); AddMenu("◷", "Lịch chụp", () => new BookingsPage(_app)); AddMenu("♙", "Khách hàng", () => new CrudPage(_app, "Khách hàng", "KhachHang"));
-        if (_app.Session!.VaiTro == VaiTro.QuanTriVien) AddMenu("♟", "Nhân viên", () => new CrudPage(_app, "Nhân viên", "NhanVien"));
-        AddMenu("▦", "Gói chụp", () => new CrudPage(_app, "Gói chụp", "GoiChup")); AddMenu("◇", "Dịch vụ", () => new CrudPage(_app, "Dịch vụ bổ sung", "DichVu")); AddMenu("▣", "Phòng chụp", () => new CrudPage(_app, "Phòng chụp", "PhongChup")); AddMenu("▤", "Tài nguyên", () => new CrudPage(_app, "Tài nguyên", "TaiNguyen"));
-        if (_app.Session.VaiTro == VaiTro.QuanTriVien) { AddMenu("◫", "Báo cáo", () => new ReportsPage(_app)); AddMenu("◎", "Tài khoản", () => new AccountsPage(_app)); AddMenu("≡", "Nhật ký", () => new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true)); AddMenu("⚙", "Sao lưu", () => new BackupPage(_app)); }
+        if (_app.Session!.VaiTro == VaiTro.QuanTriVien)
+        {
+            AddMenu("♟", "Nhân viên", () => new CrudPage(_app, "Nhân viên", "NhanVien"));
+            AddMenu("▦", "Gói chụp", () => new CrudPage(_app, "Gói chụp", "GoiChup")); AddMenu("◇", "Dịch vụ", () => new CrudPage(_app, "Dịch vụ bổ sung", "DichVu")); AddMenu("▣", "Phòng chụp", () => new CrudPage(_app, "Phòng chụp", "PhongChup")); AddMenu("▤", "Tài nguyên", () => new CrudPage(_app, "Tài nguyên", "TaiNguyen"));
+            AddMenu("◫", "Báo cáo", () => new ReportsPage(_app)); AddMenu("◎", "Tài khoản", () => new AccountsPage(_app)); AddMenu("≡", "Nhật ký", () => new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true)); AddMenu("⚙", "Sao lưu", () => new BackupPage(_app));
+        }
         _sidebar.Controls.Add(_menu);
         _logout.Dock = DockStyle.Bottom; _logout.Height = 44; _logout.Width = 228; _logout.Tag = "⇥|Đăng xuất"; _logout.Click += (_, _) => Close(); _sidebar.Controls.Add(_logout);
         _sidebar.Controls.Add(_logo);

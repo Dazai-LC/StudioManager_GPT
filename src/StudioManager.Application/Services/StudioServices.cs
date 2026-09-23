@@ -97,6 +97,9 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
     public Task<IReadOnlyList<IDictionary<string, object?>>> QueryGridAsync(string entity, string? keyword, UserSession user, CancellationToken ct = default)
         => CanRead(entity, user) ? repo.QueryGridAsync(entity, keyword, ct) : Task.FromResult<IReadOnlyList<IDictionary<string, object?>>>([]);
 
+    public Task<IReadOnlyList<IDictionary<string, object?>>> GetBookingHistoryAsync(string entity, long id, UserSession user, CancellationToken ct = default)
+        => CanRead(entity, user) ? repo.GetEntityBookingHistoryAsync(entity, id, ct) : Task.FromResult<IReadOnlyList<IDictionary<string, object?>>>([]);
+
     public async Task<Result> SaveAsync(string entity, long? id, IReadOnlyDictionary<string, object?> values, UserSession user, CancellationToken ct = default)
     {
         if (!CanWrite(entity, user)) return Result.Fail("FORBIDDEN", "Bạn không có quyền thay đổi dữ liệu này.");
@@ -168,6 +171,18 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
     {
         message = "";
         static decimal Number(IReadOnlyDictionary<string, object?> source, string key) => source.TryGetValue(key, out var value) && value is not null && decimal.TryParse(value.ToString(), out var result) ? result : 0;
+        static bool Missing(IReadOnlyDictionary<string, object?> source, string key) => !source.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value?.ToString());
+        static bool ValidEmail(string value) { try { _ = new System.Net.Mail.MailAddress(value); return true; } catch { return false; } }
+        if (entity == "KhachHang")
+        {
+            if (Missing(values, "HoTen") || Missing(values, "SoDienThoai")) message = "Họ tên và số điện thoại là bắt buộc.";
+            else if (values.TryGetValue("Email", out var email) && email is not null && !string.IsNullOrWhiteSpace(email.ToString()) && !ValidEmail(email.ToString()!)) message = "Email không hợp lệ.";
+        }
+        if (entity == "NhanVien" && (Missing(values, "HoTen") || Missing(values, "SoDienThoai") || Missing(values, "ChucVu"))) message = "Họ tên, số điện thoại và chức vụ là bắt buộc.";
+        if (entity == "GoiChup" && Missing(values, "TenGoiChup")) message = "Tên gói là bắt buộc.";
+        if (entity == "DichVu" && (Missing(values, "TenDichVu") || Missing(values, "DonViTinh"))) message = "Tên dịch vụ và đơn vị tính là bắt buộc.";
+        if (entity == "PhongChup" && Missing(values, "TenPhong")) message = "Tên phòng là bắt buộc.";
+        if (entity == "TaiNguyen" && (Missing(values, "TenTaiNguyen") || Missing(values, "LoaiTaiNguyen"))) message = "Tên và loại tài nguyên là bắt buộc.";
         if (entity == "GoiChup" && (Number(values, "GiaGoi") < 0 || Number(values, "ThoiLuongPhut") <= 0)) message = "Giá gói không âm và thời lượng phải lớn hơn 0.";
         if (entity == "DichVu" && Number(values, "DonGia") < 0) message = "Đơn giá không được âm.";
         if (entity == "TaiNguyen" && Number(values, "TongSoLuong") <= 0) message = "Tổng số lượng phải lớn hơn 0.";
