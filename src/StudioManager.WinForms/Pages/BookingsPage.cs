@@ -7,7 +7,7 @@ namespace StudioManager.WinForms.Pages;
 
 public sealed class BookingsPage : UserControl
 {
-    private readonly AppFacade _app;private readonly DataGridView _grid=Theme.Grid();private readonly TextBox _search=Ui.SearchBox("Mã lịch, khách hàng, số điện thoại...");private readonly DateTimePicker _from=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true},_to=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true};private readonly ComboBox _photographer=FilterBox(),_room=FilterBox(),_package=FilterBox(),_status=FilterBox();private IReadOnlyList<LichChup> _items=[];
+    private readonly AppFacade _app;private readonly DataGridView _grid=Theme.Grid();private readonly TextBox _search=Ui.SearchBox("Mã lịch, khách hàng, số điện thoại...");private readonly DateTimePicker _from=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true,Checked=false},_to=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true,Checked=false};private readonly ComboBox _photographer=FilterBox(),_room=FilterBox(),_package=FilterBox(),_status=FilterBox();private IReadOnlyList<LichChup> _items=[];
     public BookingsPage(AppFacade app)
     {
         _app=app;BackColor=Theme.Background;var header=new PageHeader("Lịch chụp","Theo dõi toàn bộ lịch, tiến độ và tài chính.");var add=Theme.Button("+ Tạo lịch");add.Click+=async(_,_)=>await CreateAsync();header.Actions.Controls.Add(add);
