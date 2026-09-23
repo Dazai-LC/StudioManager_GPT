@@ -29,8 +29,22 @@ public static class Theme
     }
     public static Button Button(string text, Color? color = null)
     {
-        var b = new Button { Text = text, AutoSize = false, Height = 40, Width = 122, FlatStyle = FlatStyle.Flat, BackColor = color ?? Primary, ForeColor = Color.White, Font = Font(9.5f, FontStyle.Bold), Cursor = Cursors.Hand, Padding = new Padding(8, 0, 8, 0), Margin = new Padding(5, 4, 5, 4) };
-        b.FlatAppearance.BorderSize = 0; b.Resize += (_, _) => Round(b, 8); return b;
+        var activeColor = color ?? Primary;
+        var b = new Button { Text = text, AutoSize = false, Height = 40, FlatStyle = FlatStyle.Flat, Font = Font(9.5f, FontStyle.Bold), Padding = new Padding(8, 0, 8, 0), Margin = new Padding(5, 4, 5, 4) };
+        b.Width = Math.Max(122, TextRenderer.MeasureText(text, b.Font).Width + 36);
+        b.FlatAppearance.BorderSize = 0;
+        void ApplyEnabledState()
+        {
+            b.BackColor = b.Enabled ? activeColor : Color.FromArgb(229, 231, 235);
+            b.ForeColor = b.Enabled ? Color.White : Muted;
+            b.Cursor = b.Enabled ? Cursors.Hand : Cursors.Default;
+            b.FlatAppearance.MouseOverBackColor = b.BackColor;
+            b.FlatAppearance.MouseDownBackColor = b.BackColor;
+        }
+        ApplyEnabledState();
+        b.EnabledChanged += (_, _) => ApplyEnabledState();
+        b.Resize += (_, _) => Round(b, 8);
+        return b;
     }
     public static DataGridView Grid()
     {

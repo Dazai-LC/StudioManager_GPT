@@ -49,6 +49,7 @@ public sealed class BookingService(IStudioRepository repo, IClock clock)
     public async Task<Result> UpdateAsync(long id, BookingInput input, string? reason, UserSession user, CancellationToken ct = default)
     {
         var current=await repo.GetBookingAsync(id,ct);if(current is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch chụp.");
+        if(current.TrangThai is TrangThaiLich.HoanThanh or TrangThaiLich.DaHuy)return Result.Fail("FINAL","Không thể sửa lịch đã hoàn thành hoặc đã hủy.");
         if(current.TrangThai!=TrangThaiLich.DaDatLich&&user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Nhân viên chỉ được sửa lịch đang ở trạng thái Đã đặt lịch.");
         if(current.TrangThai!=TrangThaiLich.DaDatLich&&string.IsNullOrWhiteSpace(reason))return Result.Fail("REASON_REQUIRED","Quản trị viên phải nhập lý do hiệu chỉnh ngoại lệ.");
         if(!BusinessRules.KhoangThoiGianHopLe(input.BatDau,input.KetThuc))return Result.Fail("INVALID_TIME","Giờ kết thúc phải lớn hơn giờ bắt đầu.");

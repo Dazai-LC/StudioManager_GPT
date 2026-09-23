@@ -42,6 +42,26 @@ public static class Ui
     {
         var p = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 14, 8) }; input.Dock = DockStyle.Bottom; input.Height = 36; p.Controls.Add(input); p.Controls.Add(FieldLabel(label)); return p;
     }
+    public static Panel ToolbarButton(Button button)
+    {
+        button.Margin = Padding.Empty;
+        button.Height = 36;
+        button.Dock = DockStyle.Bottom;
+        var slot = new Panel { Width = button.Width, Height = 68, Margin = new Padding(0, 0, 14, 8) };
+        slot.Controls.Add(button);
+        return slot;
+    }
+    public static Label ToolbarCaption(string text, int width = 184) => new()
+    {
+        Text = text,
+        AutoSize = false,
+        Width = width,
+        Height = 68,
+        Margin = new Padding(0, 0, 14, 8),
+        Font = Theme.Font(9, FontStyle.Bold),
+        ForeColor = Theme.Muted,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
     public static void Error(IWin32Window owner, string message) => MessageBox.Show(owner, message, "Không thể thực hiện", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     public static void Info(IWin32Window owner, string message) => MessageBox.Show(owner, message, "Studio Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
