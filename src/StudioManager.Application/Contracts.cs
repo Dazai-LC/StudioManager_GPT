@@ -35,8 +35,10 @@ public interface IStudioRepository
     Task<Result> ResetPasswordAsync(int accountId, string passwordHash, UserSession user, CancellationToken ct = default);
     Task<IReadOnlyList<IDictionary<string, object?>>> GetBookingChildrenAsync(long bookingId, string type, CancellationToken ct = default);
     Task<Result> AddBookingServiceAsync(long bookingId, int serviceId, decimal quantity, UserSession user, CancellationToken ct = default);
+    Task<Result> RemoveBookingServiceAsync(long bookingId, long bookingServiceId, UserSession user, CancellationToken ct = default);
     Task<Result> SetDiscountAsync(long bookingId, decimal amount, string? reason, UserSession user, CancellationToken ct = default);
     Task<Result> AssignResourceAsync(long bookingId, int resourceId, int quantity, UserSession user, CancellationToken ct = default);
+    Task<Result> UpdateResourceAssignmentAsync(long assignmentId, TrangThaiPhanCong next, UserSession user, CancellationToken ct = default);
     Task<Result> BackupAsync(string path, UserSession user, CancellationToken ct = default);
     Task<Result> RestoreAsync(string path, UserSession user, CancellationToken ct = default);
 }
