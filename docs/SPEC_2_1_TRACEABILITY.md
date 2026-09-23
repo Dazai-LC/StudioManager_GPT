@@ -51,3 +51,11 @@
 - Script tạo database sạch và seed chạy thành công (với giai đoạn có SQL).
 - Kết quả từng AT liên quan: Pass, Fail hoặc Not verified, kèm dữ liệu/ảnh/log tối thiểu.
 - Smoke check UI DPI 100%, 125%, 150% cho Login, Main, Bookings, Booking Detail, Reports và Backup/Restore trước bàn giao.
+
+## Tiến độ source — branch `feature/spec-v2.1-compliance`
+
+- UI đã không còn gọi `AppFacade.Repository`; các màn hình dùng Application Service phù hợp.
+- Tra cứu chi tiết lịch theo ID dùng query ID riêng, không lấy một danh sách giới hạn rồi tìm trong bộ nhớ.
+- Báo cáo aggregate chuyển sang SQL và dùng các mốc ngày đặc tả; booking detail refresh summary sau mutation.
+- Thêm workflow xóa dịch vụ có guard tổng phải thu, trả/hủy resource assignment, audit discount/account/password và log backup/restore.
+- Tất cả mục trên vẫn là **Implemented / Not verified** cho tới khi build, chạy SQL và AT liên quan trên Windows ở commit được ghi nhận.
