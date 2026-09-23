@@ -60,7 +60,7 @@ public sealed class ApplicationInitializationForm : Form
             CompleteStep(1, 40);
             _ = _app.Session.VaiTro switch { VaiTro.QuanTriVien => true, VaiTro.NhanVien => true, _ => throw new UnauthorizedAccessException("Vai trò tài khoản không hợp lệ.") };
             CompleteStep(2, 55); SetActiveStep(3, "Đang tải dữ liệu studio...");
-            DashboardData = await _app.Repository.GetDashboardAsync(ct);
+            DashboardData = await _app.Dashboard.LoadAsync(ct);
             CompleteStep(3, 85); SetActiveStep(4, "Đang chuẩn bị Dashboard...");
             CompleteStep(4, 100); _headline.Text = "Workspace sẵn sàng"; _detail.Text = "Đang mở Dashboard..."; _spinner.Running = false;
             DialogResult = DialogResult.OK; Close();
