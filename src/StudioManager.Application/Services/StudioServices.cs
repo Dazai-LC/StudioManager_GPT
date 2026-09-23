@@ -32,6 +32,7 @@ public sealed class AuthService(IStudioRepository repo, IPasswordHasher hasher, 
 
 public sealed class BookingService(IStudioRepository repo, IClock clock)
 {
+    public Task<LichChup?> GetAsync(long id, CancellationToken ct = default) => repo.GetBookingAsync(id, ct);
     public Task<IReadOnlyList<LichChup>> SearchAsync(string? q, DateTime? from, DateTime? to, string? status, CancellationToken ct = default)
         => repo.SearchBookingsAsync(q, from, to, status, ct);
 
@@ -88,4 +89,105 @@ public sealed class FinanceService(IStudioRepository repo)
         if (input.SoTien <= 0 || string.IsNullOrWhiteSpace(input.LyDo)) return Result.Fail("INVALID", "Số tiền và lý do hoàn là bắt buộc.");
         return await repo.AddRefundAsync(input, user, ct);
     }
+}
+
+public sealed class AdministrationService(IStudioRepository repo, IPasswordHasher hasher)
+{
+    public Task<IReadOnlyList<IDictionary<string, object?>>> QueryGridAsync(string entity, string? keyword, UserSession user, CancellationToken ct = default)
+        => CanRead(entity, user) ? repo.QueryGridAsync(entity, keyword, ct) : Task.FromResult<IReadOnlyList<IDictionary<string, object?>>>([]);
+
+    public async Task<Result> SaveAsync(string entity, long? id, IReadOnlyDictionary<string, object?> values, UserSession user, CancellationToken ct = default)
+    {
+        if (!CanWrite(entity, user)) return Result.Fail("FORBIDDEN", "Bạn không có quyền thay đổi dữ liệu này.");
+        if (!ValidateEntity(entity, values, out var message)) return Result.Fail("INVALID", message);
+        return await repo.SaveSimpleAsync(entity, id, values, user, ct);
+    }
+
+    public async Task<Result> DeactivateAsync(string entity, long id, UserSession user, CancellationToken ct = default)
+    {
+        if (!CanWrite(entity, user)) return Result.Fail("FORBIDDEN", "Bạn không có quyền thực hiện thao tác này.");
+        return await repo.DeactivateAsync(entity, id, user, ct);
+    }
+
+    public Task<IReadOnlyList<LookupItem>> GetLookupsAsync(string type, bool activeOnly = true, CancellationToken ct = default)
+        => repo.GetLookupsAsync(type, activeOnly, ct);
+
+    public async Task<Result> CreateAccountAsync(string username, string password, int? employeeId, VaiTro role, UserSession user, CancellationToken ct = default)
+    {
+        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được tạo tài khoản.");
+        if (username.Length < 3 || username.Length > 50 || username.Any(char.IsWhiteSpace)) return Result.Fail("INVALID_USERNAME", "Tên đăng nhập dài 3-50 ký tự và không chứa khoảng trắng.");
+        var passwordResult = ValidatePassword(password);
+        if (!passwordResult.Success) return passwordResult;
+        return await repo.CreateAccountAsync(username.Trim(), hasher.Hash(password), employeeId, role, user, ct);
+    }
+
+    public async Task<Result> ResetPasswordAsync(int accountId, string password, UserSession user, CancellationToken ct = default)
+    {
+        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được đặt lại mật khẩu.");
+        var passwordResult = ValidatePassword(password);
+        if (!passwordResult.Success) return passwordResult;
+        return await repo.ResetPasswordAsync(accountId, hasher.Hash(password), user, ct);
+    }
+
+    private static Result ValidatePassword(string password)
+    {
+        if (password.Length < 8 || !password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
+            return Result.Fail("WEAK_PASSWORD", "Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường và chữ số.");
+        return Result.Ok();
+    }
+
+    private static bool CanRead(string entity, UserSession user)
+        => entity != "NhatKy" || user.VaiTro == VaiTro.QuanTriVien;
+
+    private static bool CanWrite(string entity, UserSession user)
+        => entity == "KhachHang" || user.VaiTro == VaiTro.QuanTriVien;
+
+    private static bool ValidateEntity(string entity, IReadOnlyDictionary<string, object?> values, out string message)
+    {
+        message = "";
+        static decimal Number(IReadOnlyDictionary<string, object?> source, string key) => source.TryGetValue(key, out var value) && value is not null && decimal.TryParse(value.ToString(), out var result) ? result : 0;
+        if (entity == "GoiChup" && (Number(values, "GiaGoi") < 0 || Number(values, "ThoiLuongPhut") <= 0)) message = "Giá gói không âm và thời lượng phải lớn hơn 0.";
+        if (entity == "DichVu" && Number(values, "DonGia") < 0) message = "Đơn giá không được âm.";
+        if (entity == "TaiNguyen" && Number(values, "TongSoLuong") <= 0) message = "Tổng số lượng phải lớn hơn 0.";
+        return string.IsNullOrEmpty(message);
+    }
+}
+
+public sealed class BookingSupportService(IStudioRepository repo)
+{
+    public Task<IReadOnlyList<LookupItem>> GetLookupsAsync(string type, bool activeOnly = true, CancellationToken ct = default)
+        => repo.GetLookupsAsync(type, activeOnly, ct);
+    public Task<IReadOnlyList<IDictionary<string, object?>>> GetChildrenAsync(long bookingId, string type, CancellationToken ct = default)
+        => repo.GetBookingChildrenAsync(bookingId, type, ct);
+    public Task<Result> AddServiceAsync(long bookingId, int serviceId, decimal quantity, UserSession user, CancellationToken ct = default)
+        => repo.AddBookingServiceAsync(bookingId, serviceId, quantity, user, ct);
+    public Task<Result> RemoveServiceAsync(long bookingId, long bookingServiceId, UserSession user, CancellationToken ct = default)
+        => repo.RemoveBookingServiceAsync(bookingId, bookingServiceId, user, ct);
+    public Task<Result> SetDiscountAsync(long bookingId, decimal amount, string? reason, UserSession user, CancellationToken ct = default)
+        => repo.SetDiscountAsync(bookingId, amount, reason, user, ct);
+    public Task<Result> AssignResourceAsync(long bookingId, int resourceId, int quantity, UserSession user, CancellationToken ct = default)
+        => repo.AssignResourceAsync(bookingId, resourceId, quantity, user, ct);
+    public Task<Result> UpdateResourceAssignmentAsync(long assignmentId, TrangThaiPhanCong next, UserSession user, CancellationToken ct = default)
+        => repo.UpdateResourceAssignmentAsync(assignmentId, next, user, ct);
+}
+
+public sealed class DashboardService(IStudioRepository repo)
+{
+    public Task<DashboardData> LoadAsync(CancellationToken ct = default) => repo.GetDashboardAsync(ct);
+}
+
+public sealed class ReportingService(IStudioRepository repo)
+{
+    public async Task<Result<ReportData>> LoadAsync(DateTime from, DateTime to, UserSession user, CancellationToken ct = default)
+    {
+        if (user.VaiTro != VaiTro.QuanTriVien) return Result<ReportData>.Fail("FORBIDDEN", "Chỉ Quản trị viên được xem báo cáo.");
+        if (from.Date > to.Date) return Result<ReportData>.Fail("INVALID_RANGE", "Ngày bắt đầu không được lớn hơn ngày kết thúc.");
+        return Result<ReportData>.Ok(await repo.GetReportAsync(from.Date, to.Date, ct));
+    }
+}
+
+public sealed class BackupRestoreService(IStudioRepository repo)
+{
+    public Task<Result> BackupAsync(string path, UserSession user, CancellationToken ct = default) => repo.BackupAsync(path, user, ct);
+    public Task<Result> RestoreAsync(string path, UserSession user, CancellationToken ct = default) => repo.RestoreAsync(path, user, ct);
 }
