@@ -5,6 +5,7 @@ namespace StudioManager.Application;
 public sealed record DashboardData(int LichHomNay, int LichSapToi, int DangXuLy, int ChoGiao, decimal CongNo,
     IReadOnlyList<LichChup> LichGanNhat, IReadOnlyDictionary<string, int> TheoTrangThai, IReadOnlyList<(string Thang, decimal ThucThu)> DoanhThu6Thang);
 public sealed record BookingInput(long KhachHangId, int GoiChupId, DateTime BatDau, DateTime KetThuc, int NhiepAnhGiaId, int PhongChupId, string? GhiChu);
+public sealed record BookingSearchFilter(string? Keyword, DateTime? From, DateTime? To, int? PhotographerId = null, int? RoomId = null, int? PackageId = null, string? Status = null);
 public sealed record PaymentInput(long LichChupId, string LoaiThu, decimal SoTien, string? GhiChu);
 public sealed record RefundInput(long LichChupId, decimal SoTien, string LyDo, string? GhiChu);
 public sealed record LookupItem(long Id, string Code, string Name, string? Extra = null);
@@ -16,7 +17,7 @@ public interface IStudioRepository
     Task<TaiKhoan?> FindAccountAsync(string username, CancellationToken ct = default);
     Task UpdateLastLoginAsync(int id, DateTime time, CancellationToken ct = default);
     Task<Result> ChangeOwnPasswordAsync(int accountId, string passwordHash, CancellationToken ct = default);
-    Task<IReadOnlyList<LichChup>> SearchBookingsAsync(string? keyword, DateTime? from, DateTime? to, string? status, CancellationToken ct = default);
+    Task<IReadOnlyList<LichChup>> SearchBookingsAsync(BookingSearchFilter filter, CancellationToken ct = default);
     Task<LichChup?> GetBookingAsync(long id, CancellationToken ct = default);
     Task<bool> HasConflictAsync(long? excludeId, int photographerId, int roomId, DateTime start, DateTime end, CancellationToken ct = default);
     Task<long> CreateBookingAsync(BookingInput input, UserSession user, CancellationToken ct = default);
