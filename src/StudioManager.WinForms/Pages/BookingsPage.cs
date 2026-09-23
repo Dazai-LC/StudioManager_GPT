@@ -87,7 +87,7 @@ internal sealed class BookingDetailDialog : Form
     private static Label SummaryValue()=>new(){Dock=DockStyle.Fill,BackColor=Theme.Surface,ForeColor=Theme.Text,Font=Theme.Font(9.5f),Padding=new Padding(8,0,4,0),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true};
     private void BuildSummaryTable()
     {
-        _summary.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,116));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,112));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+        _summary.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,148));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
         for(var row=0;row<5;row++)_summary.RowStyles.Add(new RowStyle(SizeType.Percent,20));
         AddSummaryRow(0,"KHÁCH HÀNG",_customer,"GÓI CHỤP",_package);
         AddSummaryRow(1,"BẮT ĐẦU",_start,"KẾT THÚC",_end);
