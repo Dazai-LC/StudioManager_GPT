@@ -40,5 +40,5 @@ public sealed class ReportsPage : UserControl
         Controls.Add(header);
         Load+=async(_,_)=>await LoadAsync();
     }
-    private async Task LoadAsync(){if(_from.Value.Date>_to.Value.Date){Ui.Error(this,"Ngày bắt đầu không được lớn hơn ngày kết thúc.");return;}try{var r=await _app.Repository.GetReportAsync(_from.Value.Date,_to.Value.Date);_revenue.Value=$"{r.DoanhThu:N0} đ";_cash.Value=$"{r.ThucThu:N0} đ";_debt.Value=$"{r.CongNo:N0} đ";_count.Value=r.TongLich.ToString();_grid.DataSource=r.ByPackage.Select(x=>new{Gói_chụp=x.Name,Số_lần=(int)x.Value}).ToList();}catch(Exception ex){Ui.Error(this,ex.Message);}}
+    private async Task LoadAsync(){try{var result=await _app.Reports.LoadAsync(_from.Value.Date,_to.Value.Date,_app.Session!);if(!result.Success||result.Data is null){Ui.Error(this,result.Message);return;}var r=result.Data;_revenue.Value=$"{r.DoanhThu:N0} đ";_cash.Value=$"{r.ThucThu:N0} đ";_debt.Value=$"{r.CongNo:N0} đ";_count.Value=r.TongLich.ToString();_grid.DataSource=r.ByPackage.Select(x=>new{Gói_chụp=x.Name,Số_lần=(int)x.Value}).ToList();}catch(Exception ex){Ui.Error(this,ex.Message);}}
 }
