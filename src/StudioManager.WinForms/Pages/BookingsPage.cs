@@ -29,8 +29,9 @@ public sealed class BookingsPage : UserControl
         filters.Controls.Add(Ui.Field("Phòng",_room,160));
         filters.Controls.Add(Ui.Field("Gói chụp",_package,180));
         filters.Controls.Add(Ui.Field("Trạng thái",_status,170));
-        var find=Theme.Button("Tìm kiếm");find.Click+=async(_,_)=>await LoadAsync();filters.Controls.Add(Ui.ToolbarButton(find));
-        var refresh=Theme.Button("Làm mới",Color.FromArgb(71,85,105));refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};filters.Controls.Add(Ui.ToolbarButton(refresh));
+        var find=Theme.Button("Tìm kiếm");find.Click+=async(_,_)=>await LoadAsync();
+        var refresh=Theme.Button("Làm mới",Color.FromArgb(71,85,105));refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
+        filters.Controls.Add(Ui.ToolbarButtonGroup(find,refresh));
 
         var actions=Toolbar();
         actions.Controls.Add(Ui.ToolbarCaption("THAO TÁC LỊCH ĐÃ CHỌN"));
@@ -74,11 +75,27 @@ public sealed class BookingsPage : UserControl
 
 internal sealed class BookingDetailDialog : Form
 {
-    private readonly AppFacade _app;private LichChup _booking;private readonly DataGridView _services=Theme.Grid(),_resources=Theme.Grid(),_payments=Theme.Grid();private readonly Label _summary=new(){Dock=DockStyle.Fill,Font=Theme.Font(10),ForeColor=Theme.Text,Padding=new Padding(4),AutoEllipsis=false,TextAlign=ContentAlignment.TopLeft};
+    private readonly AppFacade _app;private LichChup _booking;private readonly DataGridView _services=Theme.Grid(),_resources=Theme.Grid(),_payments=Theme.Grid();
+    private readonly TableLayoutPanel _summary=new(){Dock=DockStyle.Fill,ColumnCount=4,RowCount=5,CellBorderStyle=TableLayoutPanelCellBorderStyle.Single,BackColor=Theme.Border};
+    private readonly Label _customer=SummaryValue(),_package=SummaryValue(),_start=SummaryValue(),_end=SummaryValue(),_photographer=SummaryValue(),_room=SummaryValue(),_subtotal=SummaryValue(),_discount=SummaryValue(),_total=SummaryValue(),_received=SummaryValue();
+    private readonly ToolTip _summaryTip=new();
     public BookingDetailDialog(AppFacade app,LichChup booking)
     {
-        _app=app;_booking=booking;Text=$"Chi tiết {booking.Ma}";StartPosition=FormStartPosition.CenterParent;ClientSize=new(960,700);MinimumSize=new(880,650);BackColor=Theme.Background;Font=Theme.Font();var summaryCard=new CardPanel{Dock=DockStyle.Fill,Margin=new Padding(0,0,0,10),Padding=new Padding(20,16,20,12)};summaryCard.Controls.Add(_summary);var tabs=new TabControl{Dock=DockStyle.Fill,Font=Theme.Font(10)};tabs.TabPages.Add(BuildServices());tabs.TabPages.Add(BuildResources());tabs.TabPages.Add(BuildPayments());var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Padding=new Padding(14)};layout.RowStyles.Add(new RowStyle(SizeType.Absolute,150));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.Controls.Add(summaryCard,0,0);layout.Controls.Add(tabs,0,1);Controls.Add(layout);UpdateSummary();Load+=async(_,_)=>await ReloadAsync();
+        _app=app;_booking=booking;Text=$"Chi tiết {booking.Ma}";StartPosition=FormStartPosition.CenterParent;ClientSize=new(960,710);MinimumSize=new(880,660);BackColor=Theme.Background;Font=Theme.Font();BuildSummaryTable();var summaryCard=new CardPanel{Dock=DockStyle.Fill,Margin=new Padding(0,0,0,10),Padding=new Padding(14)};summaryCard.Controls.Add(_summary);var tabs=new TabControl{Dock=DockStyle.Fill,Font=Theme.Font(10)};tabs.TabPages.Add(BuildServices());tabs.TabPages.Add(BuildResources());tabs.TabPages.Add(BuildPayments());var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Padding=new Padding(14)};layout.RowStyles.Add(new RowStyle(SizeType.Absolute,168));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.Controls.Add(summaryCard,0,0);layout.Controls.Add(tabs,0,1);Controls.Add(layout);UpdateSummary();FormClosed+=(_,_)=>_summaryTip.Dispose();Load+=async(_,_)=>await ReloadAsync();
     }
+    private static Label SummaryLabel(string text)=>new(){Text=text,Dock=DockStyle.Fill,BackColor=Theme.PrimaryLight,ForeColor=Theme.Muted,Font=Theme.Font(8.5f,FontStyle.Bold),Padding=new Padding(8,0,4,0),TextAlign=ContentAlignment.MiddleLeft};
+    private static Label SummaryValue()=>new(){Dock=DockStyle.Fill,BackColor=Theme.Surface,ForeColor=Theme.Text,Font=Theme.Font(9.5f),Padding=new Padding(8,0,4,0),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true};
+    private void BuildSummaryTable()
+    {
+        _summary.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,116));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,112));_summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+        for(var row=0;row<5;row++)_summary.RowStyles.Add(new RowStyle(SizeType.Percent,20));
+        AddSummaryRow(0,"KHÁCH HÀNG",_customer,"GÓI CHỤP",_package);
+        AddSummaryRow(1,"BẮT ĐẦU",_start,"KẾT THÚC",_end);
+        AddSummaryRow(2,"NHIẾP ẢNH GIA",_photographer,"PHÒNG",_room);
+        AddSummaryRow(3,"TẠM TÍNH",_subtotal,"GIẢM GIÁ",_discount);
+        AddSummaryRow(4,"TỔNG THANH TOÁN",_total,"ĐÃ THU / CÒN LẠI",_received);
+    }
+    private void AddSummaryRow(int row,string leftLabel,Label leftValue,string rightLabel,Label rightValue){_summary.Controls.Add(SummaryLabel(leftLabel),0,row);_summary.Controls.Add(leftValue,1,row);_summary.Controls.Add(SummaryLabel(rightLabel),2,row);_summary.Controls.Add(rightValue,3,row);}
     private TabPage BuildServices(){var p=new TabPage("Dịch vụ & giảm giá"){BackColor=Theme.Background,Padding=new Padding(14)};var bar=DetailToolbar();var add=Theme.Button("+ Thêm dịch vụ");add.Click+=async(_,_)=>await AddServiceAsync();var remove=Theme.Button("Xóa dịch vụ",Theme.Danger);remove.Click+=async(_,_)=>await RemoveServiceAsync();var discount=Theme.Button("Nhập giảm giá");discount.Click+=async(_,_)=>await DiscountAsync();bar.Controls.Add(Ui.ToolbarButton(add));bar.Controls.Add(Ui.ToolbarButton(remove));bar.Controls.Add(Ui.ToolbarButton(discount));p.Controls.Add(_services);p.Controls.Add(bar);return p;}
     private TabPage BuildResources(){var p=new TabPage("Tài nguyên"){BackColor=Theme.Background,Padding=new Padding(14)};var bar=DetailToolbar();var add=Theme.Button("+ Phân công");add.Click+=async(_,_)=>await AssignResourceAsync();var returned=Theme.Button("Đánh dấu đã trả");returned.Click+=async(_,_)=>await UpdateResourceAsync(TrangThaiPhanCong.DaTra);var cancel=Theme.Button("Hủy phân công",Theme.Danger);cancel.Click+=async(_,_)=>await UpdateResourceAsync(TrangThaiPhanCong.DaHuy);bar.Controls.Add(Ui.ToolbarButton(add));bar.Controls.Add(Ui.ToolbarButton(returned));bar.Controls.Add(Ui.ToolbarButton(cancel));p.Controls.Add(_resources);p.Controls.Add(bar);return p;}
     private TabPage BuildPayments(){var p=new TabPage("Lịch sử tài chính"){BackColor=Theme.Background,Padding=new Padding(14)};p.Controls.Add(_payments);return p;}
@@ -91,7 +108,15 @@ internal sealed class BookingDetailDialog : Form
     private async Task DiscountAsync(){using var d=new DiscountDialog(_booking.TienGiam);if(d.ShowDialog(this)!=DialogResult.OK)return;var r=await _app.BookingSupport.SetDiscountAsync(_booking.Id,d.Amount,d.Reason,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else{Ui.Info(this,r.Message);await ReloadAsync();}}
     private async Task UpdateResourceAsync(TrangThaiPhanCong next){var id=SelectedChildId(_resources);if(id is null)return;var action=next==TrangThaiPhanCong.DaTra?"đánh dấu tài nguyên đã trả":"hủy phân công tài nguyên";if(MessageBox.Show($"Xác nhận {action}?","Xác nhận",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;var r=await _app.BookingSupport.UpdateResourceAssignmentAsync(id.Value,next,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else await ReloadAsync();}
     private static long? SelectedChildId(DataGridView grid)=>grid.CurrentRow?.Cells["Id"].Value is object value?Convert.ToInt64(value):null;
-    private void UpdateSummary()=>_summary.Text=$"Khách hàng: {_booking.KhachHang}  |  Gói chụp: {_booking.TenGoiChot}\nThời gian: {_booking.BatDau:dd/MM/yyyy HH:mm} – {_booking.KetThuc:dd/MM/yyyy HH:mm}\nPhụ trách: {_booking.NhiepAnhGia}  |  Phòng: {_booking.Phong}\nTạm tính: {_booking.TamTinh:N0} đ  |  Giảm giá: {_booking.TienGiam:N0} đ  |  Tổng: {_booking.TongThanhToan:N0} đ\nĐã thu: {_booking.DaThu:N0} đ  |  Còn lại: {_booking.ConLai:N0} đ";
+    private void UpdateSummary()
+    {
+        SetSummary(_customer,_booking.KhachHang);SetSummary(_package,_booking.TenGoiChot);
+        SetSummary(_start,_booking.BatDau.ToString("dd/MM/yyyy HH:mm"));SetSummary(_end,_booking.KetThuc.ToString("dd/MM/yyyy HH:mm"));
+        SetSummary(_photographer,_booking.NhiepAnhGia);SetSummary(_room,_booking.Phong);
+        SetSummary(_subtotal,$"{_booking.TamTinh:N0} đ");SetSummary(_discount,$"{_booking.TienGiam:N0} đ");
+        SetSummary(_total,$"{_booking.TongThanhToan:N0} đ");SetSummary(_received,$"{_booking.DaThu:N0} đ / {_booking.ConLai:N0} đ");
+    }
+    private void SetSummary(Label label,string value){label.Text=value;_summaryTip.SetToolTip(label,value);}
 }
 
 internal sealed class SelectQuantityDialog : Form

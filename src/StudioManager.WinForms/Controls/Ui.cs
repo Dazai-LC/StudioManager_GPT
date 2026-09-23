@@ -51,6 +51,23 @@ public static class Ui
         slot.Controls.Add(button);
         return slot;
     }
+    public static Panel ToolbarButtonGroup(params Button[] buttons)
+    {
+        const int gap = 8;
+        var width = buttons.Sum(x => x.Width) + Math.Max(0, buttons.Length - 1) * gap;
+        var slot = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 14, 8) };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 36, WrapContents = false, Padding = Padding.Empty };
+        for (var index = 0; index < buttons.Length; index++)
+        {
+            var button = buttons[index];
+            button.Dock = DockStyle.None;
+            button.Height = 36;
+            button.Margin = new Padding(0, 0, index == buttons.Length - 1 ? 0 : gap, 0);
+            bar.Controls.Add(button);
+        }
+        slot.Controls.Add(bar);
+        return slot;
+    }
     public static Label ToolbarCaption(string text, int width = 184) => new()
     {
         Text = text,
