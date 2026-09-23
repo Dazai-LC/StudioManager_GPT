@@ -6,6 +6,16 @@
 USE StudioManager;
 GO
 
+/* Required by SQL Server when creating a filtered index. */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET NUMERIC_ROUNDABORT OFF;
+GO
+
 IF COL_LENGTH('LichChup', 'HoanThanhLuc') IS NULL
     ALTER TABLE LichChup ADD HoanThanhLuc datetime2(0) NULL;
 GO
