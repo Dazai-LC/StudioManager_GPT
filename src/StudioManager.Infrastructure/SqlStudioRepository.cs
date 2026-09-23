@@ -58,7 +58,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         catch (Exception ex) { return Result.Fail("DB_ERROR", Friendly(ex)); }
     }
 
-    public async Task<IReadOnlyList<LichChup>> SearchBookingsAsync(string? keyword, DateTime? from, DateTime? to, string? status, CancellationToken ct = default)
+    public async Task<IReadOnlyList<LichChup>> SearchBookingsAsync(BookingSearchFilter filter, CancellationToken ct = default)
     {
         const string sql = @"
             SELECT l.LichChupId,l.MaLichChup,l.KhachHangId,kh.HoTen,l.GoiChupId,l.TenGoiChot,l.GiaGoiChot,
@@ -70,11 +70,15 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
               LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId
               LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaHoan FROM HoanTien GROUP BY LichChupId) ht ON ht.LichChupId=l.LichChupId
             WHERE (@Q IS NULL OR l.MaLichChup LIKE '%'+@Q+'%' OR kh.HoTen LIKE N'%'+@Q+'%' OR kh.SoDienThoai LIKE '%'+@Q+'%')
-              AND (@From IS NULL OR l.BatDau>=@From) AND (@To IS NULL OR l.BatDau<DATEADD(day,1,@To)) AND (@Status IS NULL OR l.TrangThai=@Status)
-            ORDER BY CASE WHEN l.BatDau>=GETDATE() THEN 0 ELSE 1 END,l.BatDau
+              AND (@From IS NULL OR l.BatDau>=@From) AND (@To IS NULL OR l.BatDau<DATEADD(day,1,@To))
+              AND (@Status IS NULL OR l.TrangThai=@Status) AND (@Photographer IS NULL OR l.NhiepAnhGiaId=@Photographer)
+              AND (@Room IS NULL OR l.PhongChupId=@Room) AND (@Package IS NULL OR l.GoiChupId=@Package)
+            ORDER BY CASE WHEN l.BatDau>=GETDATE() THEN 0 ELSE 1 END,
+              CASE WHEN l.BatDau>=GETDATE() THEN l.BatDau END ASC, CASE WHEN l.BatDau<GETDATE() THEN l.BatDau END DESC
             ";
         await using var cn = Connection(); await cn.OpenAsync(ct); await using var cmd = new SqlCommand(sql, cn);
-        AddNullable(cmd,"@Q",keyword); AddNullable(cmd,"@From",from); AddNullable(cmd,"@To",to); AddNullable(cmd,"@Status",status);
+        AddNullable(cmd,"@Q",filter.Keyword); AddNullable(cmd,"@From",filter.From); AddNullable(cmd,"@To",filter.To); AddNullable(cmd,"@Status",filter.Status);
+        AddNullable(cmd,"@Photographer",filter.PhotographerId); AddNullable(cmd,"@Room",filter.RoomId); AddNullable(cmd,"@Package",filter.PackageId);
         var list = new List<LichChup>(); await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct)) list.Add(MapBooking(r)); return list;
     }
@@ -199,7 +203,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
 
     public async Task<DashboardData> GetDashboardAsync(CancellationToken ct = default)
     {
-        var bookings=await SearchBookingsAsync(null,DateTime.Today.AddMonths(-6),DateTime.Today.AddMonths(2),null,ct);
+        var bookings=await SearchBookingsAsync(new(null,DateTime.Today.AddMonths(-6),DateTime.Today.AddMonths(2)),ct);
         var today=bookings.Count(x=>x.BatDau.Date==DateTime.Today&&x.TrangThai!=TrangThaiLich.DaHuy);
         var upcoming=bookings.Count(x=>x.BatDau>DateTime.Now&&x.TrangThai==TrangThaiLich.DaDatLich);
         var processing=bookings.Count(x=>x.TrangThai is TrangThaiLich.DaChup or TrangThaiLich.DangChinhSuaAnh);
