@@ -36,7 +36,7 @@ CrudPage
 - Không có asset hoặc image placeholder mới.
 - Không thay đổi dữ liệu booking lịch sử; danh mục ngừng dùng vẫn giữ để tra cứu lịch cũ.
 
-## Acceptance cần chạy trên Windows/SQL Server
+## Acceptance trên Windows/SQL Server
 
 1. AT07: thêm khách hàng hợp lệ, kiểm tra mã tự sinh và tìm được theo mã/tên/SĐT.
 2. AT08–AT09: xóa khách chưa có lịch được sau xác nhận; xóa khách đã có lịch bị từ chối và lịch sử còn nguyên.
@@ -45,4 +45,4 @@ CrudPage
 5. Kiểm tra `NhatKyHeThong` sau cập nhật/xóa/ngừng dùng; dữ liệu trước/sau và actor phải hiện diện.
 6. Kiểm tra menu bằng tài khoản Nhân viên: chỉ còn Khách hàng và các nghiệp vụ được phép; không có các menu danh mục/quản trị.
 
-Không đánh dấu AT07–AT11 Pass trước khi người dùng chạy checklist trên commit Phase 2.
+**Kết quả:** Pass — người dùng đã nghiệm thu trên Windows/SQL Server ngày 24/09/2026, bao gồm kiểm tra phân quyền tài khoản Nhân viên và audit lifecycle. Nền tảng là branch `feature/spec-v2.1-master-data`, remote commit `e3d00fd`.
