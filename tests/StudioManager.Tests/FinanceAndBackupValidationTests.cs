@@ -1,3 +1,4 @@
+using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.Domain;
 using Xunit;

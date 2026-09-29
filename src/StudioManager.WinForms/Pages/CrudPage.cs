@@ -66,7 +66,7 @@ internal sealed class AuditDetailDialog : Form
         Text="Chi tiết nhật ký hệ thống";StartPosition=FormStartPosition.CenterParent;ClientSize=new(900,620);MinimumSize=new(760,500);BackColor=Theme.Background;Font=Theme.Font();
         string Read(string name)=>row.DataGridView?.Columns.Contains(name)==true?row.Cells[name].FormattedValue?.ToString()??"":string.Empty;
         var head=new TableLayoutPanel{Dock=DockStyle.Top,Height=156,ColumnCount=2,RowCount=3,Padding=new Padding(18,18,18,10)};
-        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));for(var i=0;i<3;i++)head.RowStyles.Add(new RowStyle(SizeType.Percent,100d/3));
+        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));for(var i=0;i<3;i++)head.RowStyles.Add(new RowStyle(SizeType.Percent,100f/3));
         Add(head,0,0,"THỜI ĐIỂM",Read("Thời điểm"));Add(head,1,0,"TÀI KHOẢN",Read("Tài khoản"));Add(head,0,1,"HÀNH ĐỘNG",Read("Hành động"));Add(head,1,1,"ĐỐI TƯỢNG",$"{Read("Đối tượng")} • {Read("Mã đối tượng")}");Add(head,0,2,"LÝ DO",Read("Lý do"));Add(head,1,2,"MÃ NHẬT KÝ",Read("Id"));
         var values=new SplitContainer{Dock=DockStyle.Fill,Orientation=Orientation.Vertical,SplitterDistance=430,Padding=new Padding(18,0,18,18),IsSplitterFixed=false};
         values.Panel1.Padding=new Padding(0,0,8,0);values.Panel2.Padding=new Padding(8,0,0,0);values.Panel1.Controls.Add(ValueBox("GIÁ TRỊ CŨ",Read("Giá trị cũ")));values.Panel2.Controls.Add(ValueBox("GIÁ TRỊ MỚI",Read("Giá trị mới")));
