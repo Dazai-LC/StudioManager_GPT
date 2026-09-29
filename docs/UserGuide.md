@@ -19,9 +19,9 @@ Ngoài chức năng nhân viên, Quản trị viên quản lý nhân sự/danh m
 - Phục hồi: chọn tệp `.bak`, xác nhận hai bước; ứng dụng thay thế dữ liệu và tự khởi động lại. Có thể dùng `database/RestoreDatabase.sql` khi cần phục hồi thủ công.
 - Trang này cũng hiển thị lịch sử thao tác thành công/thất bại. Chỉ thử phục hồi trên database kiểm thử hoặc sau khi đã tạo backup kiểm tra được.
 
-## Xuất CSV
+## Xuất Excel / CSV
 
-Nút **Xuất CSV** tạo Unicode UTF-16 có BOM và dùng đúng dấu phân cách theo thiết lập vùng của Windows. Mở trực tiếp trong Excel sẽ tách thành các cột và hiển thị tiếng Việt đúng; dòng `sep=...` đầu tệp là chỉ thị Excel, không phải dữ liệu nghiệp vụ.
+Nút **Xuất Excel** mặc định tạo `.xlsx` Unicode với font Times New Roman; đây là lựa chọn dùng khi mở trực tiếp bằng Excel và cần tiếng Việt hiển thị chính xác. Hộp lưu vẫn có lựa chọn **CSV UTF-8** cho trao đổi dữ liệu với hệ thống khác; CSV là văn bản thuần nên không lưu được font.
 
 ## Xử lý lỗi kết nối
 

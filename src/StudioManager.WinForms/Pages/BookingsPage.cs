@@ -41,7 +41,7 @@ public sealed class BookingsPage : UserControl
         _pay=Theme.Button("Thu tiền");_pay.Click+=async(_,_)=>await PaymentAsync(false);actions.Controls.Add(Ui.ToolbarButton(_pay));
         _refund=Theme.Button("Hoàn tiền");_refund.Visible=_app.Session!.VaiTro==VaiTro.QuanTriVien;_refund.Click+=async(_,_)=>await PaymentAsync(true);actions.Controls.Add(Ui.ToolbarButton(_refund));
         _cancel=Theme.Button("Hủy lịch",Theme.Danger);_cancel.Click+=async(_,_)=>await CancelAsync();actions.Controls.Add(Ui.ToolbarButton(_cancel));
-        var export=Theme.Button("Xuất CSV",Color.FromArgb(71,85,105));export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");actions.Controls.Add(Ui.ToolbarButton(export));
+        var export=Theme.Button("Xuất Excel",Color.FromArgb(71,85,105));export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");actions.Controls.Add(Ui.ToolbarButton(export));
 
         var card=new CardPanel{Dock=DockStyle.Fill};card.Controls.Add(_grid);
         Controls.Add(card);Controls.Add(actions);Controls.Add(filters);Controls.Add(header);

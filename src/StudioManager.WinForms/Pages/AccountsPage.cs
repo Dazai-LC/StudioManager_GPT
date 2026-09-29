@@ -33,7 +33,7 @@ public sealed class AccountsPage : UserControl
         var detail=Theme.Button("Chi tiết",Color.FromArgb(71,85,105));
         detail.Click+=(_,_)=>ShowDetails();
         bar.Controls.Add(detail);
-        var export=Theme.Button("Xuất CSV",Theme.Purple);
+        var export=Theme.Button("Xuất Excel",Theme.Purple);
         export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
         bar.Controls.Add(export);
         var reset=Theme.Button("Đặt lại mật khẩu",Theme.Warning);

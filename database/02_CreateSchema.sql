@@ -56,7 +56,7 @@ CREATE INDEX IX_LichChup_Phong ON LichChup(PhongChupId,BatDau); CREATE INDEX IX_
 CREATE TABLE LichChupDichVu(
  LichChupDichVuId bigint IDENTITY PRIMARY KEY, LichChupId bigint NOT NULL REFERENCES LichChup(LichChupId), DichVuId int NOT NULL REFERENCES DichVu(DichVuId),
  TenDichVuChot nvarchar(150) NOT NULL, DonViTinhChot nvarchar(30) NOT NULL, DonGiaChot decimal(18,2) NOT NULL CHECK(DonGiaChot>=0), SoLuong decimal(10,2) NOT NULL CHECK(SoLuong>0),
- CreatedBy int NOT NULL REFERENCES TaiKhoan(TaiKhoanId), CreatedAt datetime2(0) NOT NULL DEFAULT SYSDATETIME(), UpdatedAt datetime2(0) NOT NULL DEFAULT SYSDATETIME(),
+ CreatedBy int NOT NULL REFERENCES TaiKhoan(TaiKhoanId), CreatedAt datetime2(0) NOT NULL DEFAULT SYSDATETIME(), UpdatedBy int NOT NULL REFERENCES TaiKhoan(TaiKhoanId), UpdatedAt datetime2(0) NOT NULL DEFAULT SYSDATETIME(),
  CONSTRAINT UX_LichChupDichVu UNIQUE(LichChupId,DichVuId));
 CREATE TABLE PhanCongTaiNguyen(
  PhanCongId bigint IDENTITY PRIMARY KEY, LichChupId bigint NOT NULL REFERENCES LichChup(LichChupId), TaiNguyenId int NOT NULL REFERENCES TaiNguyen(TaiNguyenId), SoLuong int NOT NULL CHECK(SoLuong>0),

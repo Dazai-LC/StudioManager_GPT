@@ -424,9 +424,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             const string precheck=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(x.SoLuong*x.DonGiaChot) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId<>@D),0)+@Q*COALESCE((SELECT x.DonGiaChot FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D),d.DonGia)-l.TienGiam,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),d.TrangThai,CASE WHEN EXISTS(SELECT 1 FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D) THEN 1 ELSE 0 END FROM LichChup l WITH(UPDLOCK,HOLDLOCK) CROSS JOIN DichVu d WHERE l.LichChupId=@L AND d.DichVuId=@D";
             await using(var pre=new SqlCommand(precheck,cn,tx)){pre.Parameters.AddWithValue("@L",bookingId);pre.Parameters.AddWithValue("@D",serviceId);pre.Parameters.AddWithValue("@Q",quantity);await using var reader=await pre.ExecuteReaderAsync(ct);if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch hoặc dịch vụ.");var state=reader.GetString(0);var proposed=reader.GetDecimal(1);var paid=reader.GetDecimal(2);var active=reader.GetString(3)=="DANG_CUNG_CAP";var exists=reader.GetInt32(4)==1;if(state is "DA_HUY" or "HOAN_THANH")return Result.Fail("INVALID_STATE","Không thể thêm dịch vụ cho lịch đã kết thúc.");if(!exists&&!active)return Result.Fail("INACTIVE_SERVICE","Dịch vụ đã ngừng cung cấp, không thể thêm mới.");if(proposed<paid)return Result.Fail("LIMIT","Thao tác làm tổng thanh toán thấp hơn số tiền đã thu.");}
             const string sql=@"IF EXISTS(SELECT 1 FROM LichChupDichVu WHERE LichChupId=@L AND DichVuId=@D)
-              UPDATE LichChupDichVu SET SoLuong=@Q,UpdatedAt=GETDATE() WHERE LichChupId=@L AND DichVuId=@D;
-              ELSE INSERT LichChupDichVu(LichChupId,DichVuId,TenDichVuChot,DonViTinhChot,DonGiaChot,SoLuong,CreatedBy,CreatedAt,UpdatedAt)
-              SELECT @L,d.DichVuId,d.TenDichVu,d.DonViTinh,d.DonGia,@Q,@U,GETDATE(),GETDATE() FROM DichVu d WHERE d.DichVuId=@D AND d.TrangThai='DANG_CUNG_CAP';";
+              UPDATE LichChupDichVu SET SoLuong=@Q,UpdatedBy=@U,UpdatedAt=GETDATE() WHERE LichChupId=@L AND DichVuId=@D;
+              ELSE INSERT LichChupDichVu(LichChupId,DichVuId,TenDichVuChot,DonViTinhChot,DonGiaChot,SoLuong,CreatedBy,CreatedAt,UpdatedBy,UpdatedAt)
+              SELECT @L,d.DichVuId,d.TenDichVu,d.DonViTinh,d.DonGia,@Q,@U,GETDATE(),@U,GETDATE() FROM DichVu d WHERE d.DichVuId=@D AND d.TrangThai='DANG_CUNG_CAP';";
             await using(var c=new SqlCommand(sql,cn,tx)){c.Parameters.AddWithValue("@L",bookingId);c.Parameters.AddWithValue("@D",serviceId);c.Parameters.AddWithValue("@Q",quantity);c.Parameters.AddWithValue("@U",user.TaiKhoanId);if(await c.ExecuteNonQueryAsync(ct)==0)return Result.Fail("INACTIVE_SERVICE","Dịch vụ đã ngừng cung cấp, không thể thêm mới.");}await AuditAsync(cn,tx,user,"CAP_NHAT_DICH_VU","LichChup",bookingId.ToString(),null,$"DV={serviceId};SL={quantity}",null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật dịch vụ phát sinh.");
         }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
@@ -487,7 +487,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         var db=new SqlConnectionStringBuilder(connectionString).InitialCatalog;
         if(string.IsNullOrWhiteSpace(db))return Result.Fail("CONFIG","Chuỗi kết nối chưa có tên cơ sở dữ liệu.");
         var safeDb=db.Replace("]","]]",StringComparison.Ordinal);
-        var result=await AdminDatabaseAsync($"BACKUP DATABASE [{safeDb}] TO DISK=@Path WITH INIT,COMPRESSION",path,ct);
+        // SQL Server Express does not support the COMPRESSION option. A portable
+        // backup command is preferable because StudioManager supports Express.
+        var result=await AdminDatabaseAsync($"BACKUP DATABASE [{safeDb}] TO DISK=@Path WITH INIT",path,ct);
         await LogBackupAsync("SAO_LUU",path,result,user,ct);
         return result;
     }

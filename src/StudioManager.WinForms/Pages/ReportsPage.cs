@@ -18,7 +18,7 @@ public sealed class ReportsPage : UserControl
         var header=new PageHeader("Báo cáo & thống kê","Tổng hợp hiệu quả kinh doanh theo khoảng thời gian.");
         var run=Theme.Button("Xem báo cáo");
         run.Click+=async(_,_)=>await LoadAsync();
-        var export=Theme.Button("Xuất CSV",Theme.Purple);
+        var export=Theme.Button("Xuất Excel",Theme.Purple);
         export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"bao-cao-goi-chup");
         header.Actions.Controls.Add(run);
         header.Actions.Controls.Add(export);

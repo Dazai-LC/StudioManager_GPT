@@ -93,22 +93,88 @@ public static class Ui
     public static void ExportGrid(DataGridView grid, IWin32Window owner, string defaultName)
     {
         if (grid.Columns.Count == 0) { Error(owner, "Không có dữ liệu để xuất."); return; }
-        using var dialog = new SaveFileDialog { Filter = "CSV Excel Unicode (*.csv)|*.csv", FileName = defaultName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" };
-        if (dialog.ShowDialog(owner) != DialogResult.OK) return;
-        // Excel on some Vietnamese Windows installations opens UTF-8 CSV as ANSI even
-        // when it has a BOM. UTF-16 LE with its BOM is detected reliably by Excel.
-        using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UnicodeEncoding(false, true));
-        var separator = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ListSeparator;
         var visible = grid.Columns.Cast<DataGridViewColumn>().Where(x => x.Visible).OrderBy(x => x.DisplayIndex).ToList();
-        // Excel uses the regional list separator when a CSV file is opened directly.
-        // The directive also makes the chosen separator explicit for Excel installations
-        // whose regional setting is different from the current process culture.
+        if (visible.Count == 0) { Error(owner, "Không có cột hiển thị để xuất."); return; }
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "Excel Workbook Unicode (*.xlsx)|*.xlsx|CSV UTF-8 (*.csv)|*.csv",
+            FilterIndex = 1,
+            DefaultExt = "xlsx",
+            AddExtension = true,
+            FileName = defaultName + "_" + timestamp + ".xlsx"
+        };
+        if (dialog.ShowDialog(owner) != DialogResult.OK) return;
+        if (string.Equals(Path.GetExtension(dialog.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            ExportCsv(dialog.FileName, grid, visible);
+            Info(owner, "Đã xuất CSV UTF-8. Để mở trực tiếp trong Excel và giữ tiếng Việt/font, hãy chọn định dạng Excel Workbook (*.xlsx).");
+            return;
+        }
+        ExportWorkbook(dialog.FileName, grid, visible);
+        Info(owner, "Đã xuất file Excel Unicode với font Times New Roman.");
+    }
+
+    private static void ExportCsv(string path, DataGridView grid, IReadOnlyList<DataGridViewColumn> visible)
+    {
+        // CSV is plain text: it cannot store a font. Keep a UTF-8 BOM for systems
+        // that consume CSV, while the default .xlsx option is for direct Excel use.
+        using var writer = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        var separator = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ListSeparator;
         writer.WriteLine("sep=" + separator);
         writer.WriteLine(string.Join(separator, visible.Select(x => Csv(x.HeaderText))));
         foreach (DataGridViewRow row in grid.Rows.Cast<DataGridViewRow>().Where(x => !x.IsNewRow))
             writer.WriteLine(string.Join(separator, visible.Select(x => Csv(row.Cells[x.Index].FormattedValue?.ToString() ?? ""))));
-        Info(owner, "Đã xuất dữ liệu CSV Unicode tương thích Excel.");
     }
+
+    private static void ExportWorkbook(string path, DataGridView grid, IReadOnlyList<DataGridViewColumn> visible)
+    {
+        var rows = new List<IReadOnlyList<string>> { visible.Select(x => x.HeaderText).ToArray() };
+        rows.AddRange(grid.Rows.Cast<DataGridViewRow>().Where(x => !x.IsNewRow)
+            .Select(row => (IReadOnlyList<string>)visible.Select(column => row.Cells[column.Index].FormattedValue?.ToString() ?? string.Empty).ToArray()));
+
+        using var archive = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create);
+        WriteArchiveEntry(archive, "[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>");
+        WriteArchiveEntry(archive, "_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
+        WriteArchiveEntry(archive, "xl/workbook.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Dữ liệu\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+        WriteArchiveEntry(archive, "xl/_rels/workbook.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
+        WriteArchiveEntry(archive, "xl/styles.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Times New Roman\"/></font><font><b/><sz val=\"11\"/><name val=\"Times New Roman\"/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs count=\"2\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/></cellXfs></styleSheet>");
+
+        var sheet = new System.Text.StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        sheet.Append("<cols>");
+        for (var column = 0; column < visible.Count; column++)
+        {
+            var longest = rows.Max(row => row.Count > column ? row[column].Length : 0);
+            sheet.Append($"<col min=\"{column + 1}\" max=\"{column + 1}\" width=\"{Math.Clamp(longest + 2, 12, 42)}\" customWidth=\"1\"/>");
+        }
+        sheet.Append("</cols><sheetData>");
+        for (var row = 0; row < rows.Count; row++)
+        {
+            sheet.Append($"<row r=\"{row + 1}\">");
+            for (var column = 0; column < visible.Count; column++)
+                sheet.Append($"<c r=\"{ExcelColumnName(column + 1)}{row + 1}\" t=\"inlineStr\" s=\"{(row == 0 ? 1 : 0)}\"><is><t xml:space=\"preserve\">{Xml(rows[row][column])}</t></is></c>");
+            sheet.Append("</row>");
+        }
+        sheet.Append("</sheetData><autoFilter ref=\"A1:").Append(ExcelColumnName(visible.Count)).Append(rows.Count).Append("\"/></worksheet>");
+        WriteArchiveEntry(archive, "xl/worksheets/sheet1.xml", sheet.ToString());
+    }
+
+    private static void WriteArchiveEntry(System.IO.Compression.ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name, System.IO.Compression.CompressionLevel.Optimal);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+        writer.Write(content);
+    }
+
+    private static string ExcelColumnName(int number)
+    {
+        var name = string.Empty;
+        while (number > 0) { number--; name = (char)('A' + number % 26) + name; number /= 26; }
+        return name;
+    }
+
+    private static string Xml(string value) => System.Security.SecurityElement.Escape(value.Replace("\0", string.Empty)) ?? string.Empty;
     private static string Csv(string value)
     {
         var trimmed = value.TrimStart();

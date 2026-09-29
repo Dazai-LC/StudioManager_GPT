@@ -44,12 +44,12 @@ Kỳ vọng: build thành công và toàn bộ test pass. Kiểm tra `appsetting
 
 1. Vào **Báo cáo**, chọn một khoảng ngày hợp lệ. Kiểm tra các thẻ: doanh thu lịch Hoàn thành, tổng thu, hoàn tiền, thực thu, công nợ và số lịch/trạng thái.
 2. Đổi ngày bắt đầu lớn hơn ngày kết thúc: bị từ chối. Đăng nhập Nhân viên: menu Báo cáo không xuất hiện.
-3. Xuất CSV từ Khách hàng, Lịch chụp và Báo cáo. Mở trực tiếp bằng Excel: mỗi trường phải nằm ở cột riêng, tiếng Việt hiển thị đúng; không dồn vào cột A. Tệp dùng Unicode UTF-16 có BOM và dòng đầu `sep=;` hoặc `sep=,` là chỉ thị Excel, không phải dữ liệu nghiệp vụ.
+3. Xuất **Excel Workbook** từ Khách hàng, Lịch chụp và Báo cáo. Mở trực tiếp bằng Excel: mỗi trường phải nằm ở cột riêng, tiếng Việt hiển thị đúng và font là Times New Roman. Lựa chọn CSV UTF-8 vẫn có cho trao đổi dữ liệu; CSV không mang thông tin font.
 4. Trong **Nhật ký**, tìm `XOA_KHACH_HANG`, `NGUNG_SU_DUNG_DANH_MUC`, `THU_TIEN`, `HOAN_TIEN`, `PHAN_CONG_TAI_NGUYEN`. Chọn dòng và **Xem chi tiết**: kiểm tra được lý do, giá trị cũ và giá trị mới trong vùng cuộn.
 
 ## 6. Sao lưu và phục hồi — AT39–AT40
 
-1. Chỉ Quản trị viên thấy menu Sao lưu. Hộp lưu sẽ mở tại thư mục Backup mặc định của SQL Server; chọn vị trí đó hoặc một thư mục mà **dịch vụ SQL Server** có quyền ghi. Sao lưu thành công và thêm một dòng lịch sử.
+1. Chỉ Quản trị viên thấy menu Sao lưu. Hộp lưu sẽ mở tại thư mục Backup mặc định của SQL Server; chọn vị trí đó hoặc một thư mục mà **dịch vụ SQL Server** có quyền ghi. Với SQL Server Express, backup không dùng COMPRESSION. Sao lưu thành công và thêm một dòng lịch sử.
 2. Chọn đường dẫn không tồn tại hoặc đuôi khác `.bak`: thao tác bị từ chối trước khi gọi SQL Server.
 3. Chỉ trên database kiểm thử: tạo backup, thêm một khách hàng có tên đánh dấu, phục hồi backup qua xác nhận hai bước, ứng dụng khởi động lại. Khách đánh dấu phải biến mất sau restore.
 4. Sau thất bại/success, trang Sao lưu hiển thị thời điểm, loại thao tác, trạng thái, tài khoản, tệp và thông báo.
