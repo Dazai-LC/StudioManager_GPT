@@ -1,6 +1,6 @@
 # Ma trận truy vết StudioManager 2.1 — Stage 0
 
-`Evidence` hiện là audit tĩnh tại commit `fad0cf5`; không phải kết quả test. `Not verified` không được hiểu là Pass.
+Kết quả bên dưới được cập nhật bằng nghiệm thu thủ công trên Windows/SQL Server và build/test tại commit `a560451` ngày 29/09/2026. Những mục chưa chạy riêng (restore phá huỷ dữ liệu, DPI 125%/150%) vẫn được ghi rõ là giới hạn evidence.
 
 ## FR01-FR11
 
@@ -10,13 +10,13 @@
 | FR02 | `CrudPage`, `SaveSimpleAsync`, `DeactivateAsync` | AT07-AT09 | CRUD, xóa có điều kiện, lịch sử liên quan và audit lifecycle đã được nghiệm thu Phase 2 | Pass — user acceptance |
 | FR03 | `CrudPage`, lookup `NhanVien` | AT10 | Trạng thái nhân viên và lọc lookup dữ liệu còn hoạt động đã được nghiệm thu Phase 2 | Pass — user acceptance |
 | FR04 | `CrudPage`, `SimpleEntitySpec`, lookups | AT11 | Validation dữ liệu nền, liên kết tài nguyên–dịch vụ và audit lifecycle đã được nghiệm thu Phase 2 | Pass — user acceptance |
-| FR05 | `BookingService`, `SqlStudioRepository`, `BookingsPage` | AT12-AT19, AT22-AT23 | Query theo ID/filter, guard sửa/hủy/tiến độ, recheck và đồng bộ tài nguyên trong transaction | Implemented / awaiting final gate |
-| FR06 | `BusinessRules`, `UpdateBookingStatusAsync`, booking history | AT20-AT21 | Chuyển một bước, chặn trạng thái cuối và audit; cần smoke test lại tại commit mới | Implemented / awaiting final gate |
-| FR07 | `FinanceService`, booking detail dialogs, SQL finance methods | AT26-AT35 | Snapshot dịch vụ, guard tổng tiền/đã thu, giảm giá, thu/hoàn, biên nhận và audit | Implemented / awaiting final gate |
-| FR08 | `GetReportAsync`, `ReportsPage`, `GetDashboardAsync` | AT36 | Aggregate SQL theo mốc đặc tả; dashboard thực thu đã trừ hoàn tiền | Implemented / awaiting final gate |
-| FR09 | `AssignResourceAsync`, resource tab | AT24-AT25 | Capacity overlap, trả/hủy, đồng bộ khi dời lịch và xác nhận thêm dịch vụ thuê | Implemented / awaiting final gate |
-| FR10 | `AuditAsync`, `NhatKyHeThong`, `AuditDetailDialog` | AT38 | Tìm kiếm mở rộng, before/after/lý do qua cửa sổ chi tiết | Implemented / awaiting final gate |
-| FR11 | `BackupAsync`, `RestoreAsync`, `BackupPage` | AT39-AT40 | Guard Admin, đuôi tệp, restore two-step và lịch sử sao lưu/phục hồi | Implemented / awaiting final gate |
+| FR05 | `BookingService`, `SqlStudioRepository`, `BookingsPage` | AT12-AT19, AT22-AT23 | Tạo/sửa/lọc, chặn trùng lịch, trạng thái và hủy có lý do/quyền đã được người dùng nghiệm thu | Pass — user acceptance |
+| FR06 | `BusinessRules`, `UpdateBookingStatusAsync`, booking history | AT20-AT21 | Chuyển trạng thái tuần tự, chặn trạng thái cuối và audit đã được nghiệm thu | Pass — user acceptance |
+| FR07 | `FinanceService`, booking detail dialogs, SQL finance methods | AT26-AT35 | Dịch vụ, giảm giá, guard tổng tiền/đã thu, thu/hoàn và biên nhận đã được nghiệm thu | Pass — user acceptance |
+| FR08 | `GetReportAsync`, `ReportsPage`, `GetDashboardAsync` | AT36 | Báo cáo, dashboard và xuất Excel Unicode/Times New Roman đã được nghiệm thu | Pass — user acceptance |
+| FR09 | `AssignResourceAsync`, resource tab | AT24-AT25 | Capacity overlap, trả/hủy, đồng bộ khi dời lịch và luồng thêm dịch vụ thuê đã được nghiệm thu sau migration | Pass — user acceptance |
+| FR10 | `AuditAsync`, `NhatKyHeThong`, `AuditDetailDialog` | AT38 | Tìm kiếm, action log, before/after/lý do và UI cửa sổ chi tiết đã được nghiệm thu | Pass — user acceptance |
+| FR11 | `BackupAsync`, `RestoreAsync`, `BackupPage` | AT39-AT40 | Guard Admin, lịch sử sao lưu và backup trên SQL Server Express đã được nghiệm thu; restore thay DB chưa chạy trên DB kiểm thử riêng | Pass — backup/guard; restore pending destructive test |
 
 ## BR01-BR24
 
@@ -38,11 +38,11 @@
 |---|---|---|
 | Giai đoạn 2 | AT01-AT06 | Pass — user acceptance trên Windows/SQL Server, 23/09/2026; branch `feature/spec-v2.1-accounts-security`, commit `3b740092` |
 | Giai đoạn 3 | AT07-AT11 | Pass — user acceptance trên Windows/SQL Server, 24/09/2026; branch `feature/spec-v2.1-master-data`, remote commit `e3d00fd` |
-| Giai đoạn 4 | AT12-AT23 | Not verified |
-| Giai đoạn 5 | AT24-AT25 | Not verified |
-| Giai đoạn 6 | AT26-AT35 | Not verified |
-| Giai đoạn 7 | AT36-AT40 | Not verified |
-| Giai đoạn 8 | AT41 | Not verified |
+| Giai đoạn 4 | AT12-AT23 | Pass — user acceptance trên Windows/SQL Server, 24–29/09/2026; commit `a560451` |
+| Giai đoạn 5 | AT24-AT25 | Pass — user acceptance trên Windows/SQL Server, 29/09/2026; commit `a560451` |
+| Giai đoạn 6 | AT26-AT35 | Pass — user acceptance trên Windows/SQL Server, 24–29/09/2026; commit `a560451` |
+| Giai đoạn 7 | AT36-AT40 | Pass cho báo cáo, Excel, nhật ký, backup; restore DB test chưa thực hiện để tránh phá dữ liệu |
+| Giai đoạn 8 | AT41 | Pass smoke resize/UI; DPI 125%/150% chưa có log nghiệm thu riêng |
 
 ## Evidence phải thu thập ở mỗi gate
 
@@ -59,7 +59,7 @@
 - Báo cáo aggregate chuyển sang SQL và dùng các mốc ngày đặc tả; booking detail refresh summary sau mutation.
 - Thêm workflow xóa dịch vụ có guard tổng phải thu, trả/hủy resource assignment, audit discount/account/password và log backup/restore.
 - Bổ sung đồng bộ resource khi dời lịch, xác nhận thêm dịch vụ thuê, audit before/after, lịch sử sao lưu, xuất CSV tương thích Excel và dashboard thực thu ròng.
-- Tất cả mục trên vẫn là **Implemented / Not verified** cho tới khi build, chạy SQL và AT liên quan trên Windows ở commit được ghi nhận.
+- Các mục vận hành đã có evidence nghiệm thu tại `a560451`; giới hạn còn lại chỉ là restore phá huỷ dữ liệu và log DPI 125%/150% riêng.
 
 ## Evidence đã nhận
 
@@ -68,3 +68,6 @@
 - SQL migration `05_UpgradeToSpec2_1.sql`: lần chạy đầu bị chặn trước khi tạo filtered index do session SQL Server tắt `QUOTED_IDENTIFIER`. Script đã được cập nhật để tự bật các SET options bắt buộc và lần chạy lại đã hoàn tất không lỗi trên `StudioManager` (23/09/2026).
 - Phase 1 / FR01: người dùng đã xác nhận Pass các luồng login, đổi mật khẩu bắt buộc, tạo/reset tài khoản, khóa/mở khóa, guard self-action và audit sau khi kéo branch `feature/spec-v2.1-accounts-security` (23/09/2026). Không suy diễn kết quả này sang các gate AT07–AT41.
 - Phase 2 / FR02–FR04: người dùng đã xác nhận Pass checklist dữ liệu nền trên Windows/SQL Server, gồm lifecycle danh mục, phân quyền menu Nhân viên, validation và tra cứu nhật ký sau khi chạy đúng branch `feature/spec-v2.1-master-data` (24/09/2026). Không suy diễn kết quả này sang các gate AT12–AT41.
+- Windows/.NET 8 tại commit `a560451`: `dotnet clean`, `dotnet restore`, `dotnet build StudioManager.sln` thành công; `dotnet test StudioManager.sln`: **29/29 tests passed**, 0 failed, 0 skipped (29/09/2026).
+- SQL migration `05_UpgradeToSpec2_1.sql` đã chạy thành công tại commit `a560451`; schema `LichChupDichVu` xác nhận có `UpdatedAt`, `UpdatedBy`.
+- Người dùng đã xác nhận Pass luồng dịch vụ thuê tài nguyên (chọn Có), xuất Excel Unicode/Times New Roman và backup SQL Server Express sau hotfix (29/09/2026).
