@@ -93,9 +93,11 @@ public static class Ui
     public static void ExportGrid(DataGridView grid, IWin32Window owner, string defaultName)
     {
         if (grid.Columns.Count == 0) { Error(owner, "Không có dữ liệu để xuất."); return; }
-        using var dialog = new SaveFileDialog { Filter = "CSV UTF-8 (*.csv)|*.csv", FileName = defaultName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" };
+        using var dialog = new SaveFileDialog { Filter = "CSV Excel Unicode (*.csv)|*.csv", FileName = defaultName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" };
         if (dialog.ShowDialog(owner) != DialogResult.OK) return;
-        using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UTF8Encoding(true));
+        // Excel on some Vietnamese Windows installations opens UTF-8 CSV as ANSI even
+        // when it has a BOM. UTF-16 LE with its BOM is detected reliably by Excel.
+        using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UnicodeEncoding(false, true));
         var separator = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ListSeparator;
         var visible = grid.Columns.Cast<DataGridViewColumn>().Where(x => x.Visible).OrderBy(x => x.DisplayIndex).ToList();
         // Excel uses the regional list separator when a CSV file is opened directly.
@@ -105,7 +107,7 @@ public static class Ui
         writer.WriteLine(string.Join(separator, visible.Select(x => Csv(x.HeaderText))));
         foreach (DataGridViewRow row in grid.Rows.Cast<DataGridViewRow>().Where(x => !x.IsNewRow))
             writer.WriteLine(string.Join(separator, visible.Select(x => Csv(row.Cells[x.Index].FormattedValue?.ToString() ?? ""))));
-        Info(owner, "Đã xuất dữ liệu CSV UTF-8 theo định dạng Excel.");
+        Info(owner, "Đã xuất dữ liệu CSV Unicode tương thích Excel.");
     }
     private static string Csv(string value)
     {

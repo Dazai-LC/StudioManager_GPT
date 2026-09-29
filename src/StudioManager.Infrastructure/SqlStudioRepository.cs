@@ -515,8 +515,13 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn);var rows=new List<IDictionary<string,object?>>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct)){var row=new Dictionary<string,object?>();for(var i=0;i<r.FieldCount;i++)row[r.GetName(i)]=r.IsDBNull(i)?null:r.GetValue(i);rows.Add(row);}return rows;
     }
 
+    public async Task<string?> GetDefaultBackupDirectoryAsync(CancellationToken ct=default)
+    {
+        await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand("SELECT CONVERT(nvarchar(4000), SERVERPROPERTY('InstanceDefaultBackupPath'))",cn);var value=await cmd.ExecuteScalarAsync(ct);return value is null or DBNull?null:value.ToString();
+    }
+
     private async Task<Result> AdminDatabaseAsync(string sql,string path,CancellationToken ct)
-    {try{await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn){CommandTimeout=300};cmd.Parameters.AddWithValue("@Path",path);await cmd.ExecuteNonQueryAsync(ct);return Result.Ok("Thao tác cơ sở dữ liệu đã hoàn tất.");}catch(Exception ex){return Result.Fail("DB_ADMIN",Friendly(ex));}}
+    {try{await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn){CommandTimeout=300};cmd.Parameters.AddWithValue("@Path",path);await cmd.ExecuteNonQueryAsync(ct);return Result.Ok("Thao tác cơ sở dữ liệu đã hoàn tất.");}catch(SqlException ex) when(ex.Number==3201){return Result.Fail("BACKUP_PATH_DENIED","Dịch vụ SQL Server không có quyền ghi vào thư mục đã chọn. Hãy lưu tại thư mục Backup mặc định được mở sẵn, hoặc cấp quyền ghi cho tài khoản dịch vụ SQL Server.");}catch(Exception ex){return Result.Fail("DB_ADMIN",Friendly(ex));}}
     private async Task LogBackupAsync(string action,string path,Result result,UserSession user,CancellationToken ct)
     {
         try{await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand("INSERT NhatKySaoLuu(LoaiThaoTac,DuongDanTep,TrangThai,ThongBao,TaiKhoanId,ThoiDiem) VALUES(@A,@P,@S,@M,@U,GETDATE())",cn);cmd.Parameters.AddWithValue("@A",action);cmd.Parameters.AddWithValue("@P",path);cmd.Parameters.AddWithValue("@S",result.Success?"THANH_CONG":"THAT_BAI");cmd.Parameters.AddWithValue("@M",result.Message);cmd.Parameters.AddWithValue("@U",user.TaiKhoanId);await cmd.ExecuteNonQueryAsync(ct);}catch{ /* A failed log must not turn a completed SQL backup into a false failure. */ }

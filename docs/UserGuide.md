@@ -21,7 +21,7 @@ Ngoài chức năng nhân viên, Quản trị viên quản lý nhân sự/danh m
 
 ## Xuất CSV
 
-Nút **Xuất CSV** tạo UTF-8 có BOM và dùng đúng dấu phân cách theo thiết lập vùng của Windows. Mở trực tiếp trong Excel sẽ tách thành các cột; dòng `sep=...` đầu tệp là chỉ thị Excel, không phải dữ liệu nghiệp vụ.
+Nút **Xuất CSV** tạo Unicode UTF-16 có BOM và dùng đúng dấu phân cách theo thiết lập vùng của Windows. Mở trực tiếp trong Excel sẽ tách thành các cột và hiển thị tiếng Việt đúng; dòng `sep=...` đầu tệp là chỉ thị Excel, không phải dữ liệu nghiệp vụ.
 
 ## Xử lý lỗi kết nối
 

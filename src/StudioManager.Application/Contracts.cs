@@ -46,4 +46,5 @@ public interface IStudioRepository
     Task<Result> BackupAsync(string path, UserSession user, CancellationToken ct = default);
     Task<Result> RestoreAsync(string path, UserSession user, CancellationToken ct = default);
     Task<IReadOnlyList<IDictionary<string, object?>>> GetBackupHistoryAsync(CancellationToken ct = default);
+    Task<string?> GetDefaultBackupDirectoryAsync(CancellationToken ct = default);
 }

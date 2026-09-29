@@ -242,6 +242,9 @@ public sealed class BackupRestoreService(IStudioRepository repo)
             ? repo.GetBackupHistoryAsync(ct)
             : Task.FromResult<IReadOnlyList<IDictionary<string, object?>>>([]);
 
+    public Task<string?> GetDefaultBackupDirectoryAsync(UserSession user, CancellationToken ct = default)
+        => user.VaiTro == VaiTro.QuanTriVien ? repo.GetDefaultBackupDirectoryAsync(ct) : Task.FromResult<string?>(null);
+
     private static Result? ValidateBackupPath(string path, UserSession user)
     {
         if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được sao lưu dữ liệu.");
