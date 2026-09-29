@@ -157,9 +157,22 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             var old=await ScalarAsync<string>(cn,tx,oldSql,id,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");
             const string conflict="SELECT COUNT(1) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId<>@Id AND TrangThai<>'DA_HUY' AND BatDau<@End AND KetThuc>@Start AND (NhiepAnhGiaId=@N OR PhongChupId=@P)";
             await using(var c=new SqlCommand(conflict,cn,tx)){c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);if(Convert.ToInt32(await c.ExecuteScalarAsync(ct))>0)return Result.Fail("CONFLICT","Nhiếp ảnh gia hoặc phòng chụp đã có lịch.");}
+            const string resourceConflict=@";WITH Mine AS (
+                    SELECT TaiNguyenId,SUM(SoLuong) AS SoLuong
+                    FROM PhanCongTaiNguyen WITH(UPDLOCK,HOLDLOCK)
+                    WHERE LichChupId=@Id AND TrangThai='DA_PHAN_CONG'
+                    GROUP BY TaiNguyenId)
+                SELECT TOP 1 t.TenTaiNguyen
+                FROM Mine m JOIN TaiNguyen t WITH(UPDLOCK,HOLDLOCK) ON t.TaiNguyenId=m.TaiNguyenId
+                OUTER APPLY (SELECT SUM(other.SoLuong) AS DaDung FROM PhanCongTaiNguyen other
+                    WHERE other.TaiNguyenId=m.TaiNguyenId AND other.LichChupId<>@Id AND other.TrangThai='DA_PHAN_CONG'
+                      AND other.BatDauSuDung<@End AND other.KetThucSuDung>@Start) used
+                WHERE m.SoLuong+COALESCE(used.DaDung,0)>t.TongSoLuong";
+            await using(var checkResources=new SqlCommand(resourceConflict,cn,tx)){checkResources.Parameters.AddWithValue("@Id",id);checkResources.Parameters.AddWithValue("@Start",input.BatDau);checkResources.Parameters.AddWithValue("@End",input.KetThuc);var resource=(string?)await checkResources.ExecuteScalarAsync(ct);if(resource is not null)return Result.Fail("RESOURCE_CONFLICT",$"Tài nguyên '{resource}' không đủ cho thời gian lịch mới.");}
             const string update=@"UPDATE l SET KhachHangId=@K,GoiChupId=g.GoiChupId,TenGoiChot=g.TenGoiChup,GiaGoiChot=g.GiaGoi,BatDau=@Start,KetThuc=@End,NhiepAnhGiaId=@N,PhongChupId=@P,GhiChu=@Note,UpdatedBy=@User,UpdatedAt=GETDATE() FROM LichChup l JOIN GoiChup g ON g.GoiChupId=@G WHERE l.LichChupId=@Id AND g.TrangThai='DANG_AP_DUNG' AND g.GiaGoi+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam>=COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)";
             await using(var c=new SqlCommand(update,cn,tx)){c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@K",input.KhachHangId);c.Parameters.AddWithValue("@G",input.GoiChupId);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);c.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);c.Parameters.AddWithValue("@User",user.TaiKhoanId);if(await c.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("LIMIT","Gói không khả dụng hoặc tổng mới thấp hơn tiền đã thu.");}
-            await AuditAsync(cn,tx,user,"CAP_NHAT_LICH","LichChup",id.ToString(),old,JsonSerializer.Serialize(input),reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật lịch chụp.");
+            await using(var syncResources=new SqlCommand("UPDATE PhanCongTaiNguyen SET BatDauSuDung=@Start,KetThucSuDung=@End,UpdatedBy=@User,UpdatedAt=GETDATE() WHERE LichChupId=@Id AND TrangThai='DA_PHAN_CONG'",cn,tx)){syncResources.Parameters.AddWithValue("@Start",input.BatDau);syncResources.Parameters.AddWithValue("@End",input.KetThuc);syncResources.Parameters.AddWithValue("@User",user.TaiKhoanId);syncResources.Parameters.AddWithValue("@Id",id);await syncResources.ExecuteNonQueryAsync(ct);}
+            await AuditAsync(cn,tx,user,"CAP_NHAT_LICH","LichChup",id.ToString(),old,JsonSerializer.Serialize(input),reason,ct);await AuditAsync(cn,tx,user,"DONG_BO_TAI_NGUYEN","LichChup",id.ToString(),null,$"{input.BatDau:O}|{input.KetThuc:O}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật lịch chụp.");
         }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
@@ -228,7 +241,15 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         var debt=bookings.Where(x=>x.TrangThai!=TrangThaiLich.DaHuy).Sum(x=>x.ConLai);
         var statuses=bookings.GroupBy(x=>x.TrangThai.HienThi()).ToDictionary(x=>x.Key,x=>x.Count());
         await using var cn=Connection();await cn.OpenAsync(ct);var revenue=new List<(string,decimal)>();
-        const string sql="SELECT FORMAT(NgayGiaoDich,'MM/yyyy'),SUM(SoTien) FROM ThanhToan WHERE NgayGiaoDich>=DATEADD(month,-5,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1)) GROUP BY FORMAT(NgayGiaoDich,'MM/yyyy'),YEAR(NgayGiaoDich),MONTH(NgayGiaoDich) ORDER BY YEAR(NgayGiaoDich),MONTH(NgayGiaoDich)";
+        const string sql=@"SELECT FORMAT(NgayGiaoDich,'MM/yyyy'),SUM(SoTien)
+            FROM (
+                SELECT NgayGiaoDich,SoTien FROM ThanhToan
+                UNION ALL
+                SELECT NgayGiaoDich,-SoTien FROM HoanTien
+            ) giaoDich
+            WHERE NgayGiaoDich>=DATEADD(month,-5,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1))
+            GROUP BY FORMAT(NgayGiaoDich,'MM/yyyy'),YEAR(NgayGiaoDich),MONTH(NgayGiaoDich)
+            ORDER BY YEAR(NgayGiaoDich),MONTH(NgayGiaoDich)";
         await using(var c=new SqlCommand(sql,cn))await using(var r=await c.ExecuteReaderAsync(ct))while(await r.ReadAsync(ct))revenue.Add((r.GetString(0),r.GetDecimal(1)));
         return new(today,upcoming,processing,waiting,debt,bookings.Where(x=>x.BatDau>=DateTime.Today).Take(8).ToList(),statuses,revenue);
     }
@@ -269,7 +290,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             "NhiepAnhGia"=>("SELECT NhanVienId,MaNhanVien,HoTen,SoDienThoai FROM NhanVien WHERE ChucVu='NHIEP_ANH_GIA' AND (@Active=0 OR TrangThai='DANG_LAM') ORDER BY HoTen","active"),
             "PhongChup"=>("SELECT PhongChupId,MaPhong,TenPhong,MoTa FROM PhongChup WHERE (@Active=0 OR TrangThai='HOAT_DONG') ORDER BY TenPhong","active"),
             "DichVu"=>("SELECT DichVuId,MaDichVu,TenDichVu,FORMAT(DonGia,'N0') FROM DichVu WHERE (@Active=0 OR TrangThai='DANG_CUNG_CAP') ORDER BY TenDichVu","active"),
-            "TaiNguyen"=>("SELECT TaiNguyenId,MaTaiNguyen,TenTaiNguyen,CONCAT(CASE LoaiTaiNguyen WHEN 'THIET_BI' THEN N'Thiết bị' WHEN 'TRANG_PHUC' THEN N'Trang phục' ELSE LoaiTaiNguyen END,N' • SL: ',TongSoLuong) FROM TaiNguyen WHERE (@Active=0 OR TrangThai='HOAT_DONG') ORDER BY TenTaiNguyen","active"),
+            "TaiNguyen"=>("SELECT t.TaiNguyenId,t.MaTaiNguyen,t.TenTaiNguyen,CONCAT(CASE t.LoaiTaiNguyen WHEN 'THIET_BI' THEN N'Thiết bị' WHEN 'TRANG_PHUC' THEN N'Trang phục' ELSE t.LoaiTaiNguyen END,N' • SL: ',t.TongSoLuong,CASE WHEN dv.DichVuId IS NULL THEN N'' ELSE N' • Dịch vụ thuê: '+dv.TenDichVu END) FROM TaiNguyen t LEFT JOIN DichVu dv ON dv.DichVuId=t.DichVuThueId WHERE (@Active=0 OR t.TrangThai='HOAT_DONG') ORDER BY t.TenTaiNguyen","active"),
             "NhanVien"=>("SELECT NhanVienId,MaNhanVien,HoTen,SoDienThoai FROM NhanVien WHERE (@Active=0 OR TrangThai='DANG_LAM') ORDER BY HoTen","active"),
             _=>throw new ArgumentOutOfRangeException(nameof(type))
         };
@@ -287,7 +308,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             "PhongChup"=>"SELECT PhongChupId AS Id,MaPhong AS [Mã],TenPhong AS [Tên phòng],TrangThai AS [Trạng thái],MoTa AS [Mô tả] FROM PhongChup WHERE @Q IS NULL OR MaPhong LIKE '%'+@Q+'%' OR TenPhong LIKE N'%'+@Q+'%' ORDER BY PhongChupId DESC",
             "TaiNguyen"=>"SELECT t.TaiNguyenId AS Id,t.MaTaiNguyen AS [Mã],t.TenTaiNguyen AS [Tên tài nguyên],t.LoaiTaiNguyen AS [Loại],t.TongSoLuong AS [Số lượng],t.DichVuThueId AS [Dịch vụ thuê ID],dv.TenDichVu AS [Dịch vụ thuê],t.TrangThai AS [Trạng thái],t.GhiChu AS [Ghi chú] FROM TaiNguyen t LEFT JOIN DichVu dv ON dv.DichVuId=t.DichVuThueId WHERE @Q IS NULL OR t.MaTaiNguyen LIKE '%'+@Q+'%' OR t.TenTaiNguyen LIKE N'%'+@Q+'%' ORDER BY t.TaiNguyenId DESC",
             "TaiKhoan"=>"SELECT TaiKhoanId AS Id,TenDangNhap AS [Tên đăng nhập],VaiTro AS [Vai trò],TrangThai AS [Trạng thái],PhaiDoiMatKhau AS [Đổi mật khẩu],LanDangNhapCuoi AS [Đăng nhập cuối] FROM TaiKhoan WHERE @Q IS NULL OR TenDangNhap LIKE '%'+@Q+'%' ORDER BY TaiKhoanId DESC",
-            "NhatKy"=>"SELECT TOP 500 NhatKyId AS Id,ThoiDiem AS [Thời điểm],tk.TenDangNhap AS [Tài khoản],HanhDong AS [Hành động],LoaiDoiTuong AS [Đối tượng],DoiTuongId AS [Mã đối tượng],LyDo AS [Lý do] FROM NhatKyHeThong n JOIN TaiKhoan tk ON tk.TaiKhoanId=n.TaiKhoanId WHERE @Q IS NULL OR HanhDong LIKE '%'+@Q+'%' OR DoiTuongId LIKE '%'+@Q+'%' ORDER BY NhatKyId DESC",
+            "NhatKy"=>"SELECT TOP 500 NhatKyId AS Id,ThoiDiem AS [Thời điểm],tk.TenDangNhap AS [Tài khoản],HanhDong AS [Hành động],LoaiDoiTuong AS [Đối tượng],DoiTuongId AS [Mã đối tượng],LyDo AS [Lý do],GiaTriCu AS [Giá trị cũ],GiaTriMoi AS [Giá trị mới] FROM NhatKyHeThong n JOIN TaiKhoan tk ON tk.TaiKhoanId=n.TaiKhoanId WHERE @Q IS NULL OR HanhDong LIKE '%'+@Q+'%' OR DoiTuongId LIKE '%'+@Q+'%' OR tk.TenDangNhap LIKE '%'+@Q+'%' OR LoaiDoiTuong LIKE '%'+@Q+'%' OR LyDo LIKE N'%'+@Q+'%' ORDER BY NhatKyId DESC",
             _=>throw new ArgumentOutOfRangeException(nameof(entity))
         };
         await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn);AddNullable(cmd,"@Q",keyword);var rows=new List<IDictionary<string,object?>>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct)){var d=new Dictionary<string,object?>();for(int i=0;i<r.FieldCount;i++)d[r.GetName(i)]=r.IsDBNull(i)?null:r.GetValue(i);rows.Add(d);}return rows;
@@ -432,14 +453,23 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         try{var old=await ScalarAsync<string>(cn,tx,"SELECT CONCAT(TienGiam,'|',COALESCE(LyDoGiam,'')) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id",bookingId,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");const string sql=@"UPDATE l SET TienGiam=@A,LyDoGiam=@R,UpdatedBy=@U,UpdatedAt=GETDATE() FROM LichChup l CROSS APPLY(SELECT l.GiaGoiChot+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0) TamTinh) x CROSS APPLY(SELECT COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) DaThu) y WHERE l.LichChupId=@Id AND @A BETWEEN 0 AND x.TamTinh AND x.TamTinh-@A>=y.DaThu AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@A",amount);AddNullable(cmd,"@R",reason);cmd.Parameters.AddWithValue("@U",user.TaiKhoanId);cmd.Parameters.AddWithValue("@Id",bookingId);var n=await cmd.ExecuteNonQueryAsync(ct);if(n!=1)return Result.Fail("LIMIT","Giảm giá không hợp lệ, làm tổng tiền thấp hơn đã thu hoặc lịch đã kết thúc.");await AuditAsync(cn,tx,user,"CAP_NHAT_GIAM_GIA","LichChup",bookingId.ToString(),old,$"{amount}|{reason}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật giảm giá.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
-    public async Task<Result> AssignResourceAsync(long bookingId,int resourceId,int quantity,UserSession user,CancellationToken ct=default)
+    public async Task<Result> AssignResourceAsync(long bookingId,int resourceId,int quantity,bool addRentalService,UserSession user,CancellationToken ct=default)
     {
         if(quantity<=0)return Result.Fail("INVALID_QUANTITY","Số lượng phải lớn hơn 0.");await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
-            const string q=@"SELECT l.BatDau,l.KetThuc,t.TongSoLuong-COALESCE((SELECT SUM(p.SoLuong) FROM PhanCongTaiNguyen p WHERE p.TaiNguyenId=t.TaiNguyenId AND p.TrangThai='DA_PHAN_CONG' AND p.BatDauSuDung<l.KetThuc AND p.KetThucSuDung>l.BatDau),0) ConLai FROM LichChup l CROSS JOIN TaiNguyen t WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@L AND t.TaiNguyenId=@T AND t.TrangThai='HOAT_DONG' AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";
-            DateTime start,end;int available;await using(var c=new SqlCommand(q,cn,tx)){c.Parameters.AddWithValue("@L",bookingId);c.Parameters.AddWithValue("@T",resourceId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Lịch hoặc tài nguyên không khả dụng.");start=r.GetDateTime(0);end=r.GetDateTime(1);available=r.GetInt32(2);}if(quantity>available)return Result.Fail("RESOURCE_LIMIT",$"Chỉ còn {available} tài nguyên khả dụng.");
-            const string ins="INSERT PhanCongTaiNguyen(LichChupId,TaiNguyenId,SoLuong,BatDauSuDung,KetThucSuDung,TrangThai,CreatedBy,CreatedAt,UpdatedBy,UpdatedAt) VALUES(@L,@T,@Q,@S,@E,'DA_PHAN_CONG',@U,GETDATE(),@U,GETDATE())";await using(var c=new SqlCommand(ins,cn,tx)){c.Parameters.AddWithValue("@L",bookingId);c.Parameters.AddWithValue("@T",resourceId);c.Parameters.AddWithValue("@Q",quantity);c.Parameters.AddWithValue("@S",start);c.Parameters.AddWithValue("@E",end);c.Parameters.AddWithValue("@U",user.TaiKhoanId);await c.ExecuteNonQueryAsync(ct);}await AuditAsync(cn,tx,user,"PHAN_CONG_TAI_NGUYEN","LichChup",bookingId.ToString(),null,$"TN={resourceId};SL={quantity}",null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã phân công tài nguyên.");
+            const string q=@"SELECT l.BatDau,l.KetThuc,t.TongSoLuong-COALESCE((SELECT SUM(p.SoLuong) FROM PhanCongTaiNguyen p WHERE p.TaiNguyenId=t.TaiNguyenId AND p.TrangThai='DA_PHAN_CONG' AND p.BatDauSuDung<l.KetThuc AND p.KetThucSuDung>l.BatDau),0) ConLai,t.DichVuThueId FROM LichChup l CROSS JOIN TaiNguyen t WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@L AND t.TaiNguyenId=@T AND t.TrangThai='HOAT_DONG' AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";
+            DateTime start,end;int available;int? rentalServiceId;await using(var c=new SqlCommand(q,cn,tx)){c.Parameters.AddWithValue("@L",bookingId);c.Parameters.AddWithValue("@T",resourceId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Lịch hoặc tài nguyên không khả dụng.");start=r.GetDateTime(0);end=r.GetDateTime(1);available=r.GetInt32(2);rentalServiceId=r.IsDBNull(3)?null:r.GetInt32(3);}if(quantity>available)return Result.Fail("RESOURCE_LIMIT",$"Chỉ còn {available} tài nguyên khả dụng.");
+            if(addRentalService)
+            {
+                if(rentalServiceId is null)return Result.Fail("NO_RENTAL_SERVICE","Tài nguyên này không có dịch vụ thuê liên kết.");
+                const string rental=@"INSERT LichChupDichVu(LichChupId,DichVuId,TenDichVuChot,DonViTinhChot,DonGiaChot,SoLuong,CreatedBy,CreatedAt,UpdatedBy,UpdatedAt)
+                    SELECT @L,d.DichVuId,d.TenDichVu,d.DonViTinh,d.DonGia,@Q,@U,GETDATE(),@U,GETDATE() FROM DichVu d WITH(UPDLOCK,HOLDLOCK)
+                    WHERE d.DichVuId=@D AND d.TrangThai='DANG_CUNG_CAP' AND NOT EXISTS(SELECT 1 FROM LichChupDichVu WHERE LichChupId=@L AND DichVuId=@D)";
+                await using var addRental=new SqlCommand(rental,cn,tx);addRental.Parameters.AddWithValue("@L",bookingId);addRental.Parameters.AddWithValue("@D",rentalServiceId.Value);addRental.Parameters.AddWithValue("@Q",quantity);addRental.Parameters.AddWithValue("@U",user.TaiKhoanId);if(await addRental.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("RENTAL_EXISTS","Dịch vụ thuê không còn khả dụng hoặc đã có trong lịch; hãy quản lý dòng dịch vụ này tại tab Dịch vụ.");
+                await AuditAsync(cn,tx,user,"THEM_DICH_VU_THUE_TAI_NGUYEN","LichChup",bookingId.ToString(),null,$"DV={rentalServiceId};SL={quantity}",null,ct);
+            }
+            const string ins="INSERT PhanCongTaiNguyen(LichChupId,TaiNguyenId,SoLuong,BatDauSuDung,KetThucSuDung,TrangThai,CreatedBy,CreatedAt,UpdatedBy,UpdatedAt) VALUES(@L,@T,@Q,@S,@E,'DA_PHAN_CONG',@U,GETDATE(),@U,GETDATE())";await using(var c=new SqlCommand(ins,cn,tx)){c.Parameters.AddWithValue("@L",bookingId);c.Parameters.AddWithValue("@T",resourceId);c.Parameters.AddWithValue("@Q",quantity);c.Parameters.AddWithValue("@S",start);c.Parameters.AddWithValue("@E",end);c.Parameters.AddWithValue("@U",user.TaiKhoanId);await c.ExecuteNonQueryAsync(ct);}await AuditAsync(cn,tx,user,"PHAN_CONG_TAI_NGUYEN","LichChup",bookingId.ToString(),null,$"TN={resourceId};SL={quantity}",null,ct);await tx.CommitAsync(ct);return Result.Ok(addRentalService?"Đã phân công tài nguyên và thêm dịch vụ thuê.":"Đã phân công tài nguyên.");
         }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
@@ -476,6 +506,13 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             try{await using var cn=new SqlConnection(builder.ConnectionString);await cn.OpenAsync(ct);await using var recover=new SqlCommand($"IF DB_ID(@Db) IS NOT NULL ALTER DATABASE [{safeDb}] SET MULTI_USER",cn);recover.Parameters.AddWithValue("@Db",db);await recover.ExecuteNonQueryAsync(ct);}catch{ }
             var result=Result.Fail("RESTORE_FAILED",Friendly(ex));await LogBackupAsync("PHUC_HOI",path,result,user,ct);return result;
         }
+    }
+
+    public async Task<IReadOnlyList<IDictionary<string, object?>>> GetBackupHistoryAsync(CancellationToken ct=default)
+    {
+        const string sql=@"SELECT TOP 100 n.NhatKySaoLuuId AS Id,n.ThoiDiem AS [Thời điểm],n.LoaiThaoTac AS [Thao tác],n.TrangThai AS [Trạng thái],tk.TenDangNhap AS [Tài khoản],n.DuongDanTep AS [Tệp],n.ThongBao AS [Thông báo]
+            FROM NhatKySaoLuu n JOIN TaiKhoan tk ON tk.TaiKhoanId=n.TaiKhoanId ORDER BY n.NhatKySaoLuuId DESC";
+        await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn);var rows=new List<IDictionary<string,object?>>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct)){var row=new Dictionary<string,object?>();for(var i=0;i<r.FieldCount;i++)row[r.GetName(i)]=r.IsDBNull(i)?null:r.GetValue(i);rows.Add(row);}return rows;
     }
 
     private async Task<Result> AdminDatabaseAsync(string sql,string path,CancellationToken ct)

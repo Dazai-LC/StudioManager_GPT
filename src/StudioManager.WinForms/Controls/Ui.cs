@@ -24,11 +24,19 @@ public sealed class StatCard : CardPanel
     public StatCard(string title, Color accent, string icon = "●")
     {
         Width = 250; Height = 126; Padding = new Padding(20, 15, 18, 13);
-        var badge = new Label { Text = icon, Dock = DockStyle.Right, Width = 48, Font = Theme.Font(19, FontStyle.Bold), ForeColor = accent, BackColor = Color.FromArgb(248, 250, 252), TextAlign = ContentAlignment.MiddleCenter };
-        badge.Resize += (_, _) => Theme.Round(badge, 12); Controls.Add(badge);
-        Controls.Add(new Label { Text = title, Dock = DockStyle.Top, Height = 28, Font = Theme.Font(9, FontStyle.Bold), ForeColor = Theme.Muted });
-        _trend = new Label { Text = "Cập nhật trực tiếp", Dock = DockStyle.Bottom, Height = 22, Font = Theme.Font(8.5f), ForeColor = accent }; Controls.Add(_trend);
-        _value = new Label { Text = "—", Dock = DockStyle.Fill, Font = Theme.Font(22, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft }; Controls.Add(_value);
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        var badge = new Label { Text = icon, Dock = DockStyle.Fill, Font = Theme.Font(19, FontStyle.Bold), ForeColor = accent, BackColor = Color.FromArgb(248, 250, 252), TextAlign = ContentAlignment.MiddleCenter };
+        badge.Resize += (_, _) => Theme.Round(badge, 12);
+        layout.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(9, FontStyle.Bold), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+        _value = new Label { Text = "—", Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(22, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft };
+        _trend = new Label { Text = "Cập nhật trực tiếp", Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(8.5f), ForeColor = accent, TextAlign = ContentAlignment.MiddleLeft };
+        layout.Controls.Add(_value, 0, 1); layout.Controls.Add(_trend, 0, 2); layout.Controls.Add(badge, 1, 0); layout.SetRowSpan(badge, 3);
+        Controls.Add(layout);
     }
     public string Value { get => _value.Text; set => _value.Text = value; }
     public string Trend { get => _trend.Text; set => _trend.Text = value; }
@@ -88,11 +96,21 @@ public static class Ui
         using var dialog = new SaveFileDialog { Filter = "CSV UTF-8 (*.csv)|*.csv", FileName = defaultName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" };
         if (dialog.ShowDialog(owner) != DialogResult.OK) return;
         using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UTF8Encoding(true));
+        var separator = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ListSeparator;
         var visible = grid.Columns.Cast<DataGridViewColumn>().Where(x => x.Visible).OrderBy(x => x.DisplayIndex).ToList();
-        writer.WriteLine(string.Join(",", visible.Select(x => Csv(x.HeaderText))));
-        foreach (DataGridViewRow row in grid.Rows)
-            writer.WriteLine(string.Join(",", visible.Select(x => Csv(row.Cells[x.Index].FormattedValue?.ToString() ?? ""))));
-        Info(owner, "Đã xuất dữ liệu thành công.");
+        // Excel uses the regional list separator when a CSV file is opened directly.
+        // The directive also makes the chosen separator explicit for Excel installations
+        // whose regional setting is different from the current process culture.
+        writer.WriteLine("sep=" + separator);
+        writer.WriteLine(string.Join(separator, visible.Select(x => Csv(x.HeaderText))));
+        foreach (DataGridViewRow row in grid.Rows.Cast<DataGridViewRow>().Where(x => !x.IsNewRow))
+            writer.WriteLine(string.Join(separator, visible.Select(x => Csv(row.Cells[x.Index].FormattedValue?.ToString() ?? ""))));
+        Info(owner, "Đã xuất dữ liệu CSV UTF-8 theo định dạng Excel.");
     }
-    private static string Csv(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+    private static string Csv(string value)
+    {
+        var trimmed = value.TrimStart();
+        var safe = trimmed.Length > 0 && "=+-@".Contains(trimmed[0]) ? "'" + value : value;
+        return "\"" + safe.Replace("\"", "\"\"") + "\"";
+    }
 }

@@ -82,6 +82,8 @@ public sealed class FinanceService(IStudioRepository repo)
     public async Task<Result> ReceiveAsync(PaymentInput input, UserSession user, CancellationToken ct = default)
     {
         if (input.SoTien <= 0) return Result.Fail("INVALID_AMOUNT", "Số tiền thu phải lớn hơn 0.");
+        if (input.LoaiThu is not ("DAT_COC" or "BO_SUNG" or "CON_LAI"))
+            return Result.Fail("INVALID_TYPE", "Loại thu không hợp lệ.");
         return await repo.AddPaymentAsync(input, user, ct);
     }
     public async Task<Result> RefundAsync(RefundInput input, UserSession user, CancellationToken ct = default)
@@ -197,13 +199,17 @@ public sealed class BookingSupportService(IStudioRepository repo)
     public Task<IReadOnlyList<IDictionary<string, object?>>> GetChildrenAsync(long bookingId, string type, CancellationToken ct = default)
         => repo.GetBookingChildrenAsync(bookingId, type, ct);
     public Task<Result> AddServiceAsync(long bookingId, int serviceId, decimal quantity, UserSession user, CancellationToken ct = default)
-        => repo.AddBookingServiceAsync(bookingId, serviceId, quantity, user, ct);
+        => quantity <= 0
+            ? Task.FromResult(Result.Fail("INVALID_QUANTITY", "Số lượng dịch vụ phải lớn hơn 0."))
+            : repo.AddBookingServiceAsync(bookingId, serviceId, quantity, user, ct);
     public Task<Result> RemoveServiceAsync(long bookingId, long bookingServiceId, UserSession user, CancellationToken ct = default)
         => repo.RemoveBookingServiceAsync(bookingId, bookingServiceId, user, ct);
     public Task<Result> SetDiscountAsync(long bookingId, decimal amount, string? reason, UserSession user, CancellationToken ct = default)
         => repo.SetDiscountAsync(bookingId, amount, reason, user, ct);
-    public Task<Result> AssignResourceAsync(long bookingId, int resourceId, int quantity, UserSession user, CancellationToken ct = default)
-        => repo.AssignResourceAsync(bookingId, resourceId, quantity, user, ct);
+    public Task<Result> AssignResourceAsync(long bookingId, int resourceId, int quantity, bool addRentalService, UserSession user, CancellationToken ct = default)
+        => quantity <= 0
+            ? Task.FromResult(Result.Fail("INVALID_QUANTITY", "Số lượng tài nguyên phải lớn hơn 0."))
+            : repo.AssignResourceAsync(bookingId, resourceId, quantity, addRentalService, user, ct);
     public Task<Result> UpdateResourceAssignmentAsync(long assignmentId, TrangThaiPhanCong next, UserSession user, CancellationToken ct = default)
         => repo.UpdateResourceAssignmentAsync(assignmentId, next, user, ct);
 }
@@ -225,6 +231,29 @@ public sealed class ReportingService(IStudioRepository repo)
 
 public sealed class BackupRestoreService(IStudioRepository repo)
 {
-    public Task<Result> BackupAsync(string path, UserSession user, CancellationToken ct = default) => repo.BackupAsync(path, user, ct);
-    public Task<Result> RestoreAsync(string path, UserSession user, CancellationToken ct = default) => repo.RestoreAsync(path, user, ct);
+    public Task<Result> BackupAsync(string path, UserSession user, CancellationToken ct = default)
+        => ValidateBackupPath(path, user) is { } invalid ? Task.FromResult(invalid) : repo.BackupAsync(path, user, ct);
+
+    public Task<Result> RestoreAsync(string path, UserSession user, CancellationToken ct = default)
+        => ValidateRestorePath(path, user) is { } invalid ? Task.FromResult(invalid) : repo.RestoreAsync(path, user, ct);
+
+    public Task<IReadOnlyList<IDictionary<string, object?>>> GetHistoryAsync(UserSession user, CancellationToken ct = default)
+        => user.VaiTro == VaiTro.QuanTriVien
+            ? repo.GetBackupHistoryAsync(ct)
+            : Task.FromResult<IReadOnlyList<IDictionary<string, object?>>>([]);
+
+    private static Result? ValidateBackupPath(string path, UserSession user)
+    {
+        if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được sao lưu dữ liệu.");
+        if (string.IsNullOrWhiteSpace(path) || !string.Equals(Path.GetExtension(path), ".bak", StringComparison.OrdinalIgnoreCase))
+            return Result.Fail("INVALID_PATH", "Tệp sao lưu phải có phần mở rộng .bak.");
+        return null;
+    }
+
+    private static Result? ValidateRestorePath(string path, UserSession user)
+    {
+        var validation = ValidateBackupPath(path, user);
+        if (validation is not null) return validation;
+        return File.Exists(path) ? null : Result.Fail("FILE_NOT_FOUND", "Không tìm thấy tệp sao lưu đã chọn.");
+    }
 }

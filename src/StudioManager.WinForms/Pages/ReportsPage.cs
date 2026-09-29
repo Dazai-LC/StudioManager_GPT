@@ -9,6 +9,7 @@ public sealed class ReportsPage : UserControl
     private readonly DateTimePicker _from=new(){Format=DateTimePickerFormat.Short,Value=new DateTime(DateTime.Today.Year,DateTime.Today.Month,1)},_to=new(){Format=DateTimePickerFormat.Short,Value=DateTime.Today};
     private readonly StatCard _revenue=new("DOANH THU DỊCH VỤ",Theme.Primary,"↗"),_cash=new("THỰC THU",Theme.Success,"$"),_debt=new("CÔNG NỢ HIỆN TẠI",Theme.Warning,"!"),_count=new("TỔNG LỊCH",Theme.Cyan,"#");
     private readonly DataGridView _grid=Theme.Grid();
+    private readonly Label _summary=new(){Dock=DockStyle.Top,Height=34,AutoEllipsis=true,ForeColor=Theme.Muted,Font=Theme.Font(9),TextAlign=ContentAlignment.MiddleLeft};
 
     public ReportsPage(AppFacade app)
     {
@@ -33,6 +34,7 @@ public sealed class ReportsPage : UserControl
 
         var card=new CardPanel{Dock=DockStyle.Fill,Padding=new Padding(18)};
         card.Controls.Add(_grid);
+        card.Controls.Add(_summary);
         card.Controls.Add(new Label{Text="Mức sử dụng gói chụp",Dock=DockStyle.Top,Height=42,Font=Theme.Font(13,FontStyle.Bold),ForeColor=Theme.Text});
         Controls.Add(card);
         Controls.Add(cards);
@@ -40,5 +42,5 @@ public sealed class ReportsPage : UserControl
         Controls.Add(header);
         Load+=async(_,_)=>await LoadAsync();
     }
-    private async Task LoadAsync(){try{var result=await _app.Reports.LoadAsync(_from.Value.Date,_to.Value.Date,_app.Session!);if(!result.Success||result.Data is null){Ui.Error(this,result.Message);return;}var r=result.Data;_revenue.Value=$"{r.DoanhThu:N0} đ";_cash.Value=$"{r.ThucThu:N0} đ";_debt.Value=$"{r.CongNo:N0} đ";_count.Value=r.TongLich.ToString();_grid.DataSource=r.ByPackage.Select(x=>new{Gói_chụp=x.Name,Số_lần=(int)x.Value}).ToList();}catch(Exception ex){Ui.Error(this,ex.Message);}}
+    private async Task LoadAsync(){try{var result=await _app.Reports.LoadAsync(_from.Value.Date,_to.Value.Date,_app.Session!);if(!result.Success||result.Data is null){Ui.Error(this,result.Message);return;}var r=result.Data;_revenue.Value=$"{r.DoanhThu:N0} đ";_cash.Value=$"{r.ThucThu:N0} đ";_debt.Value=$"{r.CongNo:N0} đ";_count.Value=r.TongLich.ToString();_summary.Text=$"Tổng thu: {r.TongThu:N0} đ  •  Hoàn tiền: {r.TongHoan:N0} đ  •  Hoàn thành: {r.HoanThanh}  •  Đã hủy: {r.DaHuy}";_grid.DataSource=r.ByPackage.Select(x=>new{Gói_chụp=x.Name,Số_lần=(int)x.Value}).ToList();}catch(Exception ex){Ui.Error(this,ex.Message);}}
 }

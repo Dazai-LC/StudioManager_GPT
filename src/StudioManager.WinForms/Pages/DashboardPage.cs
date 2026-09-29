@@ -78,7 +78,9 @@ public sealed class DashboardPage : UserControl
         _skeleton.Start();
         try
         {
-            var task = _app.Dashboard.LoadAsync(); await Task.WhenAll(task, Task.Delay(520)); var d = await task;
+            // Do not keep the screen waiting just to make the loading state visible.
+            // The skeleton is shown only while the actual dashboard query is running.
+            var d = await _app.Dashboard.LoadAsync();
             Bind(d);
         }
         catch (Exception ex) { Ui.Error(this, ex.Message); }
@@ -102,17 +104,17 @@ public sealed class DashboardPage : UserControl
 
     private Control ScheduleRow(LichChup x)
     {
-        var row = new TableLayoutPanel { Width = 320, Height = 54, Margin = new Padding(0, 1, 0, 3), ColumnCount = 3, RowCount = 1 };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+        var row = new TableLayoutPanel { Width = 320, Height = 58, Margin = new Padding(0, 1, 0, 3), ColumnCount = 3, RowCount = 1 };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 52)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88));
         var detail = new Label { Dock = DockStyle.Fill, AutoEllipsis = true, Text = x.TenGoiChot + "\n" + x.KhachHang, Font = Theme.Font(8.4f), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(3, 0, 4, 0) };
         _toolTip.SetToolTip(detail, x.TenGoiChot + Environment.NewLine + x.KhachHang);
         row.Controls.Add(new Label { Dock = DockStyle.Fill, Text = x.BatDau.ToString("HH:mm"), Font = Theme.Font(8.7f, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-        row.Controls.Add(detail, 1, 0); row.Controls.Add(new Label { Dock = DockStyle.Fill, Text = x.TrangThai.HienThi(), AutoEllipsis = true, Font = Theme.Font(7.6f), ForeColor = Theme.Primary, BackColor = Theme.PrimaryLight, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(4, 5, 0, 5) }, 2, 0); return row;
+        row.Controls.Add(detail, 1, 0); row.Controls.Add(new Label { Dock = DockStyle.Fill, Text = x.TrangThai.HienThi(), AutoEllipsis = false, Font = Theme.Font(7.3f), ForeColor = Theme.Primary, BackColor = Theme.PrimaryLight, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(4, 5, 0, 5) }, 2, 0); return row;
     }
 
     private Control ActivityRow(LichChup x)
     {
-        var row = new TableLayoutPanel { Width = 420, Height = 58, Margin = new Padding(0, 1, 0, 3), ColumnCount = 2, RowCount = 1 };
+        var row = new TableLayoutPanel { Width = 420, Height = 64, Margin = new Padding(0, 1, 0, 3), ColumnCount = 2, RowCount = 1 };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         var text = $"Lịch {x.Ma} · {x.TrangThai.HienThi()}\nKhách hàng: {x.KhachHang}  •  {x.BatDau:dd/MM HH:mm}";
         var detail = new Label { Dock = DockStyle.Fill, Padding = new Padding(10, 2, 2, 0), Text = text, AutoEllipsis = true, Font = Theme.Font(8.3f), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft };

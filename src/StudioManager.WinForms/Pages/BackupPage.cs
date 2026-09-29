@@ -6,6 +6,7 @@ namespace StudioManager.WinForms.Pages;
 public sealed class BackupPage : UserControl
 {
     private readonly AppFacade _app;
+    private readonly DataGridView _history = Theme.Grid();
     public BackupPage(AppFacade app)
     {
         _app=app;BackColor=Theme.Background;
@@ -20,8 +21,13 @@ public sealed class BackupPage : UserControl
         actions.Controls.Add(backup);actions.Controls.Add(restore);content.Controls.Add(actions);
         content.Controls.Add(new Label{Dock=DockStyle.Top,Height=90,Text="Sao lưu cơ sở dữ liệu\nTệp .bak được tạo bởi SQL Server tại vị trí máy chủ có quyền ghi.",Font=Theme.Font(12),ForeColor=Theme.Text});
         card.Controls.Add(content);card.Controls.Add(icon);
-        Controls.Add(card);Controls.Add(header);
+        var history=new CardPanel{Dock=DockStyle.Fill,Padding=new Padding(18)};
+        history.Controls.Add(_history);
+        history.Controls.Add(new Label{Text="Lịch sử sao lưu & phục hồi",Dock=DockStyle.Top,Height=42,Font=Theme.Font(13,FontStyle.Bold),ForeColor=Theme.Text});
+        Controls.Add(history);Controls.Add(card);Controls.Add(header);
+        Load+=async(_,_)=>await LoadHistoryAsync();
     }
-    private async Task BackupAsync(){using var s=new SaveFileDialog{Filter="SQL Server backup (*.bak)|*.bak",FileName=$"StudioManager_{DateTime.Now:yyyyMMdd_HHmmss}.bak"};if(s.ShowDialog(this)!=DialogResult.OK)return;var r=await _app.BackupRestore.BackupAsync(s.FileName,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else Ui.Info(this,r.Message);}
-    private async Task RestoreAsync(){using var o=new OpenFileDialog{Filter="SQL Server backup (*.bak)|*.bak"};if(o.ShowDialog(this)!=DialogResult.OK)return;if(MessageBox.Show("Dữ liệu hiện tại sẽ bị thay thế. Bạn đã tạo bản sao lưu chưa?","Xác nhận bước 1/2",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;if(MessageBox.Show("Xác nhận lần cuối: tiếp tục phục hồi dữ liệu?","Xác nhận bước 2/2",MessageBoxButtons.YesNo,MessageBoxIcon.Stop)!=DialogResult.Yes)return;var r=await _app.BackupRestore.RestoreAsync(o.FileName,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else{Ui.Info(this,r.Message);System.Windows.Forms.Application.Restart();}}
+    private async Task BackupAsync(){using var s=new SaveFileDialog{Filter="SQL Server backup (*.bak)|*.bak",FileName=$"StudioManager_{DateTime.Now:yyyyMMdd_HHmmss}.bak"};if(s.ShowDialog(this)!=DialogResult.OK)return;var r=await _app.BackupRestore.BackupAsync(s.FileName,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else{Ui.Info(this,r.Message);await LoadHistoryAsync();}}
+    private async Task RestoreAsync(){using var o=new OpenFileDialog{Filter="SQL Server backup (*.bak)|*.bak"};if(o.ShowDialog(this)!=DialogResult.OK)return;if(MessageBox.Show("Dữ liệu hiện tại sẽ bị thay thế. Bạn đã tạo bản sao lưu chưa?","Xác nhận bước 1/2",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;if(MessageBox.Show("Xác nhận lần cuối: tiếp tục phục hồi dữ liệu?","Xác nhận bước 2/2",MessageBoxButtons.YesNo,MessageBoxIcon.Stop)!=DialogResult.Yes)return;var r=await _app.BackupRestore.RestoreAsync(o.FileName,_app.Session!);if(!r.Success){Ui.Error(this,r.Message);await LoadHistoryAsync();}else{Ui.Info(this,r.Message);System.Windows.Forms.Application.Restart();}}
+    private async Task LoadHistoryAsync(){try{var rows=await _app.BackupRestore.GetHistoryAsync(_app.Session!);var table=new System.Data.DataTable();if(rows.Count>0){foreach(var key in rows[0].Keys)table.Columns.Add(key,typeof(object));foreach(var source in rows){var row=table.NewRow();foreach(var value in source)row[value.Key]=value.Value??DBNull.Value;table.Rows.Add(row);}}_history.DataSource=table;if(_history.Columns.Contains("Id"))_history.Columns["Id"].Visible=false;}catch(Exception ex){Ui.Error(this,ex.Message);}}
 }

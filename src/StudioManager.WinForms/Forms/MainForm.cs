@@ -34,6 +34,7 @@ public sealed class MainForm : Form
             AddMenu("▦", "Gói chụp", () => new CrudPage(_app, "Gói chụp", "GoiChup")); AddMenu("◇", "Dịch vụ", () => new CrudPage(_app, "Dịch vụ bổ sung", "DichVu")); AddMenu("▣", "Phòng chụp", () => new CrudPage(_app, "Phòng chụp", "PhongChup")); AddMenu("▤", "Tài nguyên", () => new CrudPage(_app, "Tài nguyên", "TaiNguyen"));
             AddMenu("◫", "Báo cáo", () => new ReportsPage(_app)); AddMenu("◎", "Tài khoản", () => new AccountsPage(_app)); AddMenu("≡", "Nhật ký", () => new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true)); AddMenu("⚙", "Sao lưu", () => new BackupPage(_app));
         }
+        _menu.SizeChanged += (_, _) => FitSidebarMenu();
         _sidebar.Controls.Add(_menu);
         _logout.Dock = DockStyle.Bottom; _logout.Height = 44; _logout.Width = 228; _logout.Tag = "⇥|Đăng xuất"; _logout.Click += (_, _) => Close(); _sidebar.Controls.Add(_logout);
         _sidebar.Controls.Add(_logo);
@@ -59,7 +60,17 @@ public sealed class MainForm : Form
     {
         _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "▣" : "  ▣  StudioManager\n       Manage · Create · Grow"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
         foreach (var b in _menu.Controls.OfType<Button>()) { var parts = (b.Tag?.ToString() ?? "|").Split('|'); b.Text = _collapsed ? parts[0] : $"{parts[0]}   {parts.ElementAtOrDefault(1)}"; b.Width = _collapsed ? 52 : 228; b.Padding = _collapsed ? Padding.Empty : new Padding(14, 0, 0, 0); b.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft; }
-        _logout.Text = _collapsed ? "⇥" : "⇥  Đăng xuất"; _logout.Width = _collapsed ? 52 : 228; _sidebar.ResumeLayout(true);
+        _logout.Text = _collapsed ? "⇥" : "⇥  Đăng xuất"; _logout.Width = _collapsed ? 52 : 228; _sidebar.ResumeLayout(true); FitSidebarMenu();
+    }
+
+    private void FitSidebarMenu()
+    {
+        // A vertical scrollbar reduces the viewport width. Fixed 228px menu buttons
+        // then caused an unnecessary horizontal scrollbar at compact window heights.
+        var width = Math.Max(48, _menu.ClientSize.Width - (_menu.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0) - 1);
+        foreach (var button in _menu.Controls.OfType<Button>()) button.Width = width;
+        _menu.HorizontalScroll.Enabled = false;
+        _menu.HorizontalScroll.Visible = false;
     }
 
     private void ShowPage(string title, Control page, Button? sender)

@@ -10,13 +10,13 @@
 | FR02 | `CrudPage`, `SaveSimpleAsync`, `DeactivateAsync` | AT07-AT09 | CRUD, xóa có điều kiện, lịch sử liên quan và audit lifecycle đã được nghiệm thu Phase 2 | Pass — user acceptance |
 | FR03 | `CrudPage`, lookup `NhanVien` | AT10 | Trạng thái nhân viên và lọc lookup dữ liệu còn hoạt động đã được nghiệm thu Phase 2 | Pass — user acceptance |
 | FR04 | `CrudPage`, `SimpleEntitySpec`, lookups | AT11 | Validation dữ liệu nền, liên kết tài nguyên–dịch vụ và audit lifecycle đã được nghiệm thu Phase 2 | Pass — user acceptance |
-| FR05 | `BookingService`, `SqlStudioRepository`, `BookingsPage` | AT12-AT19, AT22-AT23 | Có core flow; TOP 500/query-ID/filter/resource-sync sai/chưa đủ | Partial / Not verified |
-| FR06 | `BusinessRules`, `UpdateBookingStatusAsync` | AT20-AT21 | Chuyển một bước có mặt; UI/history/evidence thiếu | Partial / Not verified |
-| FR07 | `FinanceService`, booking child dialogs, SQL finance methods | AT26-AT35 | Có một phần; mutation services/discount/summary/audit thiếu | Partial / Not verified |
-| FR08 | `GetReportAsync`, `ReportsPage`, `GetDashboardAsync` | AT36 | Aggregate chưa tách đúng khỏi list limit/evidence thiếu | Partial / Not verified |
-| FR09 | `AssignResourceAsync`, resource tab | AT24-AT25 | Chỉ assign hoàn chỉnh một phần; thiếu return/cancel/rental workflow | Partial / Not verified |
-| FR10 | `AuditAsync`, `NhatKyHeThong` | AT38 | Coverage/view/filter chưa đủ | Partial / Not verified |
-| FR11 | `BackupAsync`, `RestoreAsync`, `BackupPage` | AT39-AT40 | Có thao tác kỹ thuật; thiếu two-step/history/audit guard/evidence | Partial / Not verified |
+| FR05 | `BookingService`, `SqlStudioRepository`, `BookingsPage` | AT12-AT19, AT22-AT23 | Query theo ID/filter, guard sửa/hủy/tiến độ, recheck và đồng bộ tài nguyên trong transaction | Implemented / awaiting final gate |
+| FR06 | `BusinessRules`, `UpdateBookingStatusAsync`, booking history | AT20-AT21 | Chuyển một bước, chặn trạng thái cuối và audit; cần smoke test lại tại commit mới | Implemented / awaiting final gate |
+| FR07 | `FinanceService`, booking detail dialogs, SQL finance methods | AT26-AT35 | Snapshot dịch vụ, guard tổng tiền/đã thu, giảm giá, thu/hoàn, biên nhận và audit | Implemented / awaiting final gate |
+| FR08 | `GetReportAsync`, `ReportsPage`, `GetDashboardAsync` | AT36 | Aggregate SQL theo mốc đặc tả; dashboard thực thu đã trừ hoàn tiền | Implemented / awaiting final gate |
+| FR09 | `AssignResourceAsync`, resource tab | AT24-AT25 | Capacity overlap, trả/hủy, đồng bộ khi dời lịch và xác nhận thêm dịch vụ thuê | Implemented / awaiting final gate |
+| FR10 | `AuditAsync`, `NhatKyHeThong`, `AuditDetailDialog` | AT38 | Tìm kiếm mở rộng, before/after/lý do qua cửa sổ chi tiết | Implemented / awaiting final gate |
+| FR11 | `BackupAsync`, `RestoreAsync`, `BackupPage` | AT39-AT40 | Guard Admin, đuôi tệp, restore two-step và lịch sử sao lưu/phục hồi | Implemented / awaiting final gate |
 
 ## BR01-BR24
 
@@ -52,12 +52,13 @@
 - Kết quả từng AT liên quan: Pass, Fail hoặc Not verified, kèm dữ liệu/ảnh/log tối thiểu.
 - Smoke check UI DPI 100%, 125%, 150% cho Login, Main, Bookings, Booking Detail, Reports và Backup/Restore trước bàn giao.
 
-## Tiến độ source — branch `feature/spec-v2.1-compliance`
+## Tiến độ source — branch `feature/spec-v2.1-master-data`
 
 - UI đã không còn gọi `AppFacade.Repository`; các màn hình dùng Application Service phù hợp.
 - Tra cứu chi tiết lịch theo ID dùng query ID riêng, không lấy một danh sách giới hạn rồi tìm trong bộ nhớ.
 - Báo cáo aggregate chuyển sang SQL và dùng các mốc ngày đặc tả; booking detail refresh summary sau mutation.
 - Thêm workflow xóa dịch vụ có guard tổng phải thu, trả/hủy resource assignment, audit discount/account/password và log backup/restore.
+- Bổ sung đồng bộ resource khi dời lịch, xác nhận thêm dịch vụ thuê, audit before/after, lịch sử sao lưu, xuất CSV tương thích Excel và dashboard thực thu ròng.
 - Tất cả mục trên vẫn là **Implemented / Not verified** cho tới khi build, chạy SQL và AT liên quan trên Windows ở commit được ghi nhận.
 
 ## Evidence đã nhận
