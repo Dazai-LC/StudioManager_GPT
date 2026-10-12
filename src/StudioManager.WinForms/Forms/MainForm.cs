@@ -8,15 +8,18 @@ namespace StudioManager.WinForms.Forms;
 
 public sealed class MainForm : Form
 {
-    private const int ExpandedWidth = 252; private const int CollapsedWidth = 76;
+    private const int ExpandedWidth = 282; private const int CollapsedWidth = 76;
     private readonly AppFacade _app;
     private DashboardData? _initialDashboardData;
     private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Theme.Background, Padding = new Padding(28, 18, 28, 24) };
     private readonly Panel _sidebar = new() { Dock = DockStyle.Left, Width = ExpandedWidth, BackColor = Theme.Sidebar, Padding = new Padding(12, 16, 12, 16) };
     private readonly FlowLayoutPanel _menu = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(0, 8, 0, 0) };
-    private readonly Label _logo = new() { Text = "  ▣  StudioManager\n       Manage · Create · Grow", Dock = DockStyle.Top, Height = 78, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _logo = new() { Text = "  ▣  StudioManager\n       STUDIO OPERATIONS", Dock = DockStyle.Top, Height = 84, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Button _logout = Theme.Button("⇥  Đăng xuất", Color.FromArgb(30, 41, 59));
-    private readonly Label _pageTitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = Theme.Font(11, FontStyle.Bold), ForeColor = Theme.Text };
+    private readonly Label _pageTitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopLeft, Font = Theme.Font(16, FontStyle.Bold), ForeColor = Theme.Text, Padding = new Padding(0, 0, 0, 8) };
+    private readonly Label _breadcrumb = new() { Dock = DockStyle.Top, Height = 24, Text = "StudioManager", Font = Theme.Font(8.8f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.BottomLeft };
+    private readonly Label _sidebarUserName = new() { Dock = DockStyle.Fill, ForeColor = Color.White, Font = Theme.Font(9.3f, FontStyle.Bold), TextAlign = ContentAlignment.BottomLeft };
+    private readonly Label _sidebarUserRole = new() { Dock = DockStyle.Bottom, Height = 20, ForeColor = Color.FromArgb(148, 163, 184), Font = Theme.Font(8.5f), TextAlign = ContentAlignment.TopLeft };
     private readonly ToolTip _toolTip = new(); private readonly List<Label> _sectionLabels = []; private Button? _activeButton; private bool _collapsed;
 
     public MainForm(AppFacade app, DashboardData? initialDashboardData = null)
@@ -50,18 +53,34 @@ public sealed class MainForm : Form
         }
         _menu.SizeChanged += (_, _) => FitSidebarMenu();
         _sidebar.Controls.Add(_menu);
-        _logout.Dock = DockStyle.Bottom; _logout.Height = 44; _logout.Width = 228; _logout.Tag = "⇥|Đăng xuất"; _logout.Click += (_, _) => Close(); _sidebar.Controls.Add(_logout);
+        _sidebar.Controls.Add(BuildSidebarFooter());
         _sidebar.Controls.Add(_logo);
+    }
+
+    private Control BuildSidebarFooter()
+    {
+        var footer = new Panel { Dock = DockStyle.Bottom, Height = 112, Padding = new Padding(0, 8, 0, 0) };
+        _logout.Dock = DockStyle.Bottom; _logout.Height = 40; _logout.Width = 228; _logout.Tag = "⇥|Đăng xuất"; _logout.Click += (_, _) => Close();
+        var profile = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 0, 4, 4) };
+        var avatar = new Label { Dock = DockStyle.Left, Width = 42, Text = Initials(_app.Session!.HoTen), BackColor = Theme.PrimaryLight, ForeColor = Theme.Primary, Font = Theme.Font(9.5f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(0, 0, 10, 0) };
+        avatar.Resize += (_, _) => Theme.Round(avatar, 21);
+        _sidebarUserName.Text = _app.Session.HoTen;
+        _sidebarUserRole.Text = _app.Session.VaiTro == VaiTro.QuanTriVien ? "Quản trị viên" : "Nhân viên";
+        profile.Controls.Add(_sidebarUserName); profile.Controls.Add(_sidebarUserRole); profile.Controls.Add(avatar);
+        footer.Controls.Add(profile); footer.Controls.Add(_logout);
+        return footer;
     }
 
     private Control BuildTopbar()
     {
-        var top = new Panel { Dock = DockStyle.Top, Height = 68, BackColor = Theme.Surface, Padding = new Padding(14, 0, 28, 0) };
+        var top = new Panel { Dock = DockStyle.Top, Height = 90, BackColor = Theme.Surface, Padding = new Padding(14, 12, 28, 10) };
         var toggle = new Button { Text = "☰", Dock = DockStyle.Left, Width = 54, FlatStyle = FlatStyle.Flat, BackColor = Theme.Surface, ForeColor = Theme.Text, Font = Theme.Font(15), Cursor = Cursors.Hand }; toggle.FlatAppearance.BorderSize = 0; toggle.Click += (_, _) => ToggleSidebar();
-        var userPanel = new Panel { Dock = DockStyle.Right, Width = 330, Padding = new Padding(8, 10, 0, 9) };
+        var userPanel = new Panel { Dock = DockStyle.Right, Width = 330, Padding = new Padding(8, 8, 0, 7) };
         var avatar = new Label { Text = Initials(_app.Session!.HoTen), Dock = DockStyle.Right, Width = 46, BackColor = Theme.PrimaryLight, ForeColor = Theme.Primary, Font = Theme.Font(10, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter }; avatar.Resize += (_, _) => Theme.Round(avatar, 22);
         var user = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight, Font = Theme.Font(9.5f), ForeColor = Theme.Muted, Text = $"{_app.Session.HoTen}\n{(_app.Session.VaiTro == VaiTro.QuanTriVien ? "Quản trị viên" : "Nhân viên")}" };
-        userPanel.Controls.Add(user); userPanel.Controls.Add(avatar); top.Controls.Add(_pageTitle); top.Controls.Add(userPanel); top.Controls.Add(toggle); return top;
+        var pageStack = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 0, 0, 0) };
+        pageStack.Controls.Add(_pageTitle); pageStack.Controls.Add(_breadcrumb);
+        userPanel.Controls.Add(user); userPanel.Controls.Add(avatar); top.Controls.Add(pageStack); top.Controls.Add(userPanel); top.Controls.Add(toggle); return top;
     }
 
     private void AddMenu(string icon, string title, Func<Control> page)
@@ -79,8 +98,9 @@ public sealed class MainForm : Form
 
     private void ToggleSidebar()
     {
-        _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "▣" : "  ▣  StudioManager\n       Manage · Create · Grow"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
+        _collapsed = !_collapsed; _sidebar.SuspendLayout(); _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth; _logo.Text = _collapsed ? "▣" : "  ▣  StudioManager\n       STUDIO OPERATIONS"; _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
         foreach (var section in _sectionLabels) section.Visible = !_collapsed;
+        _sidebarUserName.Visible = !_collapsed; _sidebarUserRole.Visible = !_collapsed;
         foreach (var b in _menu.Controls.OfType<Button>()) { var parts = (b.Tag?.ToString() ?? "|").Split('|'); b.Text = _collapsed ? parts[0] : $"{parts[0]}   {parts.ElementAtOrDefault(1)}"; b.Width = _collapsed ? 52 : 228; b.Padding = _collapsed ? Padding.Empty : new Padding(14, 0, 0, 0); b.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft; }
         _logout.Text = _collapsed ? "⇥" : "⇥  Đăng xuất"; _logout.Width = _collapsed ? 52 : 228; _sidebar.ResumeLayout(true); FitSidebarMenu();
     }
@@ -100,7 +120,7 @@ public sealed class MainForm : Form
     {
         if (_activeButton is not null) { _activeButton.BackColor = Theme.Sidebar; _activeButton.ForeColor = Color.FromArgb(203, 213, 225); }
         _activeButton = sender; if (_activeButton is not null) { _activeButton.BackColor = Theme.Primary; _activeButton.ForeColor = Color.White; }
-        _pageTitle.Text = title; _content.Controls.Clear(); page.Dock = DockStyle.Fill; _content.Controls.Add(page);
+        _pageTitle.Text = title; _breadcrumb.Text = "StudioManager   /   " + title; _content.Controls.Clear(); page.Dock = DockStyle.Fill; _content.Controls.Add(page);
     }
     private DashboardPage CreateDashboard() { var page = new DashboardPage(_app, _initialDashboardData); _initialDashboardData = null; page.ViewBookingsRequested += (_, _) => OpenMenu("Lịch chụp"); return page; }
     private void OpenMenu(string title) { var button = _menu.Controls.OfType<Button>().FirstOrDefault(x => (x.Tag?.ToString() ?? "").EndsWith("|" + title, StringComparison.Ordinal)); button?.PerformClick(); }

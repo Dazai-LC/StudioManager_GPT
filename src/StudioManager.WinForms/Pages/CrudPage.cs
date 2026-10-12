@@ -10,10 +10,72 @@ public sealed class CrudPage : UserControl
     private readonly AppFacade _app;private readonly string _entity;private readonly bool _readOnly;private readonly DataGridView _grid=Theme.Grid();private readonly TextBox _search=Ui.SearchBox();
     public CrudPage(AppFacade app,string title,string entity,bool readOnly=false)
     {
-        _app=app;_entity=entity;_readOnly=readOnly;BackColor=Theme.Background;var header=new PageHeader(title,"Quản lý, tìm kiếm và theo dõi dữ liệu tập trung.");var add=Theme.Button(entity=="KhachHang"?"+ Thêm khách hàng":"+ Thêm mới");add.Width=155;add.Visible=!readOnly;add.Click+=async(_,_)=>await EditAsync(null);header.Actions.Controls.Add(add);
-        var toolbar=Ui.Toolbar();toolbar.Controls.Add(Ui.ToolbarInput(_search));var find=Theme.Button("Tìm kiếm",Theme.Secondary);find.Width=106;find.Click+=async(_,_)=>await LoadAsync();var refresh=Theme.Button("↻ Làm mới",Theme.Secondary);refresh.Width=112;refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};toolbar.Controls.Add(Ui.ToolbarButtonGroup(find,refresh));var details=Theme.Button("Xem chi tiết",Theme.Secondary);details.Width=124;details.Click+=(_,_)=>ShowDetails();toolbar.Controls.Add(Ui.ToolbarButton(details));if(entity is "KhachHang" or "NhanVien" or "PhongChup"){var history=Theme.Button("Lịch sử",Theme.Secondary);history.Width=105;history.Click+=async(_,_)=>await ShowHistoryAsync();toolbar.Controls.Add(Ui.ToolbarButton(history));}var export=Theme.Button("Xuất Excel",Theme.Success);export.Width=112;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,_entity);toolbar.Controls.Add(Ui.ToolbarButton(export));var edit=Theme.Button("Chỉnh sửa");edit.Visible=!readOnly;edit.Click+=async(_,_)=>await EditAsync(SelectedId());toolbar.Controls.Add(Ui.ToolbarButton(edit));var stop=Theme.Button(entity=="KhachHang"?"Xóa":"Ngừng dùng",Theme.Danger);stop.Visible=!readOnly;stop.Click+=async(_,_)=>await DeactivateAsync();toolbar.Controls.Add(Ui.ToolbarButton(stop));
-        var card=new CardPanel{Dock=DockStyle.Fill};card.Controls.Add(_grid);Controls.Add(card);Controls.Add(toolbar);Controls.Add(header);_search.KeyDown+=async(_,e)=>{if(e.KeyCode==Keys.Enter)await LoadAsync();};_grid.CellDoubleClick+=(_,_)=>ShowDetails();Load+=async(_,_)=>await LoadAsync();
+        _app=app;_entity=entity;_readOnly=readOnly;BackColor=Theme.Background;
+        var header=new PageHeader(title,SubtitleFor(entity));
+        if(!readOnly)
+        {
+            var add=Theme.Button(entity=="KhachHang"?"+  Thêm khách hàng":"+  Thêm mới");
+            add.Width=168;add.Click+=async(_,_)=>await EditAsync(null);header.Actions.Controls.Add(add);
+        }
+
+        var toolbar=BuildSearchBar();
+        var card=new CardPanel{Dock=DockStyle.Fill,Padding=Padding.Empty};
+        card.Controls.Add(_grid);
+
+        var actions=BuildSelectionActions();
+        var guard=BuildGuardNote();
+        Controls.Add(card);Controls.Add(actions);if(guard is not null)Controls.Add(guard);Controls.Add(toolbar);Controls.Add(header);
+        _search.KeyDown+=async(_,e)=>{if(e.KeyCode==Keys.Enter)await LoadAsync();};
+        _grid.CellDoubleClick+=(_,_)=>ShowDetails();Load+=async(_,_)=>await LoadAsync();
     }
+
+    private Control BuildSearchBar()
+    {
+        var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
+        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=6,RowCount=1};
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,420));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,124));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,4));
+        _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText=_entity=="NhatKy"?"Tìm theo hành động, tài khoản hoặc đối tượng...":"Tìm theo mã, tên hoặc thông tin liên quan...";
+        var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
+        var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
+        var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,_entity);
+        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,4,0);card.Controls.Add(row);return card;
+    }
+
+    private Control BuildSelectionActions()
+    {
+        var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
+        card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một dòng để xem thông tin hoặc thực hiện thao tác phù hợp.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
+        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=520,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        if(!_readOnly)
+        {
+            var stop=Theme.Button(_entity=="KhachHang"?"Xóa":"Ngừng dùng",Theme.Danger);stop.Width=118;stop.Click+=async(_,_)=>await DeactivateAsync();group.Controls.Add(stop);
+            var edit=Theme.Button("Chỉnh sửa");edit.Width=110;edit.Click+=async(_,_)=>await EditAsync(SelectedId());group.Controls.Add(edit);
+        }
+        if(_entity is "KhachHang" or "NhanVien" or "PhongChup")
+        {
+            var history=Theme.Button("Lịch sử",Theme.Secondary);history.Width=100;history.Click+=async(_,_)=>await ShowHistoryAsync();group.Controls.Add(history);
+        }
+        var details=Theme.Button("Xem chi tiết",Theme.Secondary);details.Width=124;details.Click+=(_,_)=>ShowDetails();group.Controls.Add(details);
+        card.Controls.Add(group);return card;
+    }
+
+    private Control? BuildGuardNote()=>_entity=="KhachHang" ? new Label
+    {
+        Dock=DockStyle.Bottom,Height=48,Padding=new Padding(18,0,18,0),BackColor=Color.FromArgb(245,241,255),ForeColor=Theme.Purple,Font=Theme.Font(9),
+        Text="△  Khách hàng đã có lịch chụp không thể xóa. Chọn “Xem chi tiết” để kiểm tra lịch sử trước khi thao tác.",TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true
+    } : null;
+
+    private static string SubtitleFor(string entity)=>entity switch
+    {
+        "KhachHang"=>"Hồ sơ, thông tin liên hệ và lịch sử lịch chụp.",
+        "NhanVien"=>"Quản lý thông tin nhân sự và trạng thái làm việc.",
+        "GoiChup"=>"Danh mục gói chụp đang cung cấp cho khách hàng.",
+        "DichVu"=>"Dịch vụ bổ sung và đơn giá đang áp dụng.",
+        "PhongChup"=>"Danh mục phòng và trạng thái sẵn sàng phục vụ.",
+        "TaiNguyen"=>"Thiết bị, trang phục và liên kết dịch vụ thuê.",
+        "NhatKy"=>"Theo dõi hành động và thay đổi dữ liệu trong hệ thống.",
+        _=>"Quản lý, tìm kiếm và theo dõi dữ liệu tập trung."
+    };
     private long? SelectedId()=>_grid.CurrentRow?.Cells["Id"].Value is object v?Convert.ToInt64(v):null;
     private async Task LoadAsync(){try{var rows=await _app.Administration.QueryGridAsync(_entity,string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_app.Session!);var table=new BindingList<RowView>(rows.Select(x=>new RowView(x)).ToList());_grid.DataSource=table;if(_grid.Columns.Contains("Data"))_grid.Columns["Data"].Visible=false;BuildColumns(rows);}catch(Exception ex){Ui.Error(this,ex.Message);}}
     private void BuildColumns(IReadOnlyList<IDictionary<string,object?>> rows){if(rows.Count==0)return;_grid.DataSource=null;var dt=new System.Data.DataTable();foreach(var key in rows[0].Keys)dt.Columns.Add(key,typeof(object));foreach(var r in rows){var row=dt.NewRow();foreach(var p in r)row[p.Key]=p.Value??DBNull.Value;dt.Rows.Add(row);}_grid.DataSource=dt;if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;if(_entity=="TaiNguyen"&&_grid.Columns.Contains("Dịch vụ thuê ID"))_grid.Columns["Dịch vụ thuê ID"].Visible=false;if(_entity=="NhatKy"){if(_grid.Columns.Contains("Giá trị cũ"))_grid.Columns["Giá trị cũ"].Visible=false;if(_grid.Columns.Contains("Giá trị mới"))_grid.Columns["Giá trị mới"].Visible=false;}}

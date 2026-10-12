@@ -21,37 +21,49 @@ public sealed class BookingsPage : UserControl
         var header=new PageHeader("Lịch chụp","Theo dõi toàn bộ lịch, tiến độ và tài chính.");
         var add=Theme.Button("+ Tạo lịch");add.Click+=async(_,_)=>await CreateAsync();header.Actions.Controls.Add(add);
 
-        var filters=Toolbar();
-        filters.Controls.Add(Ui.Field("Tìm kiếm",_search,280));
-        filters.Controls.Add(Ui.Field("Từ ngày",_from,150));
-        filters.Controls.Add(Ui.Field("Đến ngày",_to,150));
-        filters.Controls.Add(Ui.Field("Nhiếp ảnh gia",_photographer,190));
-        filters.Controls.Add(Ui.Field("Phòng",_room,160));
-        filters.Controls.Add(Ui.Field("Gói chụp",_package,180));
-        filters.Controls.Add(Ui.Field("Trạng thái",_status,170));
-        var find=Theme.Button("Tìm kiếm");find.Click+=async(_,_)=>await LoadAsync();
-        var refresh=Theme.Button("↻ Làm mới",Theme.Secondary);refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
-        filters.Controls.Add(Ui.ToolbarButtonGroup(find,refresh));
-
-        var actions=Toolbar();
-        actions.Controls.Add(Ui.ToolbarCaption("THAO TÁC LỊCH ĐÃ CHỌN"));
-        _detail=Theme.Button("Chi tiết",Theme.Secondary);_detail.Click+=async(_,_)=>await DetailAsync();actions.Controls.Add(Ui.ToolbarButton(_detail));
-        _edit=Theme.Button("Sửa lịch",Theme.Secondary);_edit.Click+=async(_,_)=>await EditAsync();actions.Controls.Add(Ui.ToolbarButton(_edit));
-        _progress=Theme.Button("Bước tiếp");_progress.Click+=async(_,_)=>await AdvanceAsync();actions.Controls.Add(Ui.ToolbarButton(_progress));
-        _pay=Theme.Button("Thu tiền");_pay.Click+=async(_,_)=>await PaymentAsync(false);actions.Controls.Add(Ui.ToolbarButton(_pay));
-        _refund=Theme.Button("Hoàn tiền");_refund.Visible=_app.Session!.VaiTro==VaiTro.QuanTriVien;_refund.Click+=async(_,_)=>await PaymentAsync(true);actions.Controls.Add(Ui.ToolbarButton(_refund));
-        _cancel=Theme.Button("Hủy lịch",Theme.Danger);_cancel.Click+=async(_,_)=>await CancelAsync();actions.Controls.Add(Ui.ToolbarButton(_cancel));
-        var export=Theme.Button("Xuất Excel",Theme.Success);export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");actions.Controls.Add(Ui.ToolbarButton(export));
-
-        var card=new CardPanel{Dock=DockStyle.Fill};card.Controls.Add(_grid);
-        Controls.Add(card);Controls.Add(actions);Controls.Add(filters);Controls.Add(header);
+        var advancedFilters=BuildAdvancedFilters();
+        var filters=BuildSearchBar(advancedFilters);
+        var actions=BuildSelectionActions();
+        var card=new CardPanel{Dock=DockStyle.Fill,Padding=Padding.Empty};card.Controls.Add(_grid);
+        Controls.Add(card);Controls.Add(actions);Controls.Add(advancedFilters);Controls.Add(filters);Controls.Add(header);
         _grid.CellDoubleClick+=async(_,_)=>await DetailAsync();
         _grid.SelectionChanged+=(_,_)=>UpdateActionState();
         Load+=async(_,_)=>{await LoadFiltersAsync();await LoadAsync();};
     }
+    private Control BuildSearchBar(Control advancedFilters)
+    {
+        var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
+        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=7,RowCount=1};
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,380));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,112));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,124));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,4));
+        _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;
+        var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
+        var filter=Theme.Button("⌕  Bộ lọc",Theme.Secondary);filter.Dock=DockStyle.Fill;filter.Margin=new Padding(10,0,0,0);filter.Click+=(_,_)=>{advancedFilters.Visible=!advancedFilters.Visible;filter.Text=advancedFilters.Visible?"⌃  Thu gọn":"⌕  Bộ lọc";};
+        var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
+        var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");
+        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(filter,2,0);row.Controls.Add(refresh,3,0);row.Controls.Add(export,5,0);card.Controls.Add(row);return card;
+    }
+    private Control BuildAdvancedFilters()
+    {
+        var card=new CardPanel{Dock=DockStyle.Top,Height=94,Padding=new Padding(16,10,16,8),Margin=new Padding(0,0,0,12),Visible=false};
+        var flow=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,AutoScroll=true,Padding=Padding.Empty};
+        flow.Controls.Add(Ui.Field("TỪ NGÀY",_from,150));flow.Controls.Add(Ui.Field("ĐẾN NGÀY",_to,150));flow.Controls.Add(Ui.Field("NHIẾP ẢNH GIA",_photographer,190));flow.Controls.Add(Ui.Field("PHÒNG",_room,160));flow.Controls.Add(Ui.Field("GÓI CHỤP",_package,180));flow.Controls.Add(Ui.Field("TRẠNG THÁI",_status,170));
+        card.Controls.Add(flow);return card;
+    }
+    private Control BuildSelectionActions()
+    {
+        var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
+        card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một lịch để xem chi tiết, cập nhật tiến độ hoặc thực hiện nghiệp vụ tài chính.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
+        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=680,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        _cancel=Theme.Button("Hủy lịch",Theme.Danger);_cancel.Width=104;_cancel.Click+=async(_,_)=>await CancelAsync();group.Controls.Add(_cancel);
+        _refund=Theme.Button("Hoàn tiền",Theme.Warning);_refund.Width=105;_refund.Visible=_app.Session!.VaiTro==VaiTro.QuanTriVien;_refund.Click+=async(_,_)=>await PaymentAsync(true);group.Controls.Add(_refund);
+        _pay=Theme.Button("Thu tiền");_pay.Width=100;_pay.Click+=async(_,_)=>await PaymentAsync(false);group.Controls.Add(_pay);
+        _progress=Theme.Button("Bước tiếp",Theme.Secondary);_progress.Width=108;_progress.Click+=async(_,_)=>await AdvanceAsync();group.Controls.Add(_progress);
+        _edit=Theme.Button("Sửa lịch",Theme.Secondary);_edit.Width=100;_edit.Click+=async(_,_)=>await EditAsync();group.Controls.Add(_edit);
+        _detail=Theme.Button("Chi tiết",Theme.Secondary);_detail.Width=100;_detail.Click+=async(_,_)=>await DetailAsync();group.Controls.Add(_detail);
+        card.Controls.Add(group);return card;
+    }
     private LichChup? Selected()=>_grid.CurrentRow?.Cells["Id"].Value is object v?_items.FirstOrDefault(x=>x.Id==Convert.ToInt64(v)):null;
     private async Task LoadAsync(){try{var filter=new BookingSearchFilter(string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_from.Checked?_from.Value.Date:null,_to.Checked?_to.Value.Date:null,SelectedId(_photographer),SelectedId(_room),SelectedId(_package),SelectedStatus());_items=await _app.Bookings.SearchAsync(filter);_grid.DataSource=_items.Select(x=>new{x.Id,Ma=x.Ma,Khách_hàng=x.KhachHang,Bắt_đầu=x.BatDau.ToString("dd/MM/yyyy HH:mm"),Kết_thúc=x.KetThuc.ToString("dd/MM/yyyy HH:mm"),Nhiếp_ảnh_gia=x.NhiepAnhGia,Phòng=x.Phong,Trạng_thái=x.TrangThai.HienThi(),Tổng_tiền=x.TongThanhToan,Còn_lại=x.ConLai}).ToList();if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;foreach(var c in new[]{"Tổng_tiền","Còn_lại"})if(_grid.Columns.Contains(c))_grid.Columns[c].DefaultCellStyle.Format="N0";_grid.ClearSelection();_grid.CurrentCell=null;UpdateActionState();}catch(Exception ex){Ui.Error(this,ex.Message);}}
-    private static FlowLayoutPanel Toolbar()=>Ui.Toolbar();
     private void UpdateActionState()
     {
         var booking=Selected();

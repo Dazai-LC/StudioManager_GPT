@@ -5,10 +5,11 @@ public sealed class PageHeader : Panel
     public FlowLayoutPanel Actions { get; } = new() { Dock = DockStyle.Right, Width = 440, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, AutoScroll = false, Padding = new Padding(0, 14, 0, 0) };
     public PageHeader(string title, string subtitle)
     {
-        Height = 96; Dock = DockStyle.Top; BackColor = Theme.Background; Padding = new Padding(2, 4, 0, 12);
+        // The page title belongs to the global top bar.  This compact context bar
+        // mirrors the Figma hierarchy and avoids repeating a large title on every page.
+        Height = 84; Dock = DockStyle.Top; BackColor = Theme.Background; Padding = new Padding(2, 4, 0, 12); AccessibleName = title;
         var copy = new Panel { Dock = DockStyle.Fill };
-        copy.Controls.Add(new Label { Text = subtitle, Dock = DockStyle.Bottom, Height = 30, Font = Theme.Font(9.5f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true });
-        copy.Controls.Add(new Label { Text = title, Dock = DockStyle.Top, Height = 52, Font = Theme.Font(23, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.BottomLeft, AutoEllipsis = true });
+        copy.Controls.Add(new Label { Text = subtitle, Dock = DockStyle.Fill, Font = Theme.Font(10.5f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true });
         Controls.Add(copy); Controls.Add(Actions); Actions.BringToFront();
     }
 }

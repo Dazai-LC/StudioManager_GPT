@@ -22,36 +22,41 @@ public sealed class AccountsPage : UserControl
         add.Click+=async(_,_)=>await CreateAsync();
         header.Actions.Controls.Add(add);
 
-        var bar=Ui.Toolbar();
-        bar.Controls.Add(Ui.ToolbarInput(_search));
-        var find=Theme.Button("Tìm kiếm",Theme.Secondary);
-        find.Click+=async(_,_)=>await LoadAsync();
-        var refresh=Theme.Button("↻ Làm mới",Theme.Secondary);
-        refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
-        bar.Controls.Add(Ui.ToolbarButtonGroup(find,refresh));
-        var detail=Theme.Button("Chi tiết",Theme.Secondary);
-        detail.Click+=(_,_)=>ShowDetails();
-        bar.Controls.Add(Ui.ToolbarButton(detail));
-        var export=Theme.Button("Xuất Excel",Theme.Success);
-        export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
-        bar.Controls.Add(Ui.ToolbarButton(export));
-        var reset=Theme.Button("Đặt lại mật khẩu",Theme.Warning);
-        reset.Width=155;
-        reset.Click+=async(_,_)=>await ResetAsync();
-        bar.Controls.Add(Ui.ToolbarButton(reset));
-        _lockButton.Width=140;
-        _lockButton.Click+=async(_,_)=>await LockAsync();
-        bar.Controls.Add(Ui.ToolbarButton(_lockButton));
-
-        var card=new CardPanel{Dock=DockStyle.Fill};
+        var bar=BuildSearchBar();
+        var card=new CardPanel{Dock=DockStyle.Fill,Padding=Padding.Empty};
         card.Controls.Add(_grid);
+        var actions=BuildSelectionActions();
         Controls.Add(card);
+        Controls.Add(actions);
         Controls.Add(bar);
         Controls.Add(header);
         _grid.CellDoubleClick+=(_,_)=>ShowDetails();
         _grid.SelectionChanged+=(_,_)=>UpdateLockButton();
         UpdateLockButton();
         Load+=async(_,_)=>await LoadAsync();
+    }
+
+    private Control BuildSearchBar()
+    {
+        var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
+        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=6,RowCount=1};
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,420));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,124));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,4));
+        _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText="Tìm theo tên đăng nhập hoặc nhân viên...";
+        var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
+        var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
+        var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
+        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,4,0);card.Controls.Add(row);return card;
+    }
+
+    private Control BuildSelectionActions()
+    {
+        var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
+        card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một tài khoản để xem chi tiết, đặt lại mật khẩu hoặc thay đổi trạng thái khóa.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
+        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=510,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        _lockButton.Width=140;_lockButton.Click+=async(_,_)=>await LockAsync();
+        var reset=Theme.Button("Đặt lại mật khẩu",Theme.Warning);reset.Width=155;reset.Click+=async(_,_)=>await ResetAsync();
+        var detail=Theme.Button("Xem chi tiết",Theme.Secondary);detail.Width=124;detail.Click+=(_,_)=>ShowDetails();
+        group.Controls.Add(_lockButton);group.Controls.Add(reset);group.Controls.Add(detail);card.Controls.Add(group);return card;
     }
     private int? Id()=>_grid.CurrentRow?.Cells["Id"].Value is object x?Convert.ToInt32(x):null;
     private async Task LoadAsync(){var rows=await _app.Administration.QueryGridAsync("TaiKhoan",string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_app.Session!);var dt=new System.Data.DataTable();if(rows.Count>0){foreach(var k in rows[0].Keys)dt.Columns.Add(k,typeof(object));foreach(var r in rows){var x=dt.NewRow();foreach(var p in r)x[p.Key]=p.Value??DBNull.Value;dt.Rows.Add(x);}}_grid.DataSource=dt;if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;UpdateLockButton();}
