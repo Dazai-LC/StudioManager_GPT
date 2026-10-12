@@ -12,7 +12,10 @@ public sealed class BookingsPage : UserControl
     private readonly TextBox _search=Ui.SearchBox("Mã lịch, khách hàng, số điện thoại...");
     private readonly DateTimePicker _from=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true,Checked=false},_to=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true,Checked=false};
     private readonly ComboBox _photographer=FilterBox(),_room=FilterBox(),_package=FilterBox(),_status=FilterBox();
-    private readonly Button _edit,_detail,_progress,_pay,_refund,_cancel;
+    // These controls are constructed together in BuildSelectionActions().  They cannot be
+    // readonly because that helper owns the layout construction, but are initialized before
+    // the page can receive any selection events.
+    private Button _edit=null!,_detail=null!,_progress=null!,_pay=null!,_refund=null!,_cancel=null!;
     private IReadOnlyList<LichChup> _items=[];
 
     public BookingsPage(AppFacade app)
