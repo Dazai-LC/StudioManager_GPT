@@ -11,10 +11,11 @@ public sealed class BackupPage : UserControl
     {
         _app=app;BackColor=Theme.Background;
         var header=new PageHeader("Sao lưu & phục hồi","Bảo vệ dữ liệu studio bằng bản sao lưu SQL Server.");
-        var card=new CardPanel{Dock=DockStyle.Top,Height=300,Padding=new Padding(28)};
-        var icon=new Label{Text="◈",Dock=DockStyle.Left,Width=86,Font=Theme.Font(34,FontStyle.Bold),ForeColor=Theme.Primary,TextAlign=ContentAlignment.TopCenter};
-        var content=new Panel{Dock=DockStyle.Fill,Padding=new Padding(16,0,0,0)};
-        content.Controls.Add(new Label{Dock=DockStyle.Bottom,Height=88,Text="Lưu ý: Phục hồi sẽ thay thế toàn bộ dữ liệu hiện tại, đóng các kết nối và yêu cầu khởi động lại ứng dụng.",Font=Theme.Font(9.5f),ForeColor=Theme.Muted});
+        var card=new CardPanel{Dock=DockStyle.Top,Height=286,Padding=new Padding(28)};
+        var icon=new Label{Text="◈",Dock=DockStyle.Left,Width=74,Font=Theme.Font(30,FontStyle.Bold),ForeColor=Theme.Primary,BackColor=Theme.PrimaryLight,TextAlign=ContentAlignment.MiddleCenter,Margin=new Padding(0,0,18,0)};
+        icon.Resize+=(_,_)=>Theme.Round(icon,12);
+        var content=new Panel{Dock=DockStyle.Fill,Padding=new Padding(20,0,0,0)};
+        content.Controls.Add(new Label{Dock=DockStyle.Bottom,Height=78,Text="Lưu ý: Phục hồi sẽ thay thế toàn bộ dữ liệu hiện tại, đóng các kết nối và yêu cầu khởi động lại ứng dụng.",Font=Theme.Font(9.3f),ForeColor=Theme.Muted});
         var actions=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=62};
         var backup=Theme.Button("Tạo bản sao lưu");backup.Width=180;backup.Click+=async(_,_)=>await BackupAsync();
         var restore=Theme.Button("Phục hồi dữ liệu",Theme.Danger);restore.Width=180;restore.Click+=async(_,_)=>await RestoreAsync();

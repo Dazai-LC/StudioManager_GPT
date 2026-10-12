@@ -30,18 +30,18 @@ public sealed class BookingsPage : UserControl
         filters.Controls.Add(Ui.Field("Gói chụp",_package,180));
         filters.Controls.Add(Ui.Field("Trạng thái",_status,170));
         var find=Theme.Button("Tìm kiếm");find.Click+=async(_,_)=>await LoadAsync();
-        var refresh=Theme.Button("Làm mới",Color.FromArgb(71,85,105));refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
+        var refresh=Theme.Button("↻ Làm mới",Theme.Secondary);refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
         filters.Controls.Add(Ui.ToolbarButtonGroup(find,refresh));
 
         var actions=Toolbar();
         actions.Controls.Add(Ui.ToolbarCaption("THAO TÁC LỊCH ĐÃ CHỌN"));
-        _detail=Theme.Button("Chi tiết",Color.FromArgb(71,85,105));_detail.Click+=async(_,_)=>await DetailAsync();actions.Controls.Add(Ui.ToolbarButton(_detail));
-        _edit=Theme.Button("Sửa lịch",Color.FromArgb(71,85,105));_edit.Click+=async(_,_)=>await EditAsync();actions.Controls.Add(Ui.ToolbarButton(_edit));
+        _detail=Theme.Button("Chi tiết",Theme.Secondary);_detail.Click+=async(_,_)=>await DetailAsync();actions.Controls.Add(Ui.ToolbarButton(_detail));
+        _edit=Theme.Button("Sửa lịch",Theme.Secondary);_edit.Click+=async(_,_)=>await EditAsync();actions.Controls.Add(Ui.ToolbarButton(_edit));
         _progress=Theme.Button("Bước tiếp");_progress.Click+=async(_,_)=>await AdvanceAsync();actions.Controls.Add(Ui.ToolbarButton(_progress));
         _pay=Theme.Button("Thu tiền");_pay.Click+=async(_,_)=>await PaymentAsync(false);actions.Controls.Add(Ui.ToolbarButton(_pay));
         _refund=Theme.Button("Hoàn tiền");_refund.Visible=_app.Session!.VaiTro==VaiTro.QuanTriVien;_refund.Click+=async(_,_)=>await PaymentAsync(true);actions.Controls.Add(Ui.ToolbarButton(_refund));
         _cancel=Theme.Button("Hủy lịch",Theme.Danger);_cancel.Click+=async(_,_)=>await CancelAsync();actions.Controls.Add(Ui.ToolbarButton(_cancel));
-        var export=Theme.Button("Xuất Excel",Color.FromArgb(71,85,105));export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");actions.Controls.Add(Ui.ToolbarButton(export));
+        var export=Theme.Button("Xuất Excel",Theme.Success);export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");actions.Controls.Add(Ui.ToolbarButton(export));
 
         var card=new CardPanel{Dock=DockStyle.Fill};card.Controls.Add(_grid);
         Controls.Add(card);Controls.Add(actions);Controls.Add(filters);Controls.Add(header);
@@ -51,7 +51,7 @@ public sealed class BookingsPage : UserControl
     }
     private LichChup? Selected()=>_grid.CurrentRow?.Cells["Id"].Value is object v?_items.FirstOrDefault(x=>x.Id==Convert.ToInt64(v)):null;
     private async Task LoadAsync(){try{var filter=new BookingSearchFilter(string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_from.Checked?_from.Value.Date:null,_to.Checked?_to.Value.Date:null,SelectedId(_photographer),SelectedId(_room),SelectedId(_package),SelectedStatus());_items=await _app.Bookings.SearchAsync(filter);_grid.DataSource=_items.Select(x=>new{x.Id,Ma=x.Ma,Khách_hàng=x.KhachHang,Bắt_đầu=x.BatDau.ToString("dd/MM/yyyy HH:mm"),Kết_thúc=x.KetThuc.ToString("dd/MM/yyyy HH:mm"),Nhiếp_ảnh_gia=x.NhiepAnhGia,Phòng=x.Phong,Trạng_thái=x.TrangThai.HienThi(),Tổng_tiền=x.TongThanhToan,Còn_lại=x.ConLai}).ToList();if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;foreach(var c in new[]{"Tổng_tiền","Còn_lại"})if(_grid.Columns.Contains(c))_grid.Columns[c].DefaultCellStyle.Format="N0";_grid.ClearSelection();_grid.CurrentCell=null;UpdateActionState();}catch(Exception ex){Ui.Error(this,ex.Message);}}
-    private static FlowLayoutPanel Toolbar()=>new(){Dock=DockStyle.Top,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,Padding=new Padding(0,6,0,6),WrapContents=true};
+    private static FlowLayoutPanel Toolbar()=>Ui.Toolbar();
     private void UpdateActionState()
     {
         var booking=Selected();

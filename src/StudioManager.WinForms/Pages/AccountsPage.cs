@@ -22,27 +22,26 @@ public sealed class AccountsPage : UserControl
         add.Click+=async(_,_)=>await CreateAsync();
         header.Actions.Controls.Add(add);
 
-        var bar=new FlowLayoutPanel{Dock=DockStyle.Top,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,Padding=new Padding(0,8,0,8),WrapContents=true};
-        bar.Controls.Add(_search);
-        var find=Theme.Button("Tìm kiếm",Color.FromArgb(71,85,105));
+        var bar=Ui.Toolbar();
+        bar.Controls.Add(Ui.ToolbarInput(_search));
+        var find=Theme.Button("Tìm kiếm",Theme.Secondary);
         find.Click+=async(_,_)=>await LoadAsync();
-        bar.Controls.Add(find);
-        var refresh=Theme.Button("Làm mới",Color.FromArgb(71,85,105));
+        var refresh=Theme.Button("↻ Làm mới",Theme.Secondary);
         refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
-        bar.Controls.Add(refresh);
-        var detail=Theme.Button("Chi tiết",Color.FromArgb(71,85,105));
+        bar.Controls.Add(Ui.ToolbarButtonGroup(find,refresh));
+        var detail=Theme.Button("Chi tiết",Theme.Secondary);
         detail.Click+=(_,_)=>ShowDetails();
-        bar.Controls.Add(detail);
-        var export=Theme.Button("Xuất Excel",Theme.Purple);
+        bar.Controls.Add(Ui.ToolbarButton(detail));
+        var export=Theme.Button("Xuất Excel",Theme.Success);
         export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
-        bar.Controls.Add(export);
+        bar.Controls.Add(Ui.ToolbarButton(export));
         var reset=Theme.Button("Đặt lại mật khẩu",Theme.Warning);
         reset.Width=155;
         reset.Click+=async(_,_)=>await ResetAsync();
-        bar.Controls.Add(reset);
+        bar.Controls.Add(Ui.ToolbarButton(reset));
         _lockButton.Width=140;
         _lockButton.Click+=async(_,_)=>await LockAsync();
-        bar.Controls.Add(_lockButton);
+        bar.Controls.Add(Ui.ToolbarButton(_lockButton));
 
         var card=new CardPanel{Dock=DockStyle.Fill};
         card.Controls.Add(_grid);

@@ -25,7 +25,9 @@ public sealed class DashboardPage : UserControl
     public DashboardPage(AppFacade app, DashboardData? initialData = null)
     {
         _app = app; _initialData = initialData; BackColor = Theme.Background; AutoScroll = true;
-        var body = new Panel { Dock = DockStyle.Top, Height = 790 };
+        // The dashboard keeps a deliberate content height so smaller supported
+        // windows scroll instead of compressing cards and clipping their text.
+        var body = new Panel { Dock = DockStyle.Top, Height = 800 };
         var header = BuildGreeting();
         var cards = new TableLayoutPanel { Dock = DockStyle.Top, Height = 140, ColumnCount = 4, Padding = new Padding(0, 4, 0, 8) };
         for (var i = 0; i < 4; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
@@ -50,8 +52,9 @@ public sealed class DashboardPage : UserControl
 
     private Control BuildGreeting()
     {
-        var header = new Panel { Dock = DockStyle.Top, Height = 80 };
-        var date = new Label { Dock = DockStyle.Right, Width = 230, Text = "▣   " + DateTime.Today.ToString("dddd, dd/MM/yyyy"), TextAlign = ContentAlignment.MiddleRight, ForeColor = Theme.Muted, Font = Theme.Font(9.5f) };
+        var header = new Panel { Dock = DockStyle.Top, Height = 84 };
+        var date = new Label { Dock = DockStyle.Right, Width = 236, Text = "▣   " + DateTime.Today.ToString("dddd, dd/MM/yyyy"), TextAlign = ContentAlignment.MiddleCenter, ForeColor = Theme.Muted, Font = Theme.Font(9.2f), BackColor = Theme.Surface };
+        date.Resize += (_, _) => Theme.Round(date, 8);
         var copy = new Label { Dock = DockStyle.Fill, Text = $"Chào buổi {DayPart()}, {_app.Session!.HoTen} 👋\nChúc bạn có một ngày làm việc hiệu quả!", ForeColor = Theme.Text, Font = Theme.Font(10), TextAlign = ContentAlignment.MiddleLeft };
         header.Controls.Add(copy); header.Controls.Add(date); return header;
     }
@@ -109,7 +112,9 @@ public sealed class DashboardPage : UserControl
         var detail = new Label { Dock = DockStyle.Fill, AutoEllipsis = true, Text = x.TenGoiChot + "\n" + x.KhachHang, Font = Theme.Font(8.4f), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(3, 0, 4, 0) };
         _toolTip.SetToolTip(detail, x.TenGoiChot + Environment.NewLine + x.KhachHang);
         row.Controls.Add(new Label { Dock = DockStyle.Fill, Text = x.BatDau.ToString("HH:mm"), Font = Theme.Font(8.7f, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-        row.Controls.Add(detail, 1, 0); row.Controls.Add(new Label { Dock = DockStyle.Fill, Text = x.TrangThai.HienThi(), AutoEllipsis = false, Font = Theme.Font(7.3f), ForeColor = Theme.Primary, BackColor = Theme.PrimaryLight, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(4, 5, 0, 5) }, 2, 0); return row;
+        var badge = new Label { Dock = DockStyle.Fill, Text = x.TrangThai.HienThi(), AutoEllipsis = false, Font = Theme.Font(7.3f), ForeColor = Theme.Primary, BackColor = Theme.PrimaryLight, TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(4, 5, 0, 5) };
+        badge.Resize += (_, _) => Theme.Round(badge, 8);
+        row.Controls.Add(detail, 1, 0); row.Controls.Add(badge, 2, 0); return row;
     }
 
     private Control ActivityRow(LichChup x)

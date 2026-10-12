@@ -2,20 +2,20 @@ namespace StudioManager.WinForms.Controls;
 
 public sealed class PageHeader : Panel
 {
-    public FlowLayoutPanel Actions { get; } = new() { Dock = DockStyle.Right, Width = 420, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 10, 0, 0) };
+    public FlowLayoutPanel Actions { get; } = new() { Dock = DockStyle.Right, Width = 440, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, AutoScroll = false, Padding = new Padding(0, 14, 0, 0) };
     public PageHeader(string title, string subtitle)
     {
-        Height = 88; Dock = DockStyle.Top; BackColor = Theme.Background; Padding = new Padding(4, 2, 0, 10);
+        Height = 96; Dock = DockStyle.Top; BackColor = Theme.Background; Padding = new Padding(2, 4, 0, 12);
         var copy = new Panel { Dock = DockStyle.Fill };
-        copy.Controls.Add(new Label { Text = subtitle, Dock = DockStyle.Bottom, Height = 28, Font = Theme.Font(9.5f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft });
-        copy.Controls.Add(new Label { Text = title, Dock = DockStyle.Top, Height = 48, Font = Theme.Font(22, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.BottomLeft });
+        copy.Controls.Add(new Label { Text = subtitle, Dock = DockStyle.Bottom, Height = 30, Font = Theme.Font(9.5f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true });
+        copy.Controls.Add(new Label { Text = title, Dock = DockStyle.Top, Height = 52, Font = Theme.Font(23, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.BottomLeft, AutoEllipsis = true });
         Controls.Add(copy); Controls.Add(Actions); Actions.BringToFront();
     }
 }
 
 public class CardPanel : Panel
 {
-    public CardPanel() { BackColor = Theme.Surface; Padding = new Padding(20); Margin = new Padding(8); Resize += (_, _) => Theme.Round(this, 14); }
+    public CardPanel() { BackColor = Theme.Surface; Padding = new Padding(18); Margin = Padding.Empty; Resize += (_, _) => Theme.Round(this, 12); }
 }
 
 public sealed class StatCard : CardPanel
@@ -23,14 +23,14 @@ public sealed class StatCard : CardPanel
     private readonly Label _value; private readonly Label _trend;
     public StatCard(string title, Color accent, string icon = "●")
     {
-        Width = 250; Height = 126; Padding = new Padding(20, 15, 18, 13);
+        Width = 250; Height = 128; Padding = new Padding(18, 15, 16, 13);
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        var badge = new Label { Text = icon, Dock = DockStyle.Fill, Font = Theme.Font(19, FontStyle.Bold), ForeColor = accent, BackColor = Color.FromArgb(248, 250, 252), TextAlign = ContentAlignment.MiddleCenter };
+        var badge = new Label { Text = icon, Dock = DockStyle.Fill, Font = Theme.Font(18, FontStyle.Bold), ForeColor = accent, BackColor = Color.FromArgb(248, 250, 252), TextAlign = ContentAlignment.MiddleCenter };
         badge.Resize += (_, _) => Theme.Round(badge, 12);
         layout.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(9, FontStyle.Bold), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
         _value = new Label { Text = "—", Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(22, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft };
@@ -44,32 +44,41 @@ public sealed class StatCard : CardPanel
 
 public static class Ui
 {
-    public static TextBox SearchBox(string placeholder = "Tìm kiếm...") => new() { PlaceholderText = placeholder, Width = 280, Height = 36, BorderStyle = BorderStyle.FixedSingle, Font = Theme.Font(10), Margin = new Padding(0, 2, 8, 2) };
-    public static Label FieldLabel(string text) => new() { Text = text, AutoSize = false, Height = 24, Dock = DockStyle.Top, Font = Theme.Font(9, FontStyle.Bold), ForeColor = Theme.Muted };
+    public static TextBox SearchBox(string placeholder = "Tìm kiếm...") => new() { PlaceholderText = placeholder, Width = 300, Height = 38, BorderStyle = BorderStyle.FixedSingle, Font = Theme.Font(10), Margin = new Padding(0, 2, 8, 2), BackColor = Theme.Surface, ForeColor = Theme.Text };
+    public static Label FieldLabel(string text) => new() { Text = text, AutoSize = false, Height = 26, Dock = DockStyle.Top, Font = Theme.Font(8.8f, FontStyle.Bold), ForeColor = Theme.Muted, TextAlign = ContentAlignment.BottomLeft };
     public static Panel Field(string label, Control input, int width = 260)
     {
-        var p = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 14, 8) }; input.Dock = DockStyle.Bottom; input.Height = 36; p.Controls.Add(input); p.Controls.Add(FieldLabel(label)); return p;
+        var p = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 14, 8) }; input.Dock = DockStyle.Bottom; input.Height = 38; p.Controls.Add(input); p.Controls.Add(FieldLabel(label)); return p;
     }
     public static Panel ToolbarButton(Button button)
     {
         button.Margin = Padding.Empty;
-        button.Height = 36;
+        button.Height = 38;
         button.Dock = DockStyle.Bottom;
-        var slot = new Panel { Width = button.Width, Height = 68, Margin = new Padding(0, 0, 14, 8) };
+        var slot = new Panel { Width = button.Width, Height = 70, Margin = new Padding(0, 0, 12, 8) };
         slot.Controls.Add(button);
+        return slot;
+    }
+    public static Panel ToolbarInput(Control input)
+    {
+        input.Margin = Padding.Empty;
+        input.Dock = DockStyle.Bottom;
+        input.Height = 38;
+        var slot = new Panel { Width = input.Width, Height = 70, Margin = new Padding(0, 0, 12, 8) };
+        slot.Controls.Add(input);
         return slot;
     }
     public static Panel ToolbarButtonGroup(params Button[] buttons)
     {
         const int gap = 8;
         var width = buttons.Sum(x => x.Width) + Math.Max(0, buttons.Length - 1) * gap;
-        var slot = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 14, 8) };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 36, WrapContents = false, Padding = Padding.Empty };
+        var slot = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 12, 8) };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 38, WrapContents = false, Padding = Padding.Empty };
         for (var index = 0; index < buttons.Length; index++)
         {
             var button = buttons[index];
             button.Dock = DockStyle.None;
-            button.Height = 36;
+            button.Height = 38;
             button.Margin = new Padding(0, 0, index == buttons.Length - 1 ? 0 : gap, 0);
             bar.Controls.Add(button);
         }
@@ -81,10 +90,30 @@ public static class Ui
         Text = text,
         AutoSize = false,
         Width = width,
-        Height = 68,
-        Margin = new Padding(0, 0, 14, 8),
-        Font = Theme.Font(9, FontStyle.Bold),
+        Height = 70,
+        Margin = new Padding(0, 0, 12, 8),
+        Font = Theme.Font(8.6f, FontStyle.Bold),
         ForeColor = Theme.Muted,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
+    public static FlowLayoutPanel Toolbar() => new()
+    {
+        Dock = DockStyle.Top,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        WrapContents = true,
+        BackColor = Color.Transparent,
+        Padding = new Padding(0, 4, 0, 6)
+    };
+    public static Label SectionLabel(string text) => new()
+    {
+        Text = text.ToUpperInvariant(),
+        AutoSize = false,
+        Height = 28,
+        Width = 220,
+        Margin = new Padding(10, 14, 0, 2),
+        Font = Theme.Font(7.8f, FontStyle.Bold),
+        ForeColor = Color.FromArgb(148, 163, 184),
         TextAlign = ContentAlignment.MiddleLeft
     };
     public static void Error(IWin32Window owner, string message) => MessageBox.Show(owner, message, "Không thể thực hiện", MessageBoxButtons.OK, MessageBoxIcon.Warning);

@@ -18,12 +18,12 @@ public sealed class ReportsPage : UserControl
         var header=new PageHeader("Báo cáo & thống kê","Tổng hợp hiệu quả kinh doanh theo khoảng thời gian.");
         var run=Theme.Button("Xem báo cáo");
         run.Click+=async(_,_)=>await LoadAsync();
-        var export=Theme.Button("Xuất Excel",Theme.Purple);
+        var export=Theme.Button("Xuất Excel",Theme.Success);
         export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"bao-cao-goi-chup");
         header.Actions.Controls.Add(run);
         header.Actions.Controls.Add(export);
 
-        var filters=new FlowLayoutPanel{Dock=DockStyle.Top,Height=76,Padding=new Padding(0,4,0,8),WrapContents=false};
+        var filters=Ui.Toolbar();
         filters.Controls.Add(Ui.Field("TỪ NGÀY",_from,190));
         filters.Controls.Add(Ui.Field("ĐẾN NGÀY",_to,190));
 
