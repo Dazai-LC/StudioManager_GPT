@@ -1,3 +1,5 @@
+using System.Drawing.Drawing2D;
+
 namespace StudioManager.WinForms.Controls;
 
 public sealed class PageHeader : Panel
@@ -45,7 +47,7 @@ public sealed class StatCard : CardPanel
 
 public static class Ui
 {
-    public static TextBox SearchBox(string placeholder = "Tìm kiếm...") => new() { PlaceholderText = placeholder, Width = 300, Height = 38, BorderStyle = BorderStyle.FixedSingle, Font = Theme.Font(10), Margin = new Padding(0, 2, 8, 2), BackColor = Theme.Surface, ForeColor = Theme.Text };
+    public static SearchInput SearchBox(string placeholder = "Tìm kiếm...") => new(placeholder) { Width = 300, Height = 42, Margin = new Padding(0, 2, 8, 2) };
     public static Label FieldLabel(string text) => new() { Text = text, AutoSize = false, Height = 26, Dock = DockStyle.Top, Font = Theme.Font(8.8f, FontStyle.Bold), ForeColor = Theme.Muted, TextAlign = ContentAlignment.BottomLeft };
     public static Panel Field(string label, Control input, int width = 260)
     {
@@ -210,5 +212,57 @@ public static class Ui
         var trimmed = value.TrimStart();
         var safe = trimmed.Length > 0 && "=+-@".Contains(trimmed[0]) ? "'" + value : value;
         return "\"" + safe.Replace("\"", "\"\"") + "\"";
+    }
+}
+
+// WinForms TextBox only supports a square native border.  This small composite
+// control gives every list page the same modern search affordance while keeping
+// the existing Text/Clear/KeyDown calling code intact.
+public sealed class SearchInput : UserControl
+{
+    private readonly Label _icon = new() { Text = "⌕", Width = 30, ForeColor = Theme.Muted, Font = Theme.Font(16), TextAlign = ContentAlignment.MiddleCenter };
+    private readonly TextBox _input = new() { BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(240, 242, 245), ForeColor = Theme.Text, Font = Theme.Font(10) };
+
+    public SearchInput(string placeholder)
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        BackColor = Color.FromArgb(240, 242, 245);
+        Cursor = Cursors.IBeam;
+        MinimumSize = new Size(180, 42);
+        Height = 42;
+        _input.PlaceholderText = placeholder;
+        _input.TextChanged += (_, _) => OnTextChanged(EventArgs.Empty);
+        _input.KeyDown += (_, e) => OnKeyDown(e);
+        _input.KeyPress += (_, e) => OnKeyPress(e);
+        _input.KeyUp += (_, e) => OnKeyUp(e);
+        Click += (_, _) => _input.Focus();
+        _icon.Click += (_, _) => _input.Focus();
+        Controls.Add(_icon);
+        Controls.Add(_input);
+        Resize += (_, _) => LayoutInnerControls();
+        LayoutInnerControls();
+    }
+
+    public override string Text { get => _input.Text; set => _input.Text = value; }
+    public string PlaceholderText { get => _input.PlaceholderText; set => _input.PlaceholderText = value; }
+    public new event KeyEventHandler? KeyDown { add => _input.KeyDown += value; remove => _input.KeyDown -= value; }
+    public new event KeyPressEventHandler? KeyPress { add => _input.KeyPress += value; remove => _input.KeyPress -= value; }
+    public new event KeyEventHandler? KeyUp { add => _input.KeyUp += value; remove => _input.KeyUp -= value; }
+    public void Clear() => _input.Clear();
+    public override void Refresh() { _input.Refresh(); base.Refresh(); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        using var pen = new Pen(Color.FromArgb(225, 229, 235));
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+    }
+
+    private void LayoutInnerControls()
+    {
+        _icon.Bounds = new Rectangle(10, 0, 28, Height);
+        _input.Bounds = new Rectangle(44, Math.Max(0, (Height - _input.PreferredHeight) / 2), Math.Max(1, Width - 56), _input.PreferredHeight);
+        Theme.Round(this, 12);
     }
 }

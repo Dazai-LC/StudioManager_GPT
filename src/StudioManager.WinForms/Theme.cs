@@ -36,8 +36,11 @@ public static class Theme
     public static Button Button(string text, Color? color = null)
     {
         var activeColor = color ?? Primary;
-        var b = new Button { Text = text, AutoSize = false, Height = 38, FlatStyle = FlatStyle.Flat, Font = Font(9.25f, FontStyle.Bold), Padding = new Padding(12, 0, 12, 0), Margin = new Padding(4, 4, 4, 4), UseVisualStyleBackColor = false };
-        b.Width = Math.Max(108, TextRenderer.MeasureText(text, b.Font).Width + 40);
+        // A single Facebook-like button recipe keeps action density comfortable without
+        // letting long Vietnamese labels wrap or clip on individual pages.
+        var b = new Button { Text = text, AutoSize = false, Height = 42, FlatStyle = FlatStyle.Flat, Font = Font(9.7f, FontStyle.Bold), Padding = new Padding(16, 0, 16, 0), Margin = new Padding(4), UseVisualStyleBackColor = false, TextAlign = ContentAlignment.MiddleCenter, AutoEllipsis = false };
+        b.MinimumSize = new Size(116, 42);
+        b.Width = Math.Max(b.MinimumSize.Width, TextRenderer.MeasureText(text, b.Font).Width + 48);
         b.FlatAppearance.BorderSize = 0;
         void ApplyEnabledState()
         {
@@ -49,7 +52,7 @@ public static class Theme
         }
         ApplyEnabledState();
         b.EnabledChanged += (_, _) => ApplyEnabledState();
-        b.Resize += (_, _) => Round(b, 7);
+        b.Resize += (_, _) => Round(b, 10);
         return b;
     }
     public static DataGridView Grid()

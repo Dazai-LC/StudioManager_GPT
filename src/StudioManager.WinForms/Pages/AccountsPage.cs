@@ -8,7 +8,7 @@ public sealed class AccountsPage : UserControl
 {
     private readonly AppFacade _app;
     private readonly DataGridView _grid=Theme.Grid();
-    private readonly TextBox _search=Ui.SearchBox();
+    private readonly SearchInput _search=Ui.SearchBox();
     private readonly Button _lockButton=Theme.Button("Khóa tài khoản",Theme.Danger);
 
     public AccountsPage(AppFacade app)
@@ -39,13 +39,13 @@ public sealed class AccountsPage : UserControl
     private Control BuildSearchBar()
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
-        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=6,RowCount=1};
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,420));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,124));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,4));
+        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=4,RowCount=1};
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText="Tìm theo tên đăng nhập hoặc nhân viên...";
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
         var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
-        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,4,0);card.Controls.Add(row);return card;
+        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,3,0);card.Controls.Add(row);return card;
     }
 
     private Control BuildSelectionActions()

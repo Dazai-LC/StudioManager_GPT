@@ -9,7 +9,7 @@ public sealed class BookingsPage : UserControl
 {
     private readonly AppFacade _app;
     private readonly DataGridView _grid=Theme.Grid();
-    private readonly TextBox _search=Ui.SearchBox("Mã lịch, khách hàng, số điện thoại...");
+    private readonly SearchInput _search=Ui.SearchBox("Mã lịch, khách hàng, số điện thoại...");
     private readonly DateTimePicker _from=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true,Checked=false},_to=new(){Format=DateTimePickerFormat.Short,ShowCheckBox=true,Checked=false};
     private readonly ComboBox _photographer=FilterBox(),_room=FilterBox(),_package=FilterBox(),_status=FilterBox();
     // These controls are constructed together in BuildSelectionActions().  They cannot be
@@ -36,14 +36,14 @@ public sealed class BookingsPage : UserControl
     private Control BuildSearchBar(Control advancedFilters)
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
-        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=7,RowCount=1};
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,380));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,112));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,124));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,4));
+        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=5,RowCount=1};
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,128));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var filter=Theme.Button("⌕  Bộ lọc",Theme.Secondary);filter.Dock=DockStyle.Fill;filter.Margin=new Padding(10,0,0,0);filter.Click+=(_,_)=>{advancedFilters.Visible=!advancedFilters.Visible;filter.Text=advancedFilters.Visible?"⌃  Thu gọn":"⌕  Bộ lọc";};
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
         var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");
-        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(filter,2,0);row.Controls.Add(refresh,3,0);row.Controls.Add(export,5,0);card.Controls.Add(row);return card;
+        row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(filter,2,0);row.Controls.Add(refresh,3,0);row.Controls.Add(export,4,0);card.Controls.Add(row);return card;
     }
     private Control BuildAdvancedFilters()
     {
@@ -56,7 +56,9 @@ public sealed class BookingsPage : UserControl
     {
         var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
         card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một lịch để xem chi tiết, cập nhật tiến độ hoặc thực hiện nghiệp vụ tài chính.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
-        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=680,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        // Keep every action on one line. Theme.Button enforces a readable minimum
+        // width, so the container reserves enough space for the full Vietnamese labels.
+        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=760,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
         _cancel=Theme.Button("Hủy lịch",Theme.Danger);_cancel.Width=104;_cancel.Click+=async(_,_)=>await CancelAsync();group.Controls.Add(_cancel);
         _refund=Theme.Button("Hoàn tiền",Theme.Warning);_refund.Width=105;_refund.Visible=_app.Session!.VaiTro==VaiTro.QuanTriVien;_refund.Click+=async(_,_)=>await PaymentAsync(true);group.Controls.Add(_refund);
         _pay=Theme.Button("Thu tiền");_pay.Width=100;_pay.Click+=async(_,_)=>await PaymentAsync(false);group.Controls.Add(_pay);
