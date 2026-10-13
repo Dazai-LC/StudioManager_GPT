@@ -82,6 +82,7 @@ internal sealed class ModernButton : Button
     private Color _pressed;
     private bool _isHovering;
     private bool _isPressed;
+    private bool _restoringTransparentBackground;
 
     public ModernButton(Color normal, Color hover, Color pressed)
     {
@@ -90,13 +91,17 @@ internal sealed class ModernButton : Button
         _pressed = pressed;
         FlatStyle = FlatStyle.Flat;
         UseVisualStyleBackColor = false;
-        BackColor = normal;
         ForeColor = Color.White;
         Cursor = Cursors.Hand;
         FlatAppearance.BorderSize = 0;
-        // Do not configure FlatAppearance hover/pressed colors. Native flat
-        // painting may run after custom painting and repaint rectangular corners.
-        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        // A WinForms Region is a hard, pixel-aligned clip.  Combining it with a
+        // GDI+ anti-aliased path leaves a dark one-pixel seam, especially while
+        // disabled or hovered.  Keep the child window rectangular and let the
+        // parent background show through its transparent corners instead.
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.SupportsTransparentBackColor, true);
+        BackColor = Color.Transparent;
     }
 
     public int RequiredWidth => Math.Max(116, TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Padding.Horizontal + 26);
@@ -107,11 +112,19 @@ internal sealed class ModernButton : Button
     protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); Cursor = Enabled ? Cursors.Hand : Cursors.Default; Invalidate(); }
     protected override void OnBackColorChanged(EventArgs e)
     {
+        // Existing pages use BackColor to change an action's semantic colour
+        // (for example Lock/Unlock).  Preserve that API while the actual control
+        // background remains transparent for clean anti-aliased corners.
+        if (!_restoringTransparentBackground && !BackColor.IsEmpty && BackColor != Color.Transparent)
+        {
+            _normal = BackColor;
+            _hover = Theme.HoverFor(_normal);
+            _pressed = Theme.PressedFor(_normal);
+            _restoringTransparentBackground = true;
+            BackColor = Color.Transparent;
+            _restoringTransparentBackground = false;
+        }
         base.OnBackColorChanged(e);
-        if (BackColor.IsEmpty) return;
-        _normal = BackColor;
-        _hover = Theme.HoverFor(_normal);
-        _pressed = Theme.PressedFor(_normal);
         Invalidate();
     }
     protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); _isHovering = true; Invalidate(); }
@@ -120,9 +133,6 @@ internal sealed class ModernButton : Button
     protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _isPressed = false; Invalidate(); }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-    protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); UpdateRoundedRegion(); }
-    protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); UpdateRoundedRegion(); }
-
     protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
     {
         if ((specified & BoundsSpecified.Width) != 0) width = Math.Max(width, RequiredWidth);
@@ -132,10 +142,10 @@ internal sealed class ModernButton : Button
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        // The child window is clipped by Region. Its parent therefore paints the
-        // four outer corner pixels, and a hover/click state can only change the
-        // inside of the rounded silhouette—not reveal a square background.
-        e.Graphics.Clear(CurrentFill);
+        // Let WinForms compose the parent's surface in the four outer corners.
+        // Unlike Region, this preserves the fractional anti-alias pixels painted
+        // by the rounded path in OnPaint.
+        base.OnPaintBackground(e);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -165,15 +175,6 @@ internal sealed class ModernButton : Button
     }
 
     private Color CurrentFill => !Enabled ? Theme.Disabled : _isPressed ? _pressed : _isHovering ? _hover : _normal;
-
-    private void UpdateRoundedRegion()
-    {
-        if (!IsHandleCreated || Width < 2 || Height < 2) return;
-        using var path = RoundedPath(new RectangleF(0, 0, Width, Height), CornerRadius);
-        var oldRegion = Region;
-        Region = new Region(path);
-        oldRegion?.Dispose();
-    }
 
     private static GraphicsPath RoundedPath(RectangleF bounds, float radius)
     {

@@ -150,7 +150,10 @@ public static class Ui
         // The action bar row has 52px available, so a 42px button plus 8px margin
         // is fully visible and cannot have its rounded edges clipped.
         foreach (Control action in actions.Controls) action.Margin = new Padding(4);
-        actions.ControlAdded += (_, e) => e.Control.Margin = new Padding(4);
+        actions.ControlAdded += (_, e) =>
+        {
+            if (e.Control is { } action) action.Margin = new Padding(4);
+        };
         layout.Controls.Add(copy, 0, 0);
         layout.Controls.Add(actions, 1, 0);
         card.Controls.Add(layout);
@@ -305,7 +308,8 @@ public sealed class SearchInput : UserControl
         LayoutInnerControls();
     }
 
-    public override string Text { get => _input.Text; set => _input.Text = value; }
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+    public override string Text { get => _input.Text; set => _input.Text = value ?? string.Empty; }
     public string PlaceholderText { get => _input.PlaceholderText; set => _input.PlaceholderText = value; }
     public new event KeyEventHandler? KeyDown { add => _input.KeyDown += value; remove => _input.KeyDown -= value; }
     public new event KeyPressEventHandler? KeyPress { add => _input.KeyPress += value; remove => _input.KeyPress -= value; }
