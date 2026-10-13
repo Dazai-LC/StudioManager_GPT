@@ -36,7 +36,7 @@ public sealed class BookingsPage : UserControl
     private Control BuildSearchBar(Control advancedFilters)
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
-        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=5,RowCount=1};
+        var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=5,RowCount=1,BackColor=Theme.Surface};
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,138));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,152));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
@@ -48,7 +48,7 @@ public sealed class BookingsPage : UserControl
     private Control BuildAdvancedFilters()
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=94,Padding=new Padding(16,10,16,8),Margin=new Padding(0,0,0,12),Visible=false};
-        var flow=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,AutoScroll=true,Padding=Padding.Empty};
+        var flow=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,AutoScroll=true,Padding=Padding.Empty,BackColor=Theme.Surface};
         flow.Controls.Add(Ui.Field("TỪ NGÀY",_from,150));flow.Controls.Add(Ui.Field("ĐẾN NGÀY",_to,150));flow.Controls.Add(Ui.Field("NHIẾP ẢNH GIA",_photographer,190));flow.Controls.Add(Ui.Field("PHÒNG",_room,160));flow.Controls.Add(Ui.Field("GÓI CHỤP",_package,180));flow.Controls.Add(Ui.Field("TRẠNG THÁI",_status,170));
         card.Controls.Add(flow);return card;
     }
@@ -112,7 +112,7 @@ internal sealed class BookingDetailDialog : Form
     private TabPage BuildServices(){var p=new TabPage("Dịch vụ & giảm giá"){BackColor=Theme.Background,Padding=new Padding(14)};var bar=DetailToolbar();var add=Theme.Button("+ Thêm dịch vụ");add.Click+=async(_,_)=>await AddServiceAsync();var remove=Theme.Button("Xóa dịch vụ",Theme.Danger);remove.Click+=async(_,_)=>await RemoveServiceAsync();var discount=Theme.Button("Nhập giảm giá");discount.Click+=async(_,_)=>await DiscountAsync();bar.Controls.Add(Ui.ToolbarButton(add));bar.Controls.Add(Ui.ToolbarButton(remove));bar.Controls.Add(Ui.ToolbarButton(discount));p.Controls.Add(_services);p.Controls.Add(bar);return p;}
     private TabPage BuildResources(){var p=new TabPage("Tài nguyên"){BackColor=Theme.Background,Padding=new Padding(14)};var bar=DetailToolbar();var add=Theme.Button("+ Phân công");add.Click+=async(_,_)=>await AssignResourceAsync();var returned=Theme.Button("Đánh dấu đã trả");returned.Click+=async(_,_)=>await UpdateResourceAsync(TrangThaiPhanCong.DaTra);var cancel=Theme.Button("Hủy phân công",Theme.Danger);cancel.Click+=async(_,_)=>await UpdateResourceAsync(TrangThaiPhanCong.DaHuy);bar.Controls.Add(Ui.ToolbarButton(add));bar.Controls.Add(Ui.ToolbarButton(returned));bar.Controls.Add(Ui.ToolbarButton(cancel));p.Controls.Add(_resources);p.Controls.Add(bar);return p;}
     private TabPage BuildPayments(){var p=new TabPage("Lịch sử tài chính"){BackColor=Theme.Background,Padding=new Padding(14)};p.Controls.Add(_payments);return p;}
-    private static FlowLayoutPanel DetailToolbar()=>new(){Dock=DockStyle.Top,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,WrapContents=true,Padding=new Padding(0,0,0,8)};
+    private static FlowLayoutPanel DetailToolbar()=>new(){Dock=DockStyle.Top,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,WrapContents=true,Padding=new Padding(0,0,0,8),BackColor=Theme.Background};
     private async Task ReloadAsync(){_booking=await _app.Bookings.GetAsync(_booking.Id)??_booking;UpdateSummary();Bind(_services,await _app.BookingSupport.GetChildrenAsync(_booking.Id,"DichVu"));Bind(_resources,await _app.BookingSupport.GetChildrenAsync(_booking.Id,"TaiNguyen"));var thu=await _app.BookingSupport.GetChildrenAsync(_booking.Id,"ThanhToan");var hoan=await _app.BookingSupport.GetChildrenAsync(_booking.Id,"HoanTien");Bind(_payments,thu.Select(x=>TransactionRow(x,false)).Concat(hoan.Select(x=>TransactionRow(x,true))).Cast<IDictionary<string,object?>>().ToList());}
     private static Dictionary<string,object?> TransactionRow(IDictionary<string,object?> row,bool refund)
     {

@@ -93,6 +93,9 @@ internal sealed class ModernButton : Button
         BackColor = normal;
         ForeColor = Color.White;
         Cursor = Cursors.Hand;
+        FlatAppearance.BorderSize = 0;
+        FlatAppearance.MouseDownBackColor = normal;
+        FlatAppearance.MouseOverBackColor = normal;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
     }
 
@@ -125,12 +128,17 @@ internal sealed class ModernButton : Button
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        e.Graphics.Clear(Parent?.BackColor ?? Theme.Background);
+        // A custom-painted button is still rectangular at the WinForms control
+        // level. Paint its unused corner pixels with the first opaque ancestor
+        // color, otherwise a transparent/default FlowLayoutPanel leaks a dark or
+        // grey rectangle behind the rounded surface.
+        e.Graphics.Clear(BackgroundBehind());
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
         e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         var bounds = new RectangleF(.5f, .5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
@@ -152,6 +160,14 @@ internal sealed class ModernButton : Button
     {
         if (Width < RequiredWidth) Width = RequiredWidth;
         if (Height < 42) Height = 42;
+    }
+
+    private Color BackgroundBehind()
+    {
+        for (Control? control = Parent; control is not null; control = control.Parent)
+            if (!control.BackColor.IsEmpty && control.BackColor.A == byte.MaxValue && control.BackColor.ToArgb() != SystemColors.Control.ToArgb())
+                return control.BackColor;
+        return Theme.Background;
     }
 
     private static GraphicsPath RoundedPath(RectangleF bounds, float radius)

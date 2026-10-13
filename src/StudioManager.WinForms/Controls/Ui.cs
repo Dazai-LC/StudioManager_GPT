@@ -4,7 +4,7 @@ namespace StudioManager.WinForms.Controls;
 
 public sealed class PageHeader : Panel
 {
-    public FlowLayoutPanel Actions { get; } = new() { Dock = DockStyle.Right, Width = 440, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, AutoScroll = false, Padding = new Padding(0, 14, 0, 0) };
+    public FlowLayoutPanel Actions { get; } = new() { Dock = DockStyle.Right, Width = 440, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, AutoScroll = false, Padding = new Padding(0, 14, 0, 0), BackColor = Theme.Background };
     public PageHeader(string title, string subtitle)
     {
         // The page title belongs to the global top bar.  This compact context bar
@@ -58,7 +58,7 @@ public static class Ui
         button.Margin = Padding.Empty;
         button.Height = 38;
         button.Dock = DockStyle.Bottom;
-        var slot = new Panel { Width = button.Width, Height = 70, Margin = new Padding(0, 0, 12, 8) };
+        var slot = new Panel { Width = button.Width, Height = 70, Margin = new Padding(0, 0, 12, 8), BackColor = Theme.Background };
         slot.Controls.Add(button);
         return slot;
     }
@@ -67,7 +67,7 @@ public static class Ui
         input.Margin = Padding.Empty;
         input.Dock = DockStyle.Bottom;
         input.Height = 38;
-        var slot = new Panel { Width = input.Width, Height = 70, Margin = new Padding(0, 0, 12, 8) };
+        var slot = new Panel { Width = input.Width, Height = 70, Margin = new Padding(0, 0, 12, 8), BackColor = Theme.Background };
         slot.Controls.Add(input);
         return slot;
     }
@@ -75,8 +75,8 @@ public static class Ui
     {
         const int gap = 8;
         var width = buttons.Sum(x => x.Width) + Math.Max(0, buttons.Length - 1) * gap;
-        var slot = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 12, 8) };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 38, WrapContents = false, Padding = Padding.Empty };
+        var slot = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 12, 8), BackColor = Theme.Background };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 42, WrapContents = false, Padding = Padding.Empty, BackColor = Theme.Background };
         for (var index = 0; index < buttons.Length; index++)
         {
             var button = buttons[index];
@@ -105,7 +105,7 @@ public static class Ui
         AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink,
         WrapContents = true,
-        BackColor = Color.Transparent,
+        BackColor = Theme.Background,
         Padding = new Padding(0, 4, 0, 6)
     };
     // A two-column action bar keeps the instructional copy flexible while the
@@ -119,13 +119,14 @@ public static class Ui
         FlowDirection = FlowDirection.RightToLeft,
         WrapContents = false,
         Padding = Padding.Empty,
-        Margin = Padding.Empty
+        Margin = Padding.Empty,
+        BackColor = Theme.Surface
     };
 
     public static Control SelectionActionBar(string hint, FlowLayoutPanel actions)
     {
         var card = new CardPanel { Dock = DockStyle.Bottom, Height = 76, Padding = new Padding(16, 12, 16, 12) };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty, BackColor = Theme.Surface };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -307,7 +308,7 @@ public sealed class SearchInput : UserControl
         e.Graphics.DrawPath(pen, path);
     }
 
-    protected override void OnPaintBackground(PaintEventArgs e) => e.Graphics.Clear(Parent?.BackColor ?? Theme.Background);
+    protected override void OnPaintBackground(PaintEventArgs e) => e.Graphics.Clear(Parent?.BackColor is { A: byte.MaxValue } color ? color : Theme.Background);
 
     private void LayoutInnerControls()
     {
