@@ -10,6 +10,7 @@ public sealed class AccountsPage : UserControl
     private readonly DataGridView _grid=Theme.Grid();
     private readonly SearchInput _search=Ui.SearchBox();
     private readonly Button _lockButton=Theme.Button("Khóa tài khoản",Theme.Danger);
+    private Button? _resetButton,_detailButton;
 
     public AccountsPage(AppFacade app)
     {
@@ -38,13 +39,13 @@ public sealed class AccountsPage : UserControl
 
     private Control BuildSearchBar()
     {
-        var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
+        var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=4,RowCount=1};
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText="Tìm theo tên đăng nhập hoặc nhân viên...";
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
-        var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
+        var export=Theme.Button("▦  Xuất Excel",Theme.Excel);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"tai-khoan");
         row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,3,0);card.Controls.Add(row);return card;
     }
 
@@ -52,11 +53,11 @@ public sealed class AccountsPage : UserControl
     {
         var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
         card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một tài khoản để xem chi tiết, đặt lại mật khẩu hoặc thay đổi trạng thái khóa.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
-        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=510,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=540,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
         _lockButton.Width=140;_lockButton.Click+=async(_,_)=>await LockAsync();
-        var reset=Theme.Button("Đặt lại mật khẩu",Theme.Warning);reset.Width=155;reset.Click+=async(_,_)=>await ResetAsync();
-        var detail=Theme.Button("Xem chi tiết",Theme.Secondary);detail.Width=124;detail.Click+=(_,_)=>ShowDetails();
-        group.Controls.Add(_lockButton);group.Controls.Add(reset);group.Controls.Add(detail);card.Controls.Add(group);return card;
+        _resetButton=Theme.Button("Đặt lại mật khẩu",Theme.Warning);_resetButton.Width=155;_resetButton.Click+=async(_,_)=>await ResetAsync();
+        _detailButton=Theme.Button("Xem chi tiết",Theme.Secondary);_detailButton.Width=124;_detailButton.Click+=(_,_)=>ShowDetails();
+        group.Controls.Add(_lockButton);group.Controls.Add(_resetButton);group.Controls.Add(_detailButton);card.Controls.Add(group);return card;
     }
     private int? Id()=>_grid.CurrentRow?.Cells["Id"].Value is object x?Convert.ToInt32(x):null;
     private async Task LoadAsync(){var rows=await _app.Administration.QueryGridAsync("TaiKhoan",string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_app.Session!);var dt=new System.Data.DataTable();if(rows.Count>0){foreach(var k in rows[0].Keys)dt.Columns.Add(k,typeof(object));foreach(var r in rows){var x=dt.NewRow();foreach(var p in r)x[p.Key]=p.Value??DBNull.Value;dt.Rows.Add(x);}}_grid.DataSource=dt;if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;UpdateLockButton();}
@@ -64,7 +65,7 @@ public sealed class AccountsPage : UserControl
     private async Task ResetAsync(){var id=Id();if(id is null){Ui.Error(this,"Vui lòng chọn một tài khoản.");return;}if(id==_app.Session!.TaiKhoanId){Ui.Error(this,"Hãy dùng chức năng đổi mật khẩu cho chính tài khoản đang đăng nhập.");return;}using var d=new PasswordPrompt();if(d.ShowDialog(this)!=DialogResult.OK)return;var r=await _app.Administration.ResetPasswordAsync(id.Value,d.Value,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else Ui.Info(this,r.Message);}
     private async Task LockAsync(){var id=Id();if(id is null){Ui.Error(this,"Vui lòng chọn một tài khoản.");return;}if(id==_app.Session!.TaiKhoanId){Ui.Error(this,"Không thể khóa tài khoản đang đăng nhập.");return;}var locking=IsActiveSelection();var action=locking?"khóa":"mở khóa";if(MessageBox.Show($"Bạn có chắc muốn {action} tài khoản đã chọn?","Xác nhận",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;var r=await _app.Administration.ToggleAccountLockAsync(id.Value,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else{Ui.Info(this,r.Message);await LoadAsync();}}
     private bool IsActiveSelection()=>_grid.CurrentRow is not null&&_grid.Columns.Contains("Trạng thái")&&_grid.CurrentRow.Cells["Trạng thái"].Value?.ToString()=="HOAT_DONG";
-    private void UpdateLockButton(){var active=IsActiveSelection();_lockButton.Text=active?"Khóa tài khoản":"Mở khóa tài khoản";_lockButton.BackColor=active?Theme.Danger:Theme.Success;_lockButton.Enabled=_grid.CurrentRow is not null;}
+    private void UpdateLockButton(){var enabled=Id() is not null;var active=IsActiveSelection();_lockButton.Text=active?"Khóa tài khoản":"Mở khóa tài khoản";_lockButton.BackColor=active?Theme.Danger:Theme.Success;_lockButton.Enabled=enabled;if(_resetButton is not null)_resetButton.Enabled=enabled;if(_detailButton is not null)_detailButton.Enabled=enabled;}
     private void ShowDetails()
     {
         if(_grid.CurrentRow is null){Ui.Error(this,"Vui lòng chọn một tài khoản.");return;}

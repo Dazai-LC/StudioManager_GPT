@@ -35,14 +35,14 @@ public sealed class BookingsPage : UserControl
     }
     private Control BuildSearchBar(Control advancedFilters)
     {
-        var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
+        var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=5,RowCount=1};
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,128));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var filter=Theme.Button("⌕  Bộ lọc",Theme.Secondary);filter.Dock=DockStyle.Fill;filter.Margin=new Padding(10,0,0,0);filter.Click+=(_,_)=>{advancedFilters.Visible=!advancedFilters.Visible;filter.Text=advancedFilters.Visible?"⌃  Thu gọn":"⌕  Bộ lọc";};
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();_from.Checked=false;_to.Checked=false;SelectAll(_photographer);SelectAll(_room);SelectAll(_package);SelectAll(_status);await LoadAsync();};
-        var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");
+        var export=Theme.Button("▦  Xuất Excel",Theme.Excel);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,"lich-chup");
         row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(filter,2,0);row.Controls.Add(refresh,3,0);row.Controls.Add(export,4,0);card.Controls.Add(row);return card;
     }
     private Control BuildAdvancedFilters()

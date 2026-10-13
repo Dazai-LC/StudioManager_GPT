@@ -254,15 +254,32 @@ public sealed class SearchInput : UserControl
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        using var pen = new Pen(Color.FromArgb(225, 229, 235));
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        var bounds = new RectangleF(.5f, .5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+        using var path = RoundedPath(bounds, 12f);
+        using var fill = new SolidBrush(BackColor);
+        using var pen = new Pen(Color.FromArgb(225, 229, 235));
+        e.Graphics.FillPath(fill, path);
+        e.Graphics.DrawPath(pen, path);
     }
+
+    protected override void OnPaintBackground(PaintEventArgs e) => e.Graphics.Clear(Parent?.BackColor ?? Theme.Background);
 
     private void LayoutInnerControls()
     {
         _icon.Bounds = new Rectangle(10, 0, 28, Height);
         _input.Bounds = new Rectangle(44, Math.Max(0, (Height - _input.PreferredHeight) / 2), Math.Max(1, Width - 56), _input.PreferredHeight);
-        Theme.Round(this, 12);
+    }
+
+    private static GraphicsPath RoundedPath(RectangleF bounds, float radius)
+    {
+        var diameter = radius * 2;
+        var path = new GraphicsPath();
+        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 }

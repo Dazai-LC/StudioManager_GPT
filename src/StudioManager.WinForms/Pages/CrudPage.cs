@@ -8,6 +8,7 @@ namespace StudioManager.WinForms.Pages;
 public sealed class CrudPage : UserControl
 {
     private readonly AppFacade _app;private readonly string _entity;private readonly bool _readOnly;private readonly DataGridView _grid=Theme.Grid();private readonly SearchInput _search=Ui.SearchBox();
+    private Button? _detailsButton,_historyButton,_editButton,_stopButton;
     public CrudPage(AppFacade app,string title,string entity,bool readOnly=false)
     {
         _app=app;_entity=entity;_readOnly=readOnly;BackColor=Theme.Background;
@@ -26,18 +27,19 @@ public sealed class CrudPage : UserControl
         var guard=BuildGuardNote();
         Controls.Add(card);Controls.Add(actions);if(guard is not null)Controls.Add(guard);Controls.Add(toolbar);Controls.Add(header);
         _search.KeyDown+=async(_,e)=>{if(e.KeyCode==Keys.Enter)await LoadAsync();};
+        _grid.SelectionChanged+=(_,_)=>UpdateActionState();
         _grid.CellDoubleClick+=(_,_)=>ShowDetails();Load+=async(_,_)=>await LoadAsync();
     }
 
     private Control BuildSearchBar()
     {
-        var card=new CardPanel{Dock=DockStyle.Top,Height=78,Padding=new Padding(16,12,16,12),Margin=new Padding(0,0,0,12)};
+        var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=4,RowCount=1};
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText=_entity=="NhatKy"?"Tìm theo hành động, tài khoản hoặc đối tượng...":"Tìm theo mã, tên hoặc thông tin liên quan...";
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
-        var export=Theme.Button("Xuất Excel",Theme.Secondary);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,_entity);
+        var export=Theme.Button("▦  Xuất Excel",Theme.Excel);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,_entity);
         row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,3,0);card.Controls.Add(row);return card;
     }
 
@@ -45,17 +47,17 @@ public sealed class CrudPage : UserControl
     {
         var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
         card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một dòng để xem thông tin hoặc thực hiện thao tác phù hợp.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
-        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=520,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=550,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
         if(!_readOnly)
         {
-            var stop=Theme.Button(_entity=="KhachHang"?"Xóa":"Ngừng dùng",Theme.Danger);stop.Width=118;stop.Click+=async(_,_)=>await DeactivateAsync();group.Controls.Add(stop);
-            var edit=Theme.Button("Chỉnh sửa");edit.Width=110;edit.Click+=async(_,_)=>await EditAsync(SelectedId());group.Controls.Add(edit);
+            _stopButton=Theme.Button(_entity=="KhachHang"?"Xóa":"Ngừng dùng",Theme.Danger);_stopButton.Width=118;_stopButton.Click+=async(_,_)=>await DeactivateAsync();group.Controls.Add(_stopButton);
+            _editButton=Theme.Button("Chỉnh sửa");_editButton.Width=110;_editButton.Click+=async(_,_)=>await EditAsync(SelectedId());group.Controls.Add(_editButton);
         }
         if(_entity is "KhachHang" or "NhanVien" or "PhongChup")
         {
-            var history=Theme.Button("Lịch sử",Theme.Secondary);history.Width=100;history.Click+=async(_,_)=>await ShowHistoryAsync();group.Controls.Add(history);
+            _historyButton=Theme.Button("Lịch sử",Theme.Secondary);_historyButton.Width=100;_historyButton.Click+=async(_,_)=>await ShowHistoryAsync();group.Controls.Add(_historyButton);
         }
-        var details=Theme.Button("Xem chi tiết",Theme.Secondary);details.Width=124;details.Click+=(_,_)=>ShowDetails();group.Controls.Add(details);
+        _detailsButton=Theme.Button("Xem chi tiết",Theme.Secondary);_detailsButton.Width=124;_detailsButton.Click+=(_,_)=>ShowDetails();group.Controls.Add(_detailsButton);
         card.Controls.Add(group);return card;
     }
 
@@ -77,7 +79,13 @@ public sealed class CrudPage : UserControl
         _=>"Quản lý, tìm kiếm và theo dõi dữ liệu tập trung."
     };
     private long? SelectedId()=>_grid.CurrentRow?.Cells["Id"].Value is object v?Convert.ToInt64(v):null;
-    private async Task LoadAsync(){try{var rows=await _app.Administration.QueryGridAsync(_entity,string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_app.Session!);var table=new BindingList<RowView>(rows.Select(x=>new RowView(x)).ToList());_grid.DataSource=table;if(_grid.Columns.Contains("Data"))_grid.Columns["Data"].Visible=false;BuildColumns(rows);}catch(Exception ex){Ui.Error(this,ex.Message);}}
+    private void UpdateActionState()
+    {
+        var enabled=SelectedId() is not null;
+        foreach(var button in new[]{_detailsButton,_historyButton,_editButton,_stopButton})
+            if(button is not null) button.Enabled=enabled;
+    }
+    private async Task LoadAsync(){try{var rows=await _app.Administration.QueryGridAsync(_entity,string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_app.Session!);var table=new BindingList<RowView>(rows.Select(x=>new RowView(x)).ToList());_grid.DataSource=table;if(_grid.Columns.Contains("Data"))_grid.Columns["Data"].Visible=false;BuildColumns(rows);UpdateActionState();}catch(Exception ex){Ui.Error(this,ex.Message);}}
     private void BuildColumns(IReadOnlyList<IDictionary<string,object?>> rows){if(rows.Count==0)return;_grid.DataSource=null;var dt=new System.Data.DataTable();foreach(var key in rows[0].Keys)dt.Columns.Add(key,typeof(object));foreach(var r in rows){var row=dt.NewRow();foreach(var p in r)row[p.Key]=p.Value??DBNull.Value;dt.Rows.Add(row);}_grid.DataSource=dt;if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;if(_entity=="TaiNguyen"&&_grid.Columns.Contains("Dịch vụ thuê ID"))_grid.Columns["Dịch vụ thuê ID"].Visible=false;if(_entity=="NhatKy"){if(_grid.Columns.Contains("Giá trị cũ"))_grid.Columns["Giá trị cũ"].Visible=false;if(_grid.Columns.Contains("Giá trị mới"))_grid.Columns["Giá trị mới"].Visible=false;}}
     private async Task EditAsync(long? id){if(_readOnly)return;IReadOnlyList<LookupItem>? rentalServices=null;if(_entity=="TaiNguyen")rentalServices=await _app.Administration.GetLookupsAsync("DichVu",id is null);using var dialog=new SimpleEditDialog(_entity,id,_grid.CurrentRow,rentalServices);if(dialog.ShowDialog(this)!=DialogResult.OK)return;var result=await _app.Administration.SaveAsync(_entity,id,dialog.Values,_app.Session!);if(!result.Success)Ui.Error(this,result.Message);else{Ui.Info(this,result.Message);await LoadAsync();}}
     private async Task DeactivateAsync(){var id=SelectedId();if(id is null)return;var message=_entity=="KhachHang"?"Xóa khách hàng đã chọn? Chỉ khách hàng chưa có lịch mới được xóa.":"Ngừng sử dụng mục đã chọn? Dữ liệu lịch sử vẫn được giữ nguyên.";if(MessageBox.Show(message,"Xác nhận",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;var r=await _app.Administration.DeactivateAsync(_entity,id.Value,_app.Session!);if(!r.Success)Ui.Error(this,r.Message);else await LoadAsync();}
