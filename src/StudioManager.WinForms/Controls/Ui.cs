@@ -108,6 +108,17 @@ public static class Ui
         BackColor = Theme.Background,
         Padding = new Padding(0, 4, 0, 6)
     };
+    // Keep search action buttons on the same 42px baseline as the PageHeader
+    // actions. Previously the 68px host with 10px vertical padding stretched
+    // Dock=Fill buttons to 48px, making their rounded silhouette look different
+    // from the report page even though they use the same shared renderer.
+    public static CardPanel SearchToolbarCard() => new()
+    {
+        Dock = DockStyle.Top,
+        Height = 68,
+        Padding = new Padding(12, 13, 12, 13),
+        Margin = new Padding(0, 0, 0, 12)
+    };
     // A two-column action bar keeps the instructional copy flexible while the
     // action group gets exactly the space its button labels require.  Fixed-width
     // FlowLayoutPanels were the source of clipped actions on Booking/CRUD pages.

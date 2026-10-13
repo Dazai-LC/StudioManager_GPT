@@ -35,7 +35,7 @@ public sealed class BookingsPage : UserControl
     }
     private Control BuildSearchBar(Control advancedFilters)
     {
-        var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
+        var card=Ui.SearchToolbarCard();
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=5,RowCount=1,BackColor=Theme.Surface};
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,138));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,152));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;
