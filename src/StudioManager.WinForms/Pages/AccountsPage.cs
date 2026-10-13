@@ -24,8 +24,7 @@ public sealed class AccountsPage : UserControl
         header.Actions.Controls.Add(add);
 
         var bar=BuildSearchBar();
-        var card=new CardPanel{Dock=DockStyle.Fill,Padding=Padding.Empty};
-        card.Controls.Add(_grid);
+        var card=Ui.DataHost(_grid);
         var actions=BuildSelectionActions();
         Controls.Add(card);
         Controls.Add(actions);
@@ -41,7 +40,7 @@ public sealed class AccountsPage : UserControl
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=4,RowCount=1};
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,152));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText="Tìm theo tên đăng nhập hoặc nhân viên...";
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
@@ -51,13 +50,11 @@ public sealed class AccountsPage : UserControl
 
     private Control BuildSelectionActions()
     {
-        var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
-        card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một tài khoản để xem chi tiết, đặt lại mật khẩu hoặc thay đổi trạng thái khóa.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
-        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=540,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        var group=Ui.ActionButtonGroup();
         _lockButton.Width=140;_lockButton.Click+=async(_,_)=>await LockAsync();
         _resetButton=Theme.Button("Đặt lại mật khẩu",Theme.Warning);_resetButton.Width=155;_resetButton.Click+=async(_,_)=>await ResetAsync();
         _detailButton=Theme.Button("Xem chi tiết",Theme.Secondary);_detailButton.Width=124;_detailButton.Click+=(_,_)=>ShowDetails();
-        group.Controls.Add(_lockButton);group.Controls.Add(_resetButton);group.Controls.Add(_detailButton);card.Controls.Add(group);return card;
+        group.Controls.Add(_lockButton);group.Controls.Add(_resetButton);group.Controls.Add(_detailButton);return Ui.SelectionActionBar("Chọn một tài khoản để xem chi tiết, đặt lại mật khẩu hoặc thay đổi trạng thái khóa.",group);
     }
     private int? Id()=>_grid.CurrentRow?.Cells["Id"].Value is object x?Convert.ToInt32(x):null;
     private async Task LoadAsync(){var rows=await _app.Administration.QueryGridAsync("TaiKhoan",string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_app.Session!);var dt=new System.Data.DataTable();if(rows.Count>0){foreach(var k in rows[0].Keys)dt.Columns.Add(k,typeof(object));foreach(var r in rows){var x=dt.NewRow();foreach(var p in r)x[p.Key]=p.Value??DBNull.Value;dt.Rows.Add(x);}}_grid.DataSource=dt;if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;UpdateLockButton();}

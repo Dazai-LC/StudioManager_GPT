@@ -108,6 +108,48 @@ public static class Ui
         BackColor = Color.Transparent,
         Padding = new Padding(0, 4, 0, 6)
     };
+    // A two-column action bar keeps the instructional copy flexible while the
+    // action group gets exactly the space its button labels require.  Fixed-width
+    // FlowLayoutPanels were the source of clipped actions on Booking/CRUD pages.
+    public static FlowLayoutPanel ActionButtonGroup() => new()
+    {
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Height = 42,
+        FlowDirection = FlowDirection.RightToLeft,
+        WrapContents = false,
+        Padding = Padding.Empty,
+        Margin = Padding.Empty
+    };
+
+    public static Control SelectionActionBar(string hint, FlowLayoutPanel actions)
+    {
+        var card = new CardPanel { Dock = DockStyle.Bottom, Height = 76, Padding = new Padding(16, 12, 16, 12) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var copy = new Label { Dock = DockStyle.Fill, Text = hint, ForeColor = Theme.Muted, Font = Theme.Font(9.2f), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Margin = new Padding(0, 0, 12, 0) };
+        actions.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        foreach (Control action in actions.Controls) action.Margin = new Padding(4, 3, 4, 3);
+        actions.ControlAdded += (_, e) => e.Control.Margin = new Padding(4, 3, 4, 3);
+        layout.Controls.Add(copy, 0, 0);
+        layout.Controls.Add(actions, 1, 0);
+        card.Controls.Add(layout);
+        return card;
+    }
+
+    public static Control DataHost(DataGridView grid)
+    {
+        // The one-pixel frame and top inset separate a data table from its toolbar
+        // without introducing a heavy border around every page.
+        var frame = new CardPanel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = Theme.Border };
+        grid.Margin = Padding.Empty;
+        frame.Controls.Add(grid);
+        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 12, 0, 0), BackColor = Theme.Background };
+        host.Controls.Add(frame);
+        return host;
+    }
     public static Label SectionLabel(string text) => new()
     {
         Text = text.ToUpperInvariant(),
@@ -235,6 +277,8 @@ public sealed class SearchInput : UserControl
         _input.KeyDown += (_, e) => OnKeyDown(e);
         _input.KeyPress += (_, e) => OnKeyPress(e);
         _input.KeyUp += (_, e) => OnKeyUp(e);
+        _input.GotFocus += (_, _) => Invalidate();
+        _input.LostFocus += (_, _) => Invalidate();
         Click += (_, _) => _input.Focus();
         _icon.Click += (_, _) => _input.Focus();
         Controls.Add(_icon);
@@ -258,7 +302,7 @@ public sealed class SearchInput : UserControl
         var bounds = new RectangleF(.5f, .5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
         using var path = RoundedPath(bounds, 12f);
         using var fill = new SolidBrush(BackColor);
-        using var pen = new Pen(Color.FromArgb(225, 229, 235));
+        using var pen = new Pen(_input.Focused ? Theme.Primary : Theme.Border, _input.Focused ? 1.5f : 1f);
         e.Graphics.FillPath(fill, path);
         e.Graphics.DrawPath(pen, path);
     }

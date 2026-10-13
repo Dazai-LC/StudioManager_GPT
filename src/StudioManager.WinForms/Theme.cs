@@ -63,7 +63,15 @@ public static class Theme
     {
         var g = new DataGridView { Dock = DockStyle.Fill, BackgroundColor = Surface, BorderStyle = BorderStyle.None, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AllowUserToResizeRows = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, Font = Font(9.5f), RowTemplate = { Height = 40 }, EnableHeadersVisualStyles = false, CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal, ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single };
         g.ColumnHeadersDefaultCellStyle = new() { BackColor = Color.FromArgb(248, 250, 252), ForeColor = Muted, Font = Font(8.8f, FontStyle.Bold), Padding = new Padding(10, 2, 10, 2), SelectionBackColor = Color.FromArgb(248, 250, 252), SelectionForeColor = Muted };
-        g.ColumnHeadersHeight = 42; g.DefaultCellStyle = new() { BackColor = Surface, ForeColor = Text, SelectionBackColor = PrimaryLight, SelectionForeColor = Text, Padding = new Padding(10, 5, 10, 5) }; g.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle { BackColor = Color.FromArgb(248, 250, 252) }; g.GridColor = Border; return g;
+        g.ColumnHeadersHeight = 42; g.DefaultCellStyle = new() { BackColor = Surface, ForeColor = Text, SelectionBackColor = PrimaryLight, SelectionForeColor = Text, Padding = new Padding(10, 5, 10, 5) }; g.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle { BackColor = Color.FromArgb(248, 250, 252) }; g.GridColor = Border;
+        // A narrow desktop column must not make real business data inaccessible.
+        // The grid keeps its compact layout and reveals the complete value on hover.
+        g.CellToolTipTextNeeded += (_, e) =>
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
+                e.ToolTipText = g.Rows[e.RowIndex].Cells[e.ColumnIndex].FormattedValue?.ToString() ?? string.Empty;
+        };
+        return g;
     }
 }
 

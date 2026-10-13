@@ -27,7 +27,7 @@ public sealed class BookingsPage : UserControl
         var advancedFilters=BuildAdvancedFilters();
         var filters=BuildSearchBar(advancedFilters);
         var actions=BuildSelectionActions();
-        var card=new CardPanel{Dock=DockStyle.Fill,Padding=Padding.Empty};card.Controls.Add(_grid);
+        var card=Ui.DataHost(_grid);
         Controls.Add(card);Controls.Add(actions);Controls.Add(advancedFilters);Controls.Add(filters);Controls.Add(header);
         _grid.CellDoubleClick+=async(_,_)=>await DetailAsync();
         _grid.SelectionChanged+=(_,_)=>UpdateActionState();
@@ -37,7 +37,7 @@ public sealed class BookingsPage : UserControl
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=5,RowCount=1};
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,128));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,138));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,152));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var filter=Theme.Button("⌕  Bộ lọc",Theme.Secondary);filter.Dock=DockStyle.Fill;filter.Margin=new Padding(10,0,0,0);filter.Click+=(_,_)=>{advancedFilters.Visible=!advancedFilters.Visible;filter.Text=advancedFilters.Visible?"⌃  Thu gọn":"⌕  Bộ lọc";};
@@ -54,21 +54,17 @@ public sealed class BookingsPage : UserControl
     }
     private Control BuildSelectionActions()
     {
-        var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
-        card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một lịch để xem chi tiết, cập nhật tiến độ hoặc thực hiện nghiệp vụ tài chính.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
-        // Keep every action on one line. Theme.Button enforces a readable minimum
-        // width, so the container reserves enough space for the full Vietnamese labels.
-        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=760,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        var group=Ui.ActionButtonGroup();
         _cancel=Theme.Button("Hủy lịch",Theme.Danger);_cancel.Width=104;_cancel.Click+=async(_,_)=>await CancelAsync();group.Controls.Add(_cancel);
         _refund=Theme.Button("Hoàn tiền",Theme.Warning);_refund.Width=105;_refund.Visible=_app.Session!.VaiTro==VaiTro.QuanTriVien;_refund.Click+=async(_,_)=>await PaymentAsync(true);group.Controls.Add(_refund);
         _pay=Theme.Button("Thu tiền");_pay.Width=100;_pay.Click+=async(_,_)=>await PaymentAsync(false);group.Controls.Add(_pay);
         _progress=Theme.Button("Bước tiếp",Theme.Secondary);_progress.Width=108;_progress.Click+=async(_,_)=>await AdvanceAsync();group.Controls.Add(_progress);
         _edit=Theme.Button("Sửa lịch",Theme.Secondary);_edit.Width=100;_edit.Click+=async(_,_)=>await EditAsync();group.Controls.Add(_edit);
         _detail=Theme.Button("Chi tiết",Theme.Secondary);_detail.Width=100;_detail.Click+=async(_,_)=>await DetailAsync();group.Controls.Add(_detail);
-        card.Controls.Add(group);return card;
+        return Ui.SelectionActionBar("Chọn một lịch để xem chi tiết, cập nhật tiến độ hoặc thực hiện nghiệp vụ tài chính.",group);
     }
     private LichChup? Selected()=>_grid.CurrentRow?.Cells["Id"].Value is object v?_items.FirstOrDefault(x=>x.Id==Convert.ToInt64(v)):null;
-    private async Task LoadAsync(){try{var filter=new BookingSearchFilter(string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_from.Checked?_from.Value.Date:null,_to.Checked?_to.Value.Date:null,SelectedId(_photographer),SelectedId(_room),SelectedId(_package),SelectedStatus());_items=await _app.Bookings.SearchAsync(filter);_grid.DataSource=_items.Select(x=>new{x.Id,Ma=x.Ma,Khách_hàng=x.KhachHang,Bắt_đầu=x.BatDau.ToString("dd/MM/yyyy HH:mm"),Kết_thúc=x.KetThuc.ToString("dd/MM/yyyy HH:mm"),Nhiếp_ảnh_gia=x.NhiepAnhGia,Phòng=x.Phong,Trạng_thái=x.TrangThai.HienThi(),Tổng_tiền=x.TongThanhToan,Còn_lại=x.ConLai}).ToList();if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;foreach(var c in new[]{"Tổng_tiền","Còn_lại"})if(_grid.Columns.Contains(c))_grid.Columns[c].DefaultCellStyle.Format="N0";_grid.ClearSelection();_grid.CurrentCell=null;UpdateActionState();}catch(Exception ex){Ui.Error(this,ex.Message);}}
+    private async Task LoadAsync(){try{var filter=new BookingSearchFilter(string.IsNullOrWhiteSpace(_search.Text)?null:_search.Text.Trim(),_from.Checked?_from.Value.Date:null,_to.Checked?_to.Value.Date:null,SelectedId(_photographer),SelectedId(_room),SelectedId(_package),SelectedStatus());_items=await _app.Bookings.SearchAsync(filter);_grid.DataSource=_items.Select(x=>new{x.Id,Ma=x.Ma,Khách_hàng=x.KhachHang,Bắt_đầu=x.BatDau.ToString("dd/MM/yyyy HH:mm"),Kết_thúc=x.KetThuc.ToString("dd/MM/yyyy HH:mm"),Nhiếp_ảnh_gia=x.NhiepAnhGia,Phòng=x.Phong,Trạng_thái=x.TrangThai.HienThi(),Tổng_tiền=x.TongThanhToan,Còn_lại=x.ConLai}).ToList();if(_grid.Columns.Contains("Id"))_grid.Columns["Id"].Visible=false;var captions=new Dictionary<string,string>{{"Ma","Mã"},{"Khách_hàng","Khách hàng"},{"Bắt_đầu","Bắt đầu"},{"Kết_thúc","Kết thúc"},{"Nhiếp_ảnh_gia","Nhiếp ảnh gia"},{"Trạng_thái","Trạng thái"},{"Tổng_tiền","Tổng tiền"},{"Còn_lại","Còn lại"}};foreach(var caption in captions)if(_grid.Columns.Contains(caption.Key))_grid.Columns[caption.Key].HeaderText=caption.Value;foreach(var c in new[]{"Tổng_tiền","Còn_lại"})if(_grid.Columns.Contains(c))_grid.Columns[c].DefaultCellStyle.Format="N0";_grid.ClearSelection();_grid.CurrentCell=null;UpdateActionState();}catch(Exception ex){Ui.Error(this,ex.Message);}}
     private void UpdateActionState()
     {
         var booking=Selected();

@@ -20,8 +20,7 @@ public sealed class CrudPage : UserControl
         }
 
         var toolbar=BuildSearchBar();
-        var card=new CardPanel{Dock=DockStyle.Fill,Padding=Padding.Empty};
-        card.Controls.Add(_grid);
+        var card=Ui.DataHost(_grid);
 
         var actions=BuildSelectionActions();
         var guard=BuildGuardNote();
@@ -35,7 +34,7 @@ public sealed class CrudPage : UserControl
     {
         var card=new CardPanel{Dock=DockStyle.Top,Height=68,Padding=new Padding(12,10,12,10),Margin=new Padding(0,0,0,12)};
         var row=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=4,RowCount=1};
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,132));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,152));
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText=_entity=="NhatKy"?"Tìm theo hành động, tài khoản hoặc đối tượng...":"Tìm theo mã, tên hoặc thông tin liên quan...";
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
@@ -45,9 +44,7 @@ public sealed class CrudPage : UserControl
 
     private Control BuildSelectionActions()
     {
-        var card=new CardPanel{Dock=DockStyle.Bottom,Height=76,Padding=new Padding(16,14,16,14),Margin=new Padding(0,12,0,0)};
-        card.Controls.Add(new Label{Dock=DockStyle.Fill,Text="Chọn một dòng để xem thông tin hoặc thực hiện thao tác phù hợp.",ForeColor=Theme.Muted,Font=Theme.Font(9.2f),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true});
-        var group=new FlowLayoutPanel{Dock=DockStyle.Right,Width=550,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=Padding.Empty};
+        var group=Ui.ActionButtonGroup();
         if(!_readOnly)
         {
             _stopButton=Theme.Button(_entity=="KhachHang"?"Xóa":"Ngừng dùng",Theme.Danger);_stopButton.Width=118;_stopButton.Click+=async(_,_)=>await DeactivateAsync();group.Controls.Add(_stopButton);
@@ -58,7 +55,7 @@ public sealed class CrudPage : UserControl
             _historyButton=Theme.Button("Lịch sử",Theme.Secondary);_historyButton.Width=100;_historyButton.Click+=async(_,_)=>await ShowHistoryAsync();group.Controls.Add(_historyButton);
         }
         _detailsButton=Theme.Button("Xem chi tiết",Theme.Secondary);_detailsButton.Width=124;_detailsButton.Click+=(_,_)=>ShowDetails();group.Controls.Add(_detailsButton);
-        card.Controls.Add(group);return card;
+        return Ui.SelectionActionBar("Chọn một dòng để xem thông tin hoặc thực hiện thao tác phù hợp.",group);
     }
 
     private Control? BuildGuardNote()=>_entity=="KhachHang" ? new Label

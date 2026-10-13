@@ -23,7 +23,7 @@ public sealed class MainForm : Form
     public MainForm(AppFacade app, DashboardData? initialDashboardData = null)
     {
         _app = app; _initialDashboardData = initialDashboardData; Text = "Studio Manager"; WindowState = FormWindowState.Maximized; MinimumSize = new(1180, 720); AutoScaleMode = AutoScaleMode.Dpi; BackColor = Theme.Background; Font = Theme.Font();
-        BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); ShowPage("Tổng quan", CreateDashboard(), _menu.Controls.OfType<Button>().FirstOrDefault());
+        BuildSidebar(); var top = BuildTopbar(); Controls.Add(_content); Controls.Add(top); Controls.Add(_sidebar); Shown += (_, _) => FitSidebarMenu(); ShowPage("Tổng quan", CreateDashboard(), _menu.Controls.OfType<Button>().FirstOrDefault());
     }
 
     private void BuildSidebar()
@@ -102,11 +102,16 @@ public sealed class MainForm : Form
     {
         // A vertical scrollbar reduces the viewport width. Fixed 228px menu buttons
         // then caused an unnecessary horizontal scrollbar at compact window heights.
-        var width = Math.Max(48, _menu.ClientSize.Width - (_menu.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0) - 1);
+        // Always reserve the potential vertical-scrollbar gutter.  WinForms reports
+        // VerticalScroll.Visible too late during layout, which previously let menu
+        // children become one gutter wider and produced a horizontal scrollbar.
+        var width = Math.Max(48, _menu.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2);
         foreach (var button in _menu.Controls.OfType<Button>()) button.Width = width;
         foreach (var section in _sectionLabels) section.Width = width;
+        _menu.AutoScrollMinSize = Size.Empty;
         _menu.HorizontalScroll.Enabled = false;
         _menu.HorizontalScroll.Visible = false;
+        if (_menu.HorizontalScroll.Value != 0) _menu.HorizontalScroll.Value = 0;
     }
 
     private void ShowPage(string title, Control page, Button? sender)
