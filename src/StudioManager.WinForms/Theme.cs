@@ -96,7 +96,7 @@ internal sealed class ModernButton : Button
         FlatAppearance.BorderSize = 0;
         FlatAppearance.MouseDownBackColor = normal;
         FlatAppearance.MouseOverBackColor = normal;
-        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
     }
 
     public int RequiredWidth => Math.Max(116, TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Padding.Horizontal + 26);
@@ -128,11 +128,28 @@ internal sealed class ModernButton : Button
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        // A custom-painted button is still rectangular at the WinForms control
-        // level. Paint its unused corner pixels with the first opaque ancestor
-        // color, otherwise a transparent/default FlowLayoutPanel leaks a dark or
-        // grey rectangle behind the rounded surface.
-        e.Graphics.Clear(BackgroundBehind());
+        // Do not guess a corner colour. Ask the parent to render the exact pixels
+        // behind this control, then draw the anti-aliased rounded path on top.
+        // This removes the dark rectangular artifacts produced by nested layout
+        // panels whose effective paint background differs from BackColor.
+        if (Parent is null)
+        {
+            e.Graphics.Clear(Theme.Background);
+            return;
+        }
+
+        var state = e.Graphics.Save();
+        try
+        {
+            e.Graphics.TranslateTransform(-Left, -Top);
+            var bounds = new Rectangle(Left, Top, Width, Height);
+            InvokePaintBackground(Parent, new PaintEventArgs(e.Graphics, bounds));
+            InvokePaint(Parent, new PaintEventArgs(e.Graphics, bounds));
+        }
+        finally
+        {
+            e.Graphics.Restore(state);
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -144,7 +161,7 @@ internal sealed class ModernButton : Button
         var bounds = new RectangleF(.5f, .5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
         var fill = !Enabled ? Theme.Disabled : _isPressed ? _pressed : _isHovering ? _hover : _normal;
         var foreColor = Enabled ? Color.White : Theme.DisabledText;
-        using var path = RoundedPath(bounds, 10f);
+        using var path = RoundedPath(bounds, 12f);
         using var brush = new SolidBrush(fill);
         e.Graphics.FillPath(brush, path);
         if (Focused && ShowFocusCues)
@@ -160,14 +177,6 @@ internal sealed class ModernButton : Button
     {
         if (Width < RequiredWidth) Width = RequiredWidth;
         if (Height < 42) Height = 42;
-    }
-
-    private Color BackgroundBehind()
-    {
-        for (Control? control = Parent; control is not null; control = control.Parent)
-            if (!control.BackColor.IsEmpty && control.BackColor.A == byte.MaxValue && control.BackColor.ToArgb() != SystemColors.Control.ToArgb())
-                return control.BackColor;
-        return Theme.Background;
     }
 
     private static GraphicsPath RoundedPath(RectangleF bounds, float radius)
