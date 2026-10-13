@@ -126,7 +126,10 @@ public static class Ui
     {
         AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        Height = 42,
+        // Match PageHeader.Actions (used by the clean Report buttons): a 42px
+        // button keeps its normal 4px outer margin and is never packed into a
+        // 42px-tall line. Its natural line height is therefore 50px.
+        Height = 50,
         FlowDirection = FlowDirection.RightToLeft,
         WrapContents = false,
         Padding = Padding.Empty,
@@ -143,12 +146,11 @@ public static class Ui
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var copy = new Label { Dock = DockStyle.Fill, Text = hint, ForeColor = Theme.Muted, Font = Theme.Font(9.2f), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Margin = new Padding(0, 0, 12, 0) };
         actions.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        // The group itself is 42px high, exactly the shared button height.  A
-        // vertical margin here made each child require 48px and WinForms clipped
-        // its edge pixels differently in disabled/focused states. Keep spacing on
-        // the horizontal axis only.
-        foreach (Control action in actions.Controls) action.Margin = new Padding(4, 0, 4, 0);
-        actions.ControlAdded += (_, e) => e.Control.Margin = new Padding(4, 0, 4, 0);
+        // Same 4px outer margin as the buttons in PageHeader.Actions on Reports.
+        // The action bar row has 52px available, so a 42px button plus 8px margin
+        // is fully visible and cannot have its rounded edges clipped.
+        foreach (Control action in actions.Controls) action.Margin = new Padding(4);
+        actions.ControlAdded += (_, e) => e.Control.Margin = new Padding(4);
         layout.Controls.Add(copy, 0, 0);
         layout.Controls.Add(actions, 1, 0);
         card.Controls.Add(layout);
