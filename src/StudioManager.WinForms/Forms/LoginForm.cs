@@ -8,7 +8,7 @@ public sealed class LoginForm : Form
     private readonly AppFacade _app;
     private readonly TextBox _username = LoginTextBox("Nhập tên đăng nhập");
     private readonly TextBox _password = LoginTextBox("Nhập mật khẩu", true);
-    private readonly Button _login = new();
+    private readonly Button _login = Theme.Button("⇥  Đăng nhập");
     private readonly Label _error = new() { AutoSize = false, Height = 28, ForeColor = Theme.Danger, TextAlign = ContentAlignment.MiddleLeft };
 
     public LoginForm(AppFacade app)
@@ -64,9 +64,9 @@ public sealed class LoginForm : Form
 
     private void ConfigureLoginButton()
     {
-        _login.Text = "⇥  Đăng nhập"; _login.Dock = DockStyle.Fill; _login.FlatStyle = FlatStyle.Flat; _login.BackColor = Theme.Primary; _login.ForeColor = Color.White;
-        _login.Font = Theme.Font(10, FontStyle.Bold); _login.Cursor = Cursors.Hand; _login.Margin = new Padding(0, 2, 0, 2); _login.FlatAppearance.BorderSize = 0; _login.Padding = new Padding(16, 0, 16, 0); _login.AutoEllipsis = false;
-        _login.Resize += (_, _) => Theme.Round(_login, 10); _login.Click += async (_, _) => await LoginAsync();
+        _login.Text = "⇥  Đăng nhập"; _login.Dock = DockStyle.Fill; _login.BackColor = Theme.Primary; _login.ForeColor = Color.White;
+        _login.Font = Theme.Font(10, FontStyle.Bold); _login.Cursor = Cursors.Hand; _login.Margin = new Padding(0, 2, 0, 2); _login.Padding = new Padding(16, 0, 16, 0); _login.AutoEllipsis = false;
+        _login.Click += async (_, _) => await LoginAsync();
     }
 
     private static Panel Feature(string icon, string title, string subtitle)

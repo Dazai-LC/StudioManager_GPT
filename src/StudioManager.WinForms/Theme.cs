@@ -38,13 +38,12 @@ public static class Theme
     public static Button Button(string text, Color? color = null)
     {
         var activeColor = color ?? Primary;
-        // A custom-painted button avoids the aliased Region clipping that native
-        // WinForms buttons show at rounded corners.  It also calculates width from
-        // the label, so callers cannot accidentally cut Vietnamese button text.
+        // The shared button owns both its rounded shape and its paint states. It
+        // also calculates width from the label, so callers cannot accidentally
+        // cut Vietnamese button text.
         var b = new ModernButton(activeColor, HoverFor(activeColor), PressedFor(activeColor)) { Text = text, AutoSize = false, Height = 42, Font = Font(9.7f, FontStyle.Bold), Padding = new Padding(16, 0, 16, 0), Margin = new Padding(4), TextAlign = ContentAlignment.MiddleCenter, AutoEllipsis = false };
         b.MinimumSize = new Size(116, 42);
         b.Width = Math.Max(b.MinimumSize.Width, b.RequiredWidth);
-        b.FlatAppearance.BorderSize = 0;
         return b;
     }
 
@@ -77,6 +76,7 @@ public static class Theme
 
 internal sealed class ModernButton : Button
 {
+    private const float CornerRadius = 11f;
     private Color _normal;
     private Color _hover;
     private Color _pressed;
@@ -94,9 +94,9 @@ internal sealed class ModernButton : Button
         ForeColor = Color.White;
         Cursor = Cursors.Hand;
         FlatAppearance.BorderSize = 0;
-        FlatAppearance.MouseDownBackColor = normal;
-        FlatAppearance.MouseOverBackColor = normal;
-        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+        // Do not configure FlatAppearance hover/pressed colors. Native flat
+        // painting may run after custom painting and repaint rectangular corners.
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
     }
 
     public int RequiredWidth => Math.Max(116, TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Padding.Horizontal + 26);
@@ -118,6 +118,10 @@ internal sealed class ModernButton : Button
     protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); _isHovering = false; _isPressed = false; Invalidate(); }
     protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button == MouseButtons.Left) { _isPressed = true; Invalidate(); } }
     protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _isPressed = false; Invalidate(); }
+    protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+    protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+    protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); UpdateRoundedRegion(); }
+    protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); UpdateRoundedRegion(); }
 
     protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
     {
@@ -128,28 +132,10 @@ internal sealed class ModernButton : Button
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        // Do not guess a corner colour. Ask the parent to render the exact pixels
-        // behind this control, then draw the anti-aliased rounded path on top.
-        // This removes the dark rectangular artifacts produced by nested layout
-        // panels whose effective paint background differs from BackColor.
-        if (Parent is null)
-        {
-            e.Graphics.Clear(Theme.Background);
-            return;
-        }
-
-        var state = e.Graphics.Save();
-        try
-        {
-            e.Graphics.TranslateTransform(-Left, -Top);
-            var bounds = new Rectangle(Left, Top, Width, Height);
-            InvokePaintBackground(Parent, new PaintEventArgs(e.Graphics, bounds));
-            InvokePaint(Parent, new PaintEventArgs(e.Graphics, bounds));
-        }
-        finally
-        {
-            e.Graphics.Restore(state);
-        }
+        // The child window is clipped by Region. Its parent therefore paints the
+        // four outer corner pixels, and a hover/click state can only change the
+        // inside of the rounded silhouette—not reveal a square background.
+        e.Graphics.Clear(CurrentFill);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -159,9 +145,9 @@ internal sealed class ModernButton : Button
         e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         var bounds = new RectangleF(.5f, .5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
-        var fill = !Enabled ? Theme.Disabled : _isPressed ? _pressed : _isHovering ? _hover : _normal;
+        var fill = CurrentFill;
         var foreColor = Enabled ? Color.White : Theme.DisabledText;
-        using var path = RoundedPath(bounds, 12f);
+        using var path = RoundedPath(bounds, CornerRadius);
         using var brush = new SolidBrush(fill);
         e.Graphics.FillPath(brush, path);
         if (Focused && ShowFocusCues)
@@ -179,9 +165,21 @@ internal sealed class ModernButton : Button
         if (Height < 42) Height = 42;
     }
 
+    private Color CurrentFill => !Enabled ? Theme.Disabled : _isPressed ? _pressed : _isHovering ? _hover : _normal;
+
+    private void UpdateRoundedRegion()
+    {
+        if (!IsHandleCreated || Width < 2 || Height < 2) return;
+        using var path = RoundedPath(new RectangleF(0, 0, Width, Height), CornerRadius);
+        var oldRegion = Region;
+        Region = new Region(path);
+        oldRegion?.Dispose();
+    }
+
     private static GraphicsPath RoundedPath(RectangleF bounds, float radius)
     {
-        var diameter = radius * 2;
+        var safeRadius = Math.Max(1f, Math.Min(radius, Math.Min(bounds.Width, bounds.Height) / 2f));
+        var diameter = safeRadius * 2;
         var path = new GraphicsPath();
         path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
         path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
