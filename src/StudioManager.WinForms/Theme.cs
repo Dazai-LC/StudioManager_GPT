@@ -150,11 +150,10 @@ internal sealed class ModernButton : Button
         using var path = RoundedPath(bounds, CornerRadius);
         using var brush = new SolidBrush(fill);
         e.Graphics.FillPath(brush, path);
-        if (Focused && ShowFocusCues)
-        {
-            using var focusPen = new Pen(Color.FromArgb(150, Theme.Primary), 1.5f);
-            e.Graphics.DrawPath(focusPen, path);
-        }
+        // Do not draw a second path for Focused here. On a Region-clipped WinForms
+        // child it can leave a coloured one-pixel seam at the rounded edge. Native
+        // keyboard focus remains functional; visual emphasis is handled by the
+        // pressed/hover states without introducing a mismatched border.
         var textBounds = Rectangle.FromLTRB(Padding.Left, 0, Math.Max(Padding.Left, Width - Padding.Right), Height);
         TextRenderer.DrawText(e.Graphics, Text, Font, textBounds, foreColor, TextFormatFlags.SingleLine | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
     }

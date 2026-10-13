@@ -143,8 +143,12 @@ public static class Ui
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var copy = new Label { Dock = DockStyle.Fill, Text = hint, ForeColor = Theme.Muted, Font = Theme.Font(9.2f), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Margin = new Padding(0, 0, 12, 0) };
         actions.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        foreach (Control action in actions.Controls) action.Margin = new Padding(4, 3, 4, 3);
-        actions.ControlAdded += (_, e) => e.Control.Margin = new Padding(4, 3, 4, 3);
+        // The group itself is 42px high, exactly the shared button height.  A
+        // vertical margin here made each child require 48px and WinForms clipped
+        // its edge pixels differently in disabled/focused states. Keep spacing on
+        // the horizontal axis only.
+        foreach (Control action in actions.Controls) action.Margin = new Padding(4, 0, 4, 0);
+        actions.ControlAdded += (_, e) => e.Control.Margin = new Padding(4, 0, 4, 0);
         layout.Controls.Add(copy, 0, 0);
         layout.Controls.Add(actions, 1, 0);
         card.Controls.Add(layout);
