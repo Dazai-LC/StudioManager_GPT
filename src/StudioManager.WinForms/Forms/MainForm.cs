@@ -17,7 +17,7 @@ public sealed class MainForm : Form
     private readonly Label _logo = new() { Text = "  ▣  StudioManager\n       STUDIO OPERATIONS", Dock = DockStyle.Top, Height = 84, ForeColor = Color.White, TextAlign = ContentAlignment.MiddleLeft };
     // A muted slate tone distinguishes this session action from the sidebar
     // without presenting it as a destructive red operation.
-    private readonly Button _logout = Theme.Button("⇥  Đăng xuất", Color.FromArgb(51, 65, 85));
+    private readonly ModernButton _logout = Theme.Button("⇥  Đăng xuất", Color.FromArgb(51, 65, 85));
     private readonly Label _pageTitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopLeft, Font = Theme.Font(16, FontStyle.Bold), ForeColor = Theme.Text, Padding = new Padding(0, 0, 0, 8) };
     private readonly Label _breadcrumb = new() { Dock = DockStyle.Top, Height = 24, Text = "StudioManager", Font = Theme.Font(8.8f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.BottomLeft };
     private readonly ToolTip _toolTip = new(); private readonly List<Label> _sectionLabels = []; private Button? _activeButton; private bool _collapsed;

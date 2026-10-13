@@ -35,7 +35,7 @@ public static class Theme
         p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90); p.CloseFigure();
         c.Region = new Region(p);
     }
-    public static Button Button(string text, Color? color = null)
+    public static ModernButton Button(string text, Color? color = null)
     {
         var activeColor = color ?? Primary;
         // The shared button owns both its rounded shape and its paint states. It
@@ -74,7 +74,11 @@ public static class Theme
     }
 }
 
-internal sealed class ModernButton : Button
+// This is deliberately a Control, rather than a native Button with a custom
+// Region. Native Button painting can run after custom GDI+ painting and restore
+// a rectangular hover surface. A fully owner-drawn control is the only stable
+// way to keep the same silhouette in every visual state in WinForms.
+public sealed class ModernButton : Control, IButtonControl
 {
     private const float CornerRadius = 11f;
     private Color _normal;
@@ -82,26 +86,26 @@ internal sealed class ModernButton : Button
     private Color _pressed;
     private bool _isHovering;
     private bool _isPressed;
-    private bool _restoringTransparentBackground;
+    private bool _isDefault;
+    private DialogResult _dialogResult;
+
+    // Kept for API compatibility with the former Button-based factory.
+    public ContentAlignment TextAlign { get; set; } = ContentAlignment.MiddleCenter;
+    public bool AutoEllipsis { get; set; }
 
     public ModernButton(Color normal, Color hover, Color pressed)
     {
         _normal = normal;
         _hover = hover;
         _pressed = pressed;
-        FlatStyle = FlatStyle.Flat;
-        UseVisualStyleBackColor = false;
+        BackColor = normal;
         ForeColor = Color.White;
         Cursor = Cursors.Hand;
-        FlatAppearance.BorderSize = 0;
-        // A WinForms Region is a hard, pixel-aligned clip.  Combining it with a
-        // GDI+ anti-aliased path leaves a dark one-pixel seam, especially while
-        // disabled or hovered.  Keep the child window rectangular and let the
-        // parent background show through its transparent corners instead.
+        AccessibleRole = AccessibleRole.PushButton;
+        TabStop = true;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
-                 ControlStyles.SupportsTransparentBackColor, true);
-        BackColor = Color.Transparent;
+                 ControlStyles.Selectable | ControlStyles.StandardClick, true);
     }
 
     public int RequiredWidth => Math.Max(116, TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Padding.Horizontal + 26);
@@ -113,16 +117,12 @@ internal sealed class ModernButton : Button
     protected override void OnBackColorChanged(EventArgs e)
     {
         // Existing pages use BackColor to change an action's semantic colour
-        // (for example Lock/Unlock).  Preserve that API while the actual control
-        // background remains transparent for clean anti-aliased corners.
-        if (!_restoringTransparentBackground && !BackColor.IsEmpty && BackColor != Color.Transparent)
+        // (for example Lock/Unlock), so use that property as the visual palette.
+        if (!BackColor.IsEmpty)
         {
             _normal = BackColor;
             _hover = Theme.HoverFor(_normal);
             _pressed = Theme.PressedFor(_normal);
-            _restoringTransparentBackground = true;
-            BackColor = Color.Transparent;
-            _restoringTransparentBackground = false;
         }
         base.OnBackColorChanged(e);
         Invalidate();
@@ -131,6 +131,22 @@ internal sealed class ModernButton : Button
     protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); _isHovering = false; _isPressed = false; Invalidate(); }
     protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button == MouseButtons.Left) { _isPressed = true; Invalidate(); } }
     protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _isPressed = false; Invalidate(); }
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (Enabled && e.KeyCode is Keys.Space or Keys.Enter) { _isPressed = true; Invalidate(); e.Handled = true; }
+    }
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (Enabled && e.KeyCode is Keys.Space or Keys.Enter)
+        {
+            _isPressed = false;
+            Invalidate();
+            PerformClick();
+            e.Handled = true;
+        }
+    }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
     protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
@@ -142,10 +158,9 @@ internal sealed class ModernButton : Button
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        // Let WinForms compose the parent's surface in the four outer corners.
-        // Unlike Region, this preserves the fractional anti-alias pixels painted
-        // by the rounded path in OnPaint.
-        base.OnPaintBackground(e);
+        // Paint a known canvas ourselves. No native Button background is allowed
+        // to repaint a square during hover, pressed or disabled states.
+        e.Graphics.Clear(Parent?.BackColor ?? Theme.Background);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -160,10 +175,11 @@ internal sealed class ModernButton : Button
         using var path = RoundedPath(bounds, CornerRadius);
         using var brush = new SolidBrush(fill);
         e.Graphics.FillPath(brush, path);
-        // Do not draw a second path for Focused here. On a Region-clipped WinForms
-        // child it can leave a coloured one-pixel seam at the rounded edge. Native
-        // keyboard focus remains functional; visual emphasis is handled by the
-        // pressed/hover states without introducing a mismatched border.
+        if (Focused || _isDefault)
+        {
+            using var focusPen = new Pen(Color.FromArgb(135, Theme.Primary), 1f);
+            e.Graphics.DrawPath(focusPen, path);
+        }
         var textBounds = Rectangle.FromLTRB(Padding.Left, 0, Math.Max(Padding.Left, Width - Padding.Right), Height);
         TextRenderer.DrawText(e.Graphics, Text, Font, textBounds, foreColor, TextFormatFlags.SingleLine | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
     }
@@ -175,6 +191,13 @@ internal sealed class ModernButton : Button
     }
 
     private Color CurrentFill => !Enabled ? Theme.Disabled : _isPressed ? _pressed : _isHovering ? _hover : _normal;
+
+    public DialogResult DialogResult { get => _dialogResult; set => _dialogResult = value; }
+    public void NotifyDefault(bool value) { _isDefault = value; Invalidate(); }
+    public void PerformClick()
+    {
+        if (Enabled) OnClick(EventArgs.Empty);
+    }
 
     private static GraphicsPath RoundedPath(RectangleF bounds, float radius)
     {

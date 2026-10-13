@@ -53,7 +53,7 @@ public static class Ui
     {
         var p = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 14, 8) }; input.Dock = DockStyle.Bottom; input.Height = 38; p.Controls.Add(input); p.Controls.Add(FieldLabel(label)); return p;
     }
-    public static Panel ToolbarButton(Button button)
+    public static Panel ToolbarButton(Control button)
     {
         button.Margin = Padding.Empty;
         button.Height = 38;
@@ -71,7 +71,7 @@ public static class Ui
         slot.Controls.Add(input);
         return slot;
     }
-    public static Panel ToolbarButtonGroup(params Button[] buttons)
+    public static Panel ToolbarButtonGroup(params Control[] buttons)
     {
         const int gap = 8;
         var width = buttons.Sum(x => x.Width) + Math.Max(0, buttons.Length - 1) * gap;

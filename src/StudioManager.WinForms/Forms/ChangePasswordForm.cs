@@ -10,7 +10,7 @@ public sealed class ChangePasswordForm : Form
     private readonly UserSession _session;
     private readonly TextBox _password = PasswordBox("Nhập mật khẩu mới");
     private readonly TextBox _confirmation = PasswordBox("Nhập lại mật khẩu mới");
-    private readonly Button _save = Theme.Button("Đổi mật khẩu");
+    private readonly ModernButton _save = Theme.Button("Đổi mật khẩu");
     private readonly Label _error = new() { Dock = DockStyle.Fill, ForeColor = Theme.Danger, Font = Theme.Font(8.8f), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
 
     public ChangePasswordForm(AppFacade app, UserSession session)

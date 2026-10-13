@@ -15,7 +15,7 @@ public sealed class BookingsPage : UserControl
     // These controls are constructed together in BuildSelectionActions().  They cannot be
     // readonly because that helper owns the layout construction, but are initialized before
     // the page can receive any selection events.
-    private Button _edit=null!,_detail=null!,_progress=null!,_pay=null!,_refund=null!,_cancel=null!;
+    private ModernButton _edit=null!,_detail=null!,_progress=null!,_pay=null!,_refund=null!,_cancel=null!;
     private IReadOnlyList<LichChup> _items=[];
 
     public BookingsPage(AppFacade app)

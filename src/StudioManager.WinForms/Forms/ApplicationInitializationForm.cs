@@ -13,8 +13,8 @@ public sealed class ApplicationInitializationForm : Form
     private readonly Label[] _steps = new Label[5];
     private readonly MilestoneProgressBar _progress = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 10, 0, 10) };
     private readonly SpinnerControl _spinner = new() { Dock = DockStyle.Fill };
-    private readonly Button _retry = Theme.Button("↻  Thử lại");
-    private readonly Button _logout = Theme.Button("Quay lại đăng nhập", Color.FromArgb(100, 116, 139));
+    private readonly ModernButton _retry = Theme.Button("↻  Thử lại");
+    private readonly ModernButton _logout = Theme.Button("Quay lại đăng nhập", Color.FromArgb(100, 116, 139));
     private readonly FlowLayoutPanel _actions = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Visible = false };
     private CancellationTokenSource? _initializationCts;
     public DashboardData? DashboardData { get; private set; }

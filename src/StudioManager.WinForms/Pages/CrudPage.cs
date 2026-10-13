@@ -8,7 +8,7 @@ namespace StudioManager.WinForms.Pages;
 public sealed class CrudPage : UserControl
 {
     private readonly AppFacade _app;private readonly string _entity;private readonly bool _readOnly;private readonly DataGridView _grid=Theme.Grid();private readonly SearchInput _search=Ui.SearchBox();
-    private Button? _detailsButton,_historyButton,_editButton,_stopButton;
+    private ModernButton? _detailsButton,_historyButton,_editButton,_stopButton;
     public CrudPage(AppFacade app,string title,string entity,bool readOnly=false)
     {
         _app=app;_entity=entity;_readOnly=readOnly;BackColor=Theme.Background;

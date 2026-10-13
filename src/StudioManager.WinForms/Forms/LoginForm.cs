@@ -8,7 +8,7 @@ public sealed class LoginForm : Form
     private readonly AppFacade _app;
     private readonly TextBox _username = LoginTextBox("Nhập tên đăng nhập");
     private readonly TextBox _password = LoginTextBox("Nhập mật khẩu", true);
-    private readonly Button _login = Theme.Button("⇥  Đăng nhập");
+    private readonly ModernButton _login = Theme.Button("⇥  Đăng nhập");
     private readonly Label _error = new() { AutoSize = false, Height = 28, ForeColor = Theme.Danger, TextAlign = ContentAlignment.MiddleLeft };
 
     public LoginForm(AppFacade app)

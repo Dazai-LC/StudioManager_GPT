@@ -9,8 +9,8 @@ public sealed class AccountsPage : UserControl
     private readonly AppFacade _app;
     private readonly DataGridView _grid=Theme.Grid();
     private readonly SearchInput _search=Ui.SearchBox();
-    private readonly Button _lockButton=Theme.Button("Khóa tài khoản",Theme.Danger);
-    private Button? _resetButton,_detailButton;
+    private readonly ModernButton _lockButton=Theme.Button("Khóa tài khoản",Theme.Danger);
+    private ModernButton? _resetButton,_detailButton;
 
     public AccountsPage(AppFacade app)
     {
