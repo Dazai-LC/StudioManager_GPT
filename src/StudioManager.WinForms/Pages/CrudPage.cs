@@ -38,7 +38,7 @@ public sealed class CrudPage : UserControl
         _search.Dock=DockStyle.Fill;_search.Margin=Padding.Empty;_search.PlaceholderText=_entity=="NhatKy"?"Tìm theo hành động, tài khoản hoặc đối tượng...":"Tìm theo mã, tên hoặc thông tin liên quan...";
         var find=Theme.Button("Tìm kiếm");find.Dock=DockStyle.Fill;find.Margin=new Padding(10,0,0,0);find.Click+=async(_,_)=>await LoadAsync();
         var refresh=Theme.Button("↻  Làm mới",Theme.Secondary);refresh.Dock=DockStyle.Fill;refresh.Margin=new Padding(10,0,0,0);refresh.Click+=async(_,_)=>{_search.Clear();await LoadAsync();};
-        var export=Theme.Button("▦  Xuất Excel",Theme.Excel);export.Dock=DockStyle.Fill;export.Margin=Padding.Empty;export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,_entity);
+        var export=Theme.Button("▦  Xuất Excel",Theme.Excel);export.Dock=DockStyle.Fill;export.Margin=new Padding(10,0,0,0);export.Click+=(_,_)=>Ui.ExportGrid(_grid,this,_entity);
         row.Controls.Add(_search,0,0);row.Controls.Add(find,1,0);row.Controls.Add(refresh,2,0);row.Controls.Add(export,3,0);card.Controls.Add(row);return card;
     }
 
