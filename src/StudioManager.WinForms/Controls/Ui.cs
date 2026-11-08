@@ -1,82 +1,223 @@
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 
 namespace StudioManager.WinForms.Controls;
 
 public sealed class PageHeader : Panel
 {
-    public FlowLayoutPanel Actions { get; } = new() { Dock = DockStyle.Right, Width = 440, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, AutoScroll = false, Padding = new Padding(0, 14, 0, 0), BackColor = Theme.Background };
+    public FlowLayoutPanel Actions { get; } = new()
+    {
+        Dock = DockStyle.Right,
+        Width = 480,
+        FlowDirection = FlowDirection.RightToLeft,
+        WrapContents = true,
+        AutoScroll = false,
+        Padding = new Padding(0, 10, 0, 0),
+        BackColor = Color.Transparent
+    };
+
     public PageHeader(string title, string subtitle)
     {
-        // The page title belongs to the global top bar.  This compact context bar
-        // mirrors the Figma hierarchy and avoids repeating a large title on every page.
-        Height = 84; Dock = DockStyle.Top; BackColor = Theme.Background; Padding = new Padding(2, 4, 0, 12); AccessibleName = title;
-        var copy = new Panel { Dock = DockStyle.Fill };
-        copy.Controls.Add(new Label { Text = subtitle, Dock = DockStyle.Fill, Font = Theme.Font(10.5f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true });
-        Controls.Add(copy); Controls.Add(Actions); Actions.BringToFront();
+        Height = 74;
+        Dock = DockStyle.Top;
+        BackColor = Color.Transparent;
+        Padding = new Padding(2, 4, 0, 10);
+        AccessibleName = title;
+
+        var copy = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+        copy.Controls.Add(new Label
+        {
+            Text = subtitle,
+            Dock = DockStyle.Fill,
+            Font = Theme.Font(9.8f),
+            ForeColor = Theme.Muted,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
+        });
+
+        Controls.Add(copy);
+        Controls.Add(Actions);
+        Actions.BringToFront();
     }
 }
 
 public class CardPanel : Panel
 {
-    public CardPanel() { BackColor = Theme.Surface; Padding = new Padding(18); Margin = Padding.Empty; Resize += (_, _) => Theme.Round(this, 12); }
+    public int CornerRadius { get; set; } = 12;
+    public Color BorderColor { get; set; } = Theme.Border;
+    public bool ShowBorder { get; set; } = true;
+
+    public CardPanel()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        BackColor = Theme.Surface;
+        Padding = new Padding(18);
+        Margin = Padding.Empty;
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        e.Graphics.Clear(Parent?.BackColor ?? Theme.Background);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+        var bounds = new RectangleF(0.5f, 0.5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+        using var path = Theme.RoundedRectangle(bounds, CornerRadius);
+
+        // Fill background
+        using var fillBrush = new SolidBrush(BackColor);
+        g.FillPath(fillBrush, path);
+
+        // Subtle 1px border
+        if (ShowBorder && BorderColor != Color.Transparent)
+        {
+            using var borderPen = new Pen(BorderColor, 1f);
+            g.DrawPath(borderPen, path);
+        }
+    }
 }
 
 public sealed class StatCard : CardPanel
 {
-    private readonly Label _value; private readonly Label _trend;
+    private readonly Label _value;
+    private readonly Label _trend;
+    private readonly Label _titleLabel;
+    private readonly Label _badge;
+
     public StatCard(string title, Color accent, string icon = "●")
     {
-        Width = 250; Height = 128; Padding = new Padding(18, 15, 16, 13);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+        Height = 126;
+        Padding = new Padding(18, 14, 18, 14);
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        var badge = new Label { Text = icon, Dock = DockStyle.Fill, Font = Theme.Font(18, FontStyle.Bold), ForeColor = accent, BackColor = Color.FromArgb(248, 250, 252), TextAlign = ContentAlignment.MiddleCenter };
-        badge.Resize += (_, _) => Theme.Round(badge, 12);
-        layout.Controls.Add(new Label { Text = title, Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(9, FontStyle.Bold), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-        _value = new Label { Text = "—", Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(22, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft };
-        _trend = new Label { Text = "Cập nhật trực tiếp", Dock = DockStyle.Fill, AutoEllipsis = true, Font = Theme.Font(8.5f), ForeColor = accent, TextAlign = ContentAlignment.MiddleLeft };
-        layout.Controls.Add(_value, 0, 1); layout.Controls.Add(_trend, 0, 2); layout.Controls.Add(badge, 1, 0); layout.SetRowSpan(badge, 3);
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+
+        _badge = new Label
+        {
+            Text = icon,
+            Dock = DockStyle.Fill,
+            Font = Theme.Font(16, FontStyle.Bold),
+            ForeColor = accent,
+            BackColor = Color.FromArgb(24, accent.R, accent.G, accent.B),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Margin = new Padding(0, 0, 0, 4)
+        };
+        _badge.Resize += (_, _) => Theme.Round(_badge, 10);
+
+        _titleLabel = new Label
+        {
+            Text = title.ToUpperInvariant(),
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            Font = Theme.Font(8.2f, FontStyle.Bold),
+            ForeColor = Theme.Muted,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _value = new Label
+        {
+            Text = "—",
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            Font = Theme.Font(19, FontStyle.Bold),
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _trend = new Label
+        {
+            Text = "Cập nhật trực tiếp",
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            Font = Theme.Font(8.0f),
+            ForeColor = accent,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        layout.Controls.Add(_titleLabel, 0, 0);
+        layout.Controls.Add(_value, 0, 1);
+        layout.Controls.Add(_trend, 0, 2);
+        layout.Controls.Add(_badge, 1, 0);
+        layout.SetRowSpan(_badge, 2);
+
         Controls.Add(layout);
     }
+
     public string Value { get => _value.Text; set => _value.Text = value; }
     public string Trend { get => _trend.Text; set => _trend.Text = value; }
 }
 
 public static class Ui
 {
-    public static SearchInput SearchBox(string placeholder = "Tìm kiếm...") => new(placeholder) { Width = 300, Height = 42, Margin = new Padding(0, 2, 8, 2) };
-    public static Label FieldLabel(string text) => new() { Text = text, AutoSize = false, Height = 26, Dock = DockStyle.Top, Font = Theme.Font(8.8f, FontStyle.Bold), ForeColor = Theme.Muted, TextAlign = ContentAlignment.BottomLeft };
+    public static SearchInput SearchBox(string placeholder = "Tìm kiếm...") =>
+        new(placeholder) { Width = 310, Height = 40, Margin = new Padding(0, 1, 8, 1) };
+
+    public static Label FieldLabel(string text) => new()
+    {
+        Text = text,
+        AutoSize = false,
+        Height = 24,
+        Dock = DockStyle.Top,
+        Font = Theme.Font(8.2f, FontStyle.Bold),
+        ForeColor = Theme.Secondary,
+        TextAlign = ContentAlignment.BottomLeft
+    };
+
     public static Panel Field(string label, Control input, int width = 260)
     {
-        var p = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 14, 8) }; input.Dock = DockStyle.Bottom; input.Height = 38; p.Controls.Add(input); p.Controls.Add(FieldLabel(label)); return p;
+        var p = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 14, 8), BackColor = Color.Transparent };
+        input.Dock = DockStyle.Bottom;
+        input.Height = 36;
+        p.Controls.Add(input);
+        p.Controls.Add(FieldLabel(label));
+        return p;
     }
+
     public static Panel ToolbarButton(Control button)
     {
         button.Margin = Padding.Empty;
         button.Height = 38;
         button.Dock = DockStyle.Bottom;
-        var slot = new Panel { Width = button.Width, Height = 70, Margin = new Padding(0, 0, 12, 8), BackColor = Theme.Background };
+        var slot = new Panel { Width = button.Width, Height = 68, Margin = new Padding(0, 0, 10, 8), BackColor = Color.Transparent };
         slot.Controls.Add(button);
         return slot;
     }
+
     public static Panel ToolbarInput(Control input)
     {
         input.Margin = Padding.Empty;
         input.Dock = DockStyle.Bottom;
         input.Height = 38;
-        var slot = new Panel { Width = input.Width, Height = 70, Margin = new Padding(0, 0, 12, 8), BackColor = Theme.Background };
+        var slot = new Panel { Width = input.Width, Height = 68, Margin = new Padding(0, 0, 10, 8), BackColor = Color.Transparent };
         slot.Controls.Add(input);
         return slot;
     }
+
     public static Panel ToolbarButtonGroup(params Control[] buttons)
     {
         const int gap = 8;
         var width = buttons.Sum(x => x.Width) + Math.Max(0, buttons.Length - 1) * gap;
-        var slot = new Panel { Width = width, Height = 70, Margin = new Padding(0, 0, 12, 8), BackColor = Theme.Background };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 42, WrapContents = false, Padding = Padding.Empty, BackColor = Theme.Background };
+        var slot = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 10, 8), BackColor = Color.Transparent };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Width = width, Height = 38, WrapContents = false, Padding = Padding.Empty, BackColor = Color.Transparent };
         for (var index = 0; index < buttons.Length; index++)
         {
             var button = buttons[index];
@@ -88,48 +229,43 @@ public static class Ui
         slot.Controls.Add(bar);
         return slot;
     }
+
     public static Label ToolbarCaption(string text, int width = 184) => new()
     {
         Text = text,
         AutoSize = false,
         Width = width,
-        Height = 70,
-        Margin = new Padding(0, 0, 12, 8),
-        Font = Theme.Font(8.6f, FontStyle.Bold),
+        Height = 68,
+        Margin = new Padding(0, 0, 10, 8),
+        Font = Theme.Font(8.5f, FontStyle.Bold),
         ForeColor = Theme.Muted,
         TextAlign = ContentAlignment.MiddleLeft
     };
+
     public static FlowLayoutPanel Toolbar() => new()
     {
         Dock = DockStyle.Top,
         AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink,
         WrapContents = true,
-        BackColor = Theme.Background,
-        Padding = new Padding(0, 4, 0, 6)
+        BackColor = Color.Transparent,
+        Padding = new Padding(0, 2, 0, 8)
     };
-    // Keep search action buttons on the same 42px baseline as the PageHeader
-    // actions. Previously the 68px host with 10px vertical padding stretched
-    // Dock=Fill buttons to 48px, making their rounded silhouette look different
-    // from the report page even though they use the same shared renderer.
+
     public static CardPanel SearchToolbarCard() => new()
     {
         Dock = DockStyle.Top,
-        Height = 68,
-        Padding = new Padding(12, 13, 12, 13),
-        Margin = new Padding(0, 0, 0, 12)
+        Height = 64,
+        Padding = new Padding(12, 11, 12, 11),
+        Margin = new Padding(0, 0, 0, 12),
+        CornerRadius = 10
     };
-    // A two-column action bar keeps the instructional copy flexible while the
-    // action group gets exactly the space its button labels require.  Fixed-width
-    // FlowLayoutPanels were the source of clipped actions on Booking/CRUD pages.
+
     public static FlowLayoutPanel ActionButtonGroup() => new()
     {
         AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        // Match PageHeader.Actions (used by the clean Report buttons): a 42px
-        // button keeps its normal 4px outer margin and is never packed into a
-        // 42px-tall line. Its natural line height is therefore 50px.
-        Height = 50,
+        Height = 48,
         FlowDirection = FlowDirection.RightToLeft,
         WrapContents = false,
         Padding = Padding.Empty,
@@ -139,21 +275,30 @@ public static class Ui
 
     public static Control SelectionActionBar(string hint, FlowLayoutPanel actions)
     {
-        var card = new CardPanel { Dock = DockStyle.Bottom, Height = 76, Padding = new Padding(16, 12, 16, 12) };
+        var card = new CardPanel { Dock = DockStyle.Bottom, Height = 72, Padding = new Padding(18, 11, 18, 11), CornerRadius = 10 };
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty, BackColor = Theme.Surface };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var copy = new Label { Dock = DockStyle.Fill, Text = hint, ForeColor = Theme.Muted, Font = Theme.Font(9.2f), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Margin = new Padding(0, 0, 12, 0) };
+
+        var copy = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = hint,
+            ForeColor = Theme.Muted,
+            Font = Theme.Font(9.2f),
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true,
+            Margin = new Padding(0, 0, 12, 0)
+        };
+
         actions.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        // Same 4px outer margin as the buttons in PageHeader.Actions on Reports.
-        // The action bar row has 52px available, so a 42px button plus 8px margin
-        // is fully visible and cannot have its rounded edges clipped.
         foreach (Control action in actions.Controls) action.Margin = new Padding(4);
         actions.ControlAdded += (_, e) =>
         {
             if (e.Control is { } action) action.Margin = new Padding(4);
         };
+
         layout.Controls.Add(copy, 0, 0);
         layout.Controls.Add(actions, 1, 0);
         card.Controls.Add(layout);
@@ -162,28 +307,44 @@ public static class Ui
 
     public static Control DataHost(DataGridView grid)
     {
-        // The one-pixel frame and top inset separate a data table from its toolbar
-        // without introducing a heavy border around every page.
-        var frame = new CardPanel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = Theme.Border };
+        var frame = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(1),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.Border,
+            CornerRadius = 10
+        };
         grid.Margin = Padding.Empty;
         frame.Controls.Add(grid);
-        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 12, 0, 0), BackColor = Theme.Background };
+
+        var host = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 8, 0, 0),
+            BackColor = Color.Transparent
+        };
         host.Controls.Add(frame);
         return host;
     }
+
     public static Label SectionLabel(string text) => new()
     {
         Text = text.ToUpperInvariant(),
         AutoSize = false,
         Height = 28,
         Width = 220,
-        Margin = new Padding(10, 14, 0, 2),
+        Margin = new Padding(12, 16, 0, 4),
         Font = Theme.Font(7.8f, FontStyle.Bold),
         ForeColor = Color.FromArgb(148, 163, 184),
         TextAlign = ContentAlignment.MiddleLeft
     };
-    public static void Error(IWin32Window owner, string message) => MessageBox.Show(owner, message, "Không thể thực hiện", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-    public static void Info(IWin32Window owner, string message) => MessageBox.Show(owner, message, "Studio Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+    public static void Error(IWin32Window owner, string message) =>
+        MessageBox.Show(owner, message, "Không thể thực hiện", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+    public static void Info(IWin32Window owner, string message) =>
+        MessageBox.Show(owner, message, "Studio Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     public static void ExportGrid(DataGridView grid, IWin32Window owner, string defaultName)
     {
@@ -203,17 +364,15 @@ public static class Ui
         if (string.Equals(Path.GetExtension(dialog.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
         {
             ExportCsv(dialog.FileName, grid, visible);
-            Info(owner, "Đã xuất CSV UTF-8. Để mở trực tiếp trong Excel và giữ tiếng Việt/font, hãy chọn định dạng Excel Workbook (*.xlsx).");
+            Info(owner, "Đã xuất CSV UTF-8 thành công.");
             return;
         }
         ExportWorkbook(dialog.FileName, grid, visible);
-        Info(owner, "Đã xuất file Excel Unicode với font Times New Roman.");
+        Info(owner, "Đã xuất file Excel Unicode thành công.");
     }
 
     private static void ExportCsv(string path, DataGridView grid, IReadOnlyList<DataGridViewColumn> visible)
     {
-        // CSV is plain text: it cannot store a font. Keep a UTF-8 BOM for systems
-        // that consume CSV, while the default .xlsx option is for direct Excel use.
         using var writer = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
         var separator = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ListSeparator;
         writer.WriteLine("sep=" + separator);
@@ -278,32 +437,66 @@ public static class Ui
     }
 }
 
-// WinForms TextBox only supports a square native border.  This small composite
-// control gives every list page the same modern search affordance while keeping
-// the existing Text/Clear/KeyDown calling code intact.
 public sealed class SearchInput : UserControl
 {
-    private readonly Label _icon = new() { Text = "⌕", Width = 30, ForeColor = Theme.Muted, Font = Theme.Font(16), TextAlign = ContentAlignment.MiddleCenter };
-    private readonly TextBox _input = new() { BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(240, 242, 245), ForeColor = Theme.Text, Font = Theme.Font(10) };
+    private readonly Label _icon = new()
+    {
+        Text = "⌕",
+        Width = 28,
+        ForeColor = Theme.Muted,
+        Font = Theme.Font(14),
+        TextAlign = ContentAlignment.MiddleCenter,
+        BackColor = Color.Transparent
+    };
+
+    private readonly TextBox _input = new()
+    {
+        BorderStyle = BorderStyle.None,
+        BackColor = Color.FromArgb(248, 250, 252),
+        ForeColor = Theme.Text,
+        Font = Theme.Font(9.8f)
+    };
+
+    private readonly Label _clearBtn = new()
+    {
+        Text = "×",
+        Width = 24,
+        ForeColor = Theme.Muted,
+        Font = Theme.Font(13, FontStyle.Bold),
+        TextAlign = ContentAlignment.MiddleCenter,
+        Cursor = Cursors.Hand,
+        Visible = false,
+        BackColor = Color.Transparent
+    };
 
     public SearchInput(string placeholder)
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
-        BackColor = Color.FromArgb(240, 242, 245);
+        BackColor = Color.FromArgb(248, 250, 252);
         Cursor = Cursors.IBeam;
-        MinimumSize = new Size(180, 42);
-        Height = 42;
+        MinimumSize = new Size(180, 40);
+        Height = 40;
+
         _input.PlaceholderText = placeholder;
-        _input.TextChanged += (_, _) => OnTextChanged(EventArgs.Empty);
+        _input.TextChanged += (_, _) =>
+        {
+            _clearBtn.Visible = !string.IsNullOrEmpty(_input.Text);
+            OnTextChanged(EventArgs.Empty);
+        };
         _input.KeyDown += (_, e) => OnKeyDown(e);
         _input.KeyPress += (_, e) => OnKeyPress(e);
         _input.KeyUp += (_, e) => OnKeyUp(e);
         _input.GotFocus += (_, _) => Invalidate();
         _input.LostFocus += (_, _) => Invalidate();
+
+        _clearBtn.Click += (_, _) => { _input.Clear(); _input.Focus(); };
         Click += (_, _) => _input.Focus();
         _icon.Click += (_, _) => _input.Focus();
+
+        Controls.Add(_clearBtn);
         Controls.Add(_icon);
         Controls.Add(_input);
+
         Resize += (_, _) => LayoutInnerControls();
         LayoutInnerControls();
     }
@@ -320,32 +513,26 @@ public sealed class SearchInput : UserControl
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var bounds = new RectangleF(.5f, .5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
-        using var path = RoundedPath(bounds, 12f);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        var bounds = new RectangleF(0.5f, 0.5f, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+        using var path = Theme.RoundedRectangle(bounds, 9f);
         using var fill = new SolidBrush(BackColor);
         using var pen = new Pen(_input.Focused ? Theme.Primary : Theme.Border, _input.Focused ? 1.5f : 1f);
-        e.Graphics.FillPath(fill, path);
-        e.Graphics.DrawPath(pen, path);
+
+        g.FillPath(fill, path);
+        g.DrawPath(pen, path);
     }
 
-    protected override void OnPaintBackground(PaintEventArgs e) => e.Graphics.Clear(Parent?.BackColor is { A: byte.MaxValue } color ? color : Theme.Background);
+    protected override void OnPaintBackground(PaintEventArgs e) =>
+        e.Graphics.Clear(Parent?.BackColor is { A: byte.MaxValue } color ? color : Theme.Background);
 
     private void LayoutInnerControls()
     {
-        _icon.Bounds = new Rectangle(10, 0, 28, Height);
-        _input.Bounds = new Rectangle(44, Math.Max(0, (Height - _input.PreferredHeight) / 2), Math.Max(1, Width - 56), _input.PreferredHeight);
-    }
-
-    private static GraphicsPath RoundedPath(RectangleF bounds, float radius)
-    {
-        var diameter = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
+        _icon.Bounds = new Rectangle(8, 0, 24, Height);
+        var rightGutter = _clearBtn.Visible ? 28 : 8;
+        _input.Bounds = new Rectangle(36, Math.Max(0, (Height - _input.PreferredHeight) / 2), Math.Max(1, Width - 36 - rightGutter), _input.PreferredHeight);
+        _clearBtn.Bounds = new Rectangle(Width - 28, 0, 24, Height);
     }
 }
