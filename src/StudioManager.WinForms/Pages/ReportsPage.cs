@@ -22,7 +22,7 @@ public sealed class ReportsPage : UserControl
         Font = Theme.Font(9.2f)
     };
 
-    private readonly SegmentedTabBar _presetTabs = new() { Width = 360, Height = 38 };
+    private readonly SegmentedTabBar _presetTabs = new() { Dock = DockStyle.Fill, Height = 38 };
     private readonly FinancialProportionBanner _proportionBanner = new() { Dock = DockStyle.Fill };
     private readonly PackageHorizontalBarChart _packageChart = new() { Dock = DockStyle.Fill };
     private readonly DataGridView _grid = Theme.Grid();
@@ -68,15 +68,14 @@ public sealed class ReportsPage : UserControl
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 5,
+            ColumnCount = 4,
             RowCount = 1,
             BackColor = Theme.Surface
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 368));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 404));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 136));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 134));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
 
         _presetTabs.SetItems([
             new("month", "Tháng này", IconKind.Calendar),

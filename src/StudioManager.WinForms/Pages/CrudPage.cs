@@ -55,6 +55,7 @@ public sealed class CrudPage : UserControl
         BackColor = Theme.Primitives.Alabaster50,
         ForeColor = Theme.TextSecondary,
         Font = Theme.MonoFont(8.6f),
+        ScrollBars = RichTextBoxScrollBars.Vertical,
         WordWrap = true
     };
     private readonly RichTextBox _auditNewBox = new()
@@ -65,10 +66,31 @@ public sealed class CrudPage : UserControl
         BackColor = Theme.Primitives.Alabaster50,
         ForeColor = Theme.Text,
         Font = Theme.MonoFont(8.6f),
+        ScrollBars = RichTextBoxScrollBars.Vertical,
         WordWrap = true
     };
 
+    // Filter controls
+    private readonly ComboBox _statusFilter = FilterBox();
+    private readonly DateTimePicker _auditFrom = new() { Format = DateTimePickerFormat.Short, ShowCheckBox = true, Checked = false, Font = Theme.Font(9.0f) };
+    private readonly DateTimePicker _auditTo = new() { Format = DateTimePickerFormat.Short, ShowCheckBox = true, Checked = false, Font = Theme.Font(9.0f) };
+    private readonly ComboBox _actionFilter = FilterBox();
+    private readonly ComboBox _targetFilter = FilterBox();
+
+    private IReadOnlyList<IDictionary<string, object?>> _allRows = [];
+
     private ModernButton? _detailsButton, _historyButton, _editButton, _stopButton;
+
+    private static readonly Dictionary<string, (string Code, string Name)[]> StatusOptionsByEntity = new()
+    {
+        ["NhanVien"] = [("", "Tất cả trạng thái"), ("DANG_LAM", "Đang làm việc"), ("NGUNG_LAM", "Ngừng làm việc")],
+        ["GoiChup"] = [("", "Tất cả trạng thái"), ("DANG_AP_DUNG", "Đang áp dụng"), ("NGUNG_AP_DUNG", "Ngừng áp dụng")],
+        ["DichVu"] = [("", "Tất cả trạng thái"), ("DANG_CUNG_CAP", "Đang cung cấp"), ("NGUNG_CUNG_CAP", "Ngừng cung cấp")],
+        ["PhongChup"] = [("", "Tất cả trạng thái"), ("HOAT_DONG", "Đang hoạt động"), ("NGUNG_SU_DUNG", "Ngừng sử dụng")],
+        ["TaiNguyen"] = [("", "Tất cả trạng thái"), ("HOAT_DONG", "Đang hoạt động"), ("NGUNG_SU_DUNG", "Ngừng sử dụng")]
+    };
+
+    private static bool SupportsStatusFilter(string entity) => StatusOptionsByEntity.ContainsKey(entity);
 
     public CrudPage(AppFacade app, string title, string entity, bool readOnly = false)
     {
@@ -76,6 +98,54 @@ public sealed class CrudPage : UserControl
         _entity = entity;
         _readOnly = readOnly;
         BackColor = Theme.Background;
+
+        if (SupportsStatusFilter(_entity))
+        {
+            var opts = StatusOptionsByEntity[_entity];
+            _statusFilter.DataSource = opts.Select(x => new FilterOption(0, x.Code, x.Name)).ToList();
+            _statusFilter.DisplayMember = "Name";
+            _statusFilter.SelectedIndexChanged += (_, _) => ApplyFiltersAndBind();
+        }
+
+        if (_entity == "NhatKy")
+        {
+            _actionFilter.DataSource = new[]
+            {
+                new FilterOption(0, "", "Tất cả hành động"),
+                new FilterOption(0, "TAO_LICH", "Tạo lịch chụp"),
+                new FilterOption(0, "SUA_LICH", "Sửa lịch chụp"),
+                new FilterOption(0, "CHUYEN_TIEN_DO", "Chuyển tiến độ"),
+                new FilterOption(0, "HUY_LICH", "Hủy lịch"),
+                new FilterOption(0, "THU_TIEN", "Thu tiền"),
+                new FilterOption(0, "HOAN_TIEN", "Hoàn tiền"),
+                new FilterOption(0, "CAP_NHAT_DICH_VU", "Dịch vụ phát sinh"),
+                new FilterOption(0, "PHAN_CONG", "Phân công tài nguyên"),
+                new FilterOption(0, "DANH_MUC", "Thao tác danh mục"),
+                new FilterOption(0, "TAI_KHOAN", "Quản trị tài khoản"),
+                new FilterOption(0, "SAO_LUU", "Sao lưu / Phục hồi")
+            };
+            _actionFilter.DisplayMember = "Name";
+
+            _targetFilter.DataSource = new[]
+            {
+                new FilterOption(0, "", "Tất cả đối tượng"),
+                new FilterOption(0, "LichChup", "Lịch chụp"),
+                new FilterOption(0, "KhachHang", "Khách hàng"),
+                new FilterOption(0, "NhanVien", "Nhân sự"),
+                new FilterOption(0, "GoiChup", "Gói chụp"),
+                new FilterOption(0, "DichVu", "Dịch vụ"),
+                new FilterOption(0, "PhongChup", "Phòng chụp"),
+                new FilterOption(0, "TaiNguyen", "Tài nguyên"),
+                new FilterOption(0, "TaiKhoan", "Tài khoản"),
+                new FilterOption(0, "Database", "Cơ sở dữ liệu")
+            };
+            _targetFilter.DisplayMember = "Name";
+
+            _auditFrom.ValueChanged += (_, _) => ApplyFiltersAndBind();
+            _auditTo.ValueChanged += (_, _) => ApplyFiltersAndBind();
+            _actionFilter.SelectedIndexChanged += (_, _) => ApplyFiltersAndBind();
+            _targetFilter.SelectedIndexChanged += (_, _) => ApplyFiltersAndBind();
+        }
 
         var toolbar = BuildCommandToolbar();
         var splitWorkbench = BuildMasterDetailDirectory();
@@ -101,6 +171,12 @@ public sealed class CrudPage : UserControl
 
     private Control BuildCommandToolbar()
     {
+        if (_entity == "NhatKy")
+        {
+            return BuildAuditCommandToolbar();
+        }
+
+        var hasStatus = SupportsStatusFilter(_entity);
         var card = new CardPanel
         {
             Dock = DockStyle.Top,
@@ -112,7 +188,7 @@ public sealed class CrudPage : UserControl
             BorderColor = Theme.BorderStrong
         };
 
-        var colCount = _readOnly ? 4 : 5;
+        var colCount = (_readOnly ? 4 : 5) + (hasStatus ? 1 : 0);
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -120,18 +196,18 @@ public sealed class CrudPage : UserControl
             RowCount = 1,
             BackColor = Theme.Surface
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // Search
+        if (hasStatus)
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172)); // Status Filter
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114)); // Find
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114)); // Refresh
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124)); // Export
         if (!_readOnly)
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168)); // Add
 
         _search.Dock = DockStyle.Fill;
         _search.Margin = Padding.Empty;
-        _search.PlaceholderText = _entity == "NhatKy"
-            ? "Tìm theo hành động, tài khoản, mã đối tượng hoặc lý do..."
-            : $"Tìm kiếm nhanh trong {EntityDisplayName(_entity).ToLowerInvariant()}...";
+        _search.PlaceholderText = $"Tìm kiếm nhanh trong {EntityDisplayName(_entity).ToLowerInvariant()}...";
 
         var find = Theme.OutlineButton("Tìm kiếm", Theme.BorderStrong, IconKind.Search);
         find.Dock = DockStyle.Fill;
@@ -141,17 +217,29 @@ public sealed class CrudPage : UserControl
         var refresh = Theme.OutlineButton("Làm mới", Theme.BorderStrong, IconKind.Refresh);
         refresh.Dock = DockStyle.Fill;
         refresh.Margin = new Padding(8, 0, 0, 0);
-        refresh.Click += async (_, _) => { _search.Clear(); await LoadAsync(); };
+        refresh.Click += async (_, _) =>
+        {
+            _search.Clear();
+            if (hasStatus && _statusFilter.Items.Count > 0) _statusFilter.SelectedIndex = 0;
+            await LoadAsync();
+        };
 
         var export = Theme.Button("Xuất Excel", Theme.Excel, IconKind.Download);
         export.Dock = DockStyle.Fill;
         export.Margin = new Padding(8, 0, 0, 0);
         export.Click += (_, _) => Ui.ExportGrid(_grid, this, _entity);
 
-        row.Controls.Add(_search, 0, 0);
-        row.Controls.Add(find, 1, 0);
-        row.Controls.Add(refresh, 2, 0);
-        row.Controls.Add(export, 3, 0);
+        var colIdx = 0;
+        row.Controls.Add(_search, colIdx++, 0);
+        if (hasStatus)
+        {
+            _statusFilter.Dock = DockStyle.Fill;
+            _statusFilter.Margin = new Padding(8, 2, 0, 0);
+            row.Controls.Add(_statusFilter, colIdx++, 0);
+        }
+        row.Controls.Add(find, colIdx++, 0);
+        row.Controls.Add(refresh, colIdx++, 0);
+        row.Controls.Add(export, colIdx++, 0);
 
         if (!_readOnly)
         {
@@ -160,12 +248,137 @@ public sealed class CrudPage : UserControl
             add.Dock = DockStyle.Fill;
             add.Margin = new Padding(8, 0, 0, 0);
             add.Click += async (_, _) => await EditAsync(null);
-            row.Controls.Add(add, 4, 0);
+            row.Controls.Add(add, colIdx, 0);
         }
 
         card.Controls.Add(row);
         return card;
     }
+
+    private Control BuildAuditCommandToolbar()
+    {
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 112,
+            Padding = new Padding(12, 8, 12, 8),
+            Margin = new Padding(0, 0, 0, 10),
+            CornerRadius = 10,
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong
+        };
+
+        var container = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = Color.Transparent
+        };
+        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+
+        // Row 0: Search + Actions
+        var topRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            BackColor = Color.Transparent
+        };
+        topRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        topRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
+        topRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
+        topRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
+
+        _search.Dock = DockStyle.Fill;
+        _search.Margin = Padding.Empty;
+        _search.PlaceholderText = "Tìm theo hành động, tài khoản, mã đối tượng hoặc lý do...";
+
+        var find = Theme.OutlineButton("Tìm kiếm", Theme.BorderStrong, IconKind.Search);
+        find.Dock = DockStyle.Fill;
+        find.Margin = new Padding(8, 0, 0, 0);
+        find.Click += async (_, _) => await LoadAsync();
+
+        var refresh = Theme.OutlineButton("Làm mới", Theme.BorderStrong, IconKind.Refresh);
+        refresh.Dock = DockStyle.Fill;
+        refresh.Margin = new Padding(8, 0, 0, 0);
+        refresh.Click += async (_, _) =>
+        {
+            _search.Clear();
+            _auditFrom.Checked = false;
+            _auditTo.Checked = false;
+            if (_actionFilter.Items.Count > 0) _actionFilter.SelectedIndex = 0;
+            if (_targetFilter.Items.Count > 0) _targetFilter.SelectedIndex = 0;
+            await LoadAsync();
+        };
+
+        var export = Theme.Button("Xuất Excel", Theme.Excel, IconKind.Download);
+        export.Dock = DockStyle.Fill;
+        export.Margin = new Padding(8, 0, 0, 0);
+        export.Click += (_, _) => Ui.ExportGrid(_grid, this, _entity);
+
+        topRow.Controls.Add(_search, 0, 0);
+        topRow.Controls.Add(find, 1, 0);
+        topRow.Controls.Add(refresh, 2, 0);
+        topRow.Controls.Add(export, 3, 0);
+
+        // Row 1: Filter bar
+        var filterRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            AutoScroll = true,
+            Padding = new Padding(0, 4, 0, 0),
+            BackColor = Color.Transparent
+        };
+
+        filterRow.Controls.Add(CompactFilterSlot("TỪ NGÀY", _auditFrom, 134));
+        filterRow.Controls.Add(CompactFilterSlot("ĐẾN NGÀY", _auditTo, 134));
+        filterRow.Controls.Add(CompactFilterSlot("HÀNH ĐỘNG HỆ THỐNG", _actionFilter, 190));
+        filterRow.Controls.Add(CompactFilterSlot("LOẠI ĐỐI TƯỢNG", _targetFilter, 170));
+
+        var clearBtn = Theme.OutlineButton("Xóa lọc", Theme.BorderStrong, IconKind.Refresh);
+        clearBtn.Height = 28;
+        clearBtn.Width = 92;
+        clearBtn.Margin = new Padding(4, 14, 0, 0);
+        clearBtn.Font = Theme.Font(8.4f);
+        clearBtn.Click += (_, _) =>
+        {
+            _auditFrom.Checked = false;
+            _auditTo.Checked = false;
+            if (_actionFilter.Items.Count > 0) _actionFilter.SelectedIndex = 0;
+            if (_targetFilter.Items.Count > 0) _targetFilter.SelectedIndex = 0;
+            ApplyFiltersAndBind();
+        };
+        filterRow.Controls.Add(clearBtn);
+
+        container.Controls.Add(topRow, 0, 0);
+        container.Controls.Add(filterRow, 0, 1);
+        card.Controls.Add(container);
+        return card;
+    }
+
+    private static Panel CompactFilterSlot(string label, Control input, int width = 150)
+    {
+        var p = new Panel { Width = width, Height = 42, Margin = new Padding(0, 0, 10, 0), BackColor = Color.Transparent };
+        var lbl = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 14,
+            Text = label,
+            Font = Theme.MonoFont(7.0f, FontStyle.Bold),
+            ForeColor = Theme.Muted
+        };
+        input.Dock = DockStyle.Bottom;
+        input.Height = 26;
+        p.Controls.Add(input);
+        p.Controls.Add(lbl);
+        return p;
+    }
+
+    private static ComboBox FilterBox() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.0f) };
+    private sealed record FilterOption(int Id, string Code, string Name);
 
     private Control BuildMasterDetailDirectory()
     {
@@ -239,7 +452,7 @@ public sealed class CrudPage : UserControl
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 52,
+            Height = 70,
             BackColor = Color.Transparent
         };
         var overline = new Label
@@ -266,11 +479,12 @@ public sealed class CrudPage : UserControl
         {
             var diffSplit = new TableLayoutPanel
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 240,
                 ColumnCount = 1,
                 RowCount = 2,
                 BackColor = Color.Transparent,
-                Padding = new Padding(0, 8, 0, 0)
+                Padding = new Padding(0, 4, 0, 0)
             };
             diffSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
             diffSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
@@ -278,8 +492,8 @@ public sealed class CrudPage : UserControl
             diffSplit.Controls.Add(CreateDiffBox("GIÁ TRỊ CŨ (TRƯỚC KHI SỬA)", _auditOldBox, Theme.Warning), 0, 0);
             diffSplit.Controls.Add(CreateDiffBox("GIÁ TRỊ MỚI (SAU KHI SỬA)", _auditNewBox, Theme.Success), 0, 1);
 
-            body.Controls.Add(diffSplit);
             _dossierFields.Height = 144;
+            body.Controls.Add(diffSplit);
             body.Controls.Add(_dossierFields);
         }
         else
@@ -477,21 +691,8 @@ public sealed class CrudPage : UserControl
     {
         try
         {
-            var rows = await _app.Administration.QueryGridAsync(_entity, string.IsNullOrWhiteSpace(_search.Text) ? null : _search.Text.Trim(), _app.Session!);
-            _countBadge.Text = $"{rows.Count} bản ghi";
-
-            var table = new BindingList<RowView>(rows.Select(x => new RowView(x)).ToList());
-            _grid.DataSource = table;
-            if (_grid.Columns.Contains("Data")) _grid.Columns["Data"].Visible = false;
-            BuildColumns(rows);
-
-            if (_grid.Rows.Count > 0)
-            {
-                _grid.Rows[0].Selected = true;
-                var firstCol = _grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => c.Visible);
-                if (firstCol is not null) _grid.CurrentCell = _grid.Rows[0].Cells[firstCol.Index];
-            }
-            UpdateInspectorAndActionState();
+            _allRows = await _app.Administration.QueryGridAsync(_entity, string.IsNullOrWhiteSpace(_search.Text) ? null : _search.Text.Trim(), _app.Session!);
+            ApplyFiltersAndBind();
         }
         catch (Exception ex)
         {
@@ -499,10 +700,101 @@ public sealed class CrudPage : UserControl
         }
     }
 
+    private void ApplyFiltersAndBind()
+    {
+        IEnumerable<IDictionary<string, object?>> filtered = _allRows;
+
+        // 1. Catalog status filter
+        if (SupportsStatusFilter(_entity) && _statusFilter.SelectedItem is FilterOption sOpt && !string.IsNullOrEmpty(sOpt.Code))
+        {
+            filtered = filtered.Where(r =>
+            {
+                if (!r.TryGetValue("Trạng thái", out var v) || v is null) return false;
+                var str = v.ToString()!;
+                return string.Equals(str, sOpt.Code, StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(str, sOpt.Name, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        // 2. Audit Log filters (when _entity == "NhatKy")
+        if (_entity == "NhatKy")
+        {
+            if (_auditFrom.Checked)
+            {
+                var fromDate = _auditFrom.Value.Date;
+                filtered = filtered.Where(r =>
+                {
+                    if (!r.TryGetValue("Thời điểm", out var v) || v is null) return false;
+                    return (v is DateTime dt ? dt : DateTime.TryParse(v.ToString(), out var p) ? p : DateTime.MinValue) >= fromDate;
+                });
+            }
+
+            if (_auditTo.Checked)
+            {
+                var toDate = _auditTo.Value.Date.AddDays(1);
+                filtered = filtered.Where(r =>
+                {
+                    if (!r.TryGetValue("Thời điểm", out var v) || v is null) return false;
+                    return (v is DateTime dt ? dt : DateTime.TryParse(v.ToString(), out var p) ? p : DateTime.MaxValue) < toDate;
+                });
+            }
+
+            if (_actionFilter.SelectedItem is FilterOption aOpt && !string.IsNullOrEmpty(aOpt.Code))
+            {
+                filtered = filtered.Where(r =>
+                {
+                    if (!r.TryGetValue("Hành động", out var v) || v is null) return false;
+                    return v.ToString()!.Contains(aOpt.Code, StringComparison.OrdinalIgnoreCase);
+                });
+            }
+
+            if (_targetFilter.SelectedItem is FilterOption tOpt && !string.IsNullOrEmpty(tOpt.Code))
+            {
+                filtered = filtered.Where(r =>
+                {
+                    if (!r.TryGetValue("Đối tượng", out var v) || v is null) return false;
+                    return string.Equals(v.ToString(), tOpt.Code, StringComparison.OrdinalIgnoreCase);
+                });
+            }
+        }
+
+        var list = filtered.ToList();
+        _countBadge.Text = list.Count == _allRows.Count
+            ? $"{list.Count} bản ghi"
+            : $"{list.Count} / {_allRows.Count} bản ghi";
+
+        BuildColumns(list);
+
+        if (_grid.Rows.Count > 0)
+        {
+            _grid.Rows[0].Selected = true;
+            var firstCol = _grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => c.Visible);
+            if (firstCol is not null) _grid.CurrentCell = _grid.Rows[0].Cells[firstCol.Index];
+        }
+        UpdateInspectorAndActionState();
+    }
+
     private void BuildColumns(IReadOnlyList<IDictionary<string, object?>> rows)
     {
-        if (rows.Count == 0) return;
         _grid.DataSource = null;
+        if (rows.Count == 0)
+        {
+            if (_allRows.Count > 0)
+            {
+                var emptyDt = new System.Data.DataTable();
+                foreach (var key in _allRows[0].Keys) emptyDt.Columns.Add(key, typeof(object));
+                _grid.DataSource = emptyDt;
+                if (_grid.Columns.Contains("Id")) _grid.Columns["Id"].Visible = false;
+                if (_entity == "TaiNguyen" && _grid.Columns.Contains("Dịch vụ thuê ID")) _grid.Columns["Dịch vụ thuê ID"].Visible = false;
+                if (_entity == "NhatKy")
+                {
+                    if (_grid.Columns.Contains("Giá trị cũ")) _grid.Columns["Giá trị cũ"].Visible = false;
+                    if (_grid.Columns.Contains("Giá trị mới")) _grid.Columns["Giá trị mới"].Visible = false;
+                }
+            }
+            return;
+        }
+
         var dt = new System.Data.DataTable();
         foreach (var key in rows[0].Keys) dt.Columns.Add(key, typeof(object));
         foreach (var r in rows)

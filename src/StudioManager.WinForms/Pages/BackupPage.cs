@@ -208,6 +208,7 @@ public sealed class BackupPage : UserControl
         _history.Margin = Padding.Empty;
         historyCard.Controls.Add(Ui.DataHost(_history));
         historyCard.Controls.Add(topBar);
+        topBar.BringToFront();
         return historyCard;
     }
 

@@ -99,6 +99,11 @@ public sealed class MainForm : Form
         Controls.Add(topHeader);
         Controls.Add(_rail);
 
+        _rail.BringToFront();
+        topHeader.BringToFront();
+        _subNavHost.BringToFront();
+        _content.SendToBack();
+
         KeyDown += OnMainFormKeyDown;
         Shown += (_, _) =>
         {

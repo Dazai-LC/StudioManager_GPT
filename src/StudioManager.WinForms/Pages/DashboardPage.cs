@@ -74,6 +74,7 @@ public sealed class DashboardPage : UserControl
         Controls.Add(rootSplit);
         Controls.Add(_skeleton);
         _skeleton.BringToFront();
+        _skeleton.BringToFront();
 
         ConfigureRecentGridStyling();
         _callSheetList.ClientSizeChanged += (_, _) => FitCallSheetCards();
@@ -512,8 +513,20 @@ internal sealed class StudioPulseRibbon : CardPanel
             TextRenderer.DrawText(g, item.Label, lblFont, new Rectangle((int)textX, 13, maxTextW, 16),
                 Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
-            TextRenderer.DrawText(g, item.Value, valFont, new Rectangle((int)textX, 30, maxTextW, 28),
-                Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            // Responsive font scaling to prevent currency / metric value truncation (P2-05 / VD05)
+            var currentFontSize = 15.5f;
+            while (currentFontSize > 9.0f)
+            {
+                using var testFont = Theme.Font(currentFontSize, FontStyle.Bold);
+                if (TextRenderer.MeasureText(g, item.Value, testFont).Width <= maxTextW)
+                    break;
+                currentFontSize -= 1.0f;
+            }
+            using (var itemValFont = Theme.Font(currentFontSize, FontStyle.Bold))
+            {
+                TextRenderer.DrawText(g, item.Value, itemValFont, new Rectangle((int)textX, 30, maxTextW, 28),
+                    Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            }
 
             TextRenderer.DrawText(g, item.Subtitle, subFont, new Rectangle((int)textX, 60, maxTextW, 16),
                 item.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);

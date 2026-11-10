@@ -306,7 +306,7 @@ public sealed class BookingsPage : UserControl
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 48,
+            Height = 70,
             BackColor = Color.Transparent
         };
         var overline = new Label
@@ -332,21 +332,48 @@ public sealed class BookingsPage : UserControl
         scrollBody.Controls.Add(_dossierFields);
         scrollBody.Controls.Add(_stageTrack);
 
-        // Action Console at bottom of Inspector
-        var actionConsole = new TableLayoutPanel
+        var isAdmin = _app.Session!.VaiTro == VaiTro.QuanTriVien;
+
+        // Action Console at bottom of Inspector (Reflow: Row 0 has 3 buttons, Row 1 has 3 for Admin or 2 for Staff)
+        var actionConsole = new Panel
         {
             Dock = DockStyle.Bottom,
             Height = 92,
-            ColumnCount = 3,
-            RowCount = 2,
             BackColor = Color.Transparent,
             Padding = new Padding(0, 6, 0, 0)
         };
-        actionConsole.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34f));
-        actionConsole.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
-        actionConsole.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
-        actionConsole.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
-        actionConsole.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+
+        var row0 = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 42,
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = Color.Transparent
+        };
+        row0.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34f));
+        row0.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+        row0.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+
+        var row1 = new TableLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 42,
+            ColumnCount = isAdmin ? 3 : 2,
+            RowCount = 1,
+            BackColor = Color.Transparent
+        };
+        if (isAdmin)
+        {
+            row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34f));
+            row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+            row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+        }
+        else
+        {
+            row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        }
 
         _progress = Theme.Button("Bước tiếp", Theme.Primary, IconKind.Check);
         _progress.Dock = DockStyle.Fill;
@@ -371,7 +398,7 @@ public sealed class BookingsPage : UserControl
         _refund = Theme.Button("Hoàn tiền", Theme.Warning, IconKind.Wallet);
         _refund.Dock = DockStyle.Fill;
         _refund.Margin = new Padding(2, 2, 2, 2);
-        _refund.Visible = _app.Session!.VaiTro == VaiTro.QuanTriVien;
+        _refund.Visible = isAdmin;
         _refund.Click += async (_, _) => await PaymentAsync(true);
 
         _cancel = Theme.Button("Hủy lịch", Theme.Danger, IconKind.Trash);
@@ -379,12 +406,24 @@ public sealed class BookingsPage : UserControl
         _cancel.Margin = new Padding(4, 2, 0, 2);
         _cancel.Click += async (_, _) => await CancelAsync();
 
-        actionConsole.Controls.Add(_progress, 0, 0);
-        actionConsole.Controls.Add(_detail, 1, 0);
-        actionConsole.Controls.Add(_edit, 2, 0);
-        actionConsole.Controls.Add(_pay, 0, 1);
-        actionConsole.Controls.Add(_refund, 1, 1);
-        actionConsole.Controls.Add(_cancel, 2, 1);
+        row0.Controls.Add(_progress, 0, 0);
+        row0.Controls.Add(_detail, 1, 0);
+        row0.Controls.Add(_edit, 2, 0);
+
+        if (isAdmin)
+        {
+            row1.Controls.Add(_pay, 0, 0);
+            row1.Controls.Add(_refund, 1, 0);
+            row1.Controls.Add(_cancel, 2, 0);
+        }
+        else
+        {
+            row1.Controls.Add(_pay, 0, 0);
+            row1.Controls.Add(_cancel, 1, 0);
+        }
+
+        actionConsole.Controls.Add(row1);
+        actionConsole.Controls.Add(row0);
 
         card.Controls.Add(scrollBody);
         card.Controls.Add(header);
@@ -527,8 +566,11 @@ public sealed class BookingsPage : UserControl
         var b = Selected();
         var hasSelection = b is not null;
 
+        var isAdmin = _app.Session!.VaiTro == VaiTro.QuanTriVien;
         _detail.Enabled = hasSelection;
-        _edit.Enabled = b is not null && b.TrangThai is not TrangThaiLich.HoanThanh and not TrangThaiLich.DaHuy;
+        _edit.Enabled = b is not null && (isAdmin
+            ? b.TrangThai is not TrangThaiLich.HoanThanh and not TrangThaiLich.DaHuy
+            : b.TrangThai == TrangThaiLich.DaDatLich);
         _progress.Enabled = b is not null && b.TrangThai.BuocTiepTheo() is not null;
         _pay.Enabled = b is not null && b.TrangThai != TrangThaiLich.DaHuy && b.ConLai > 0;
         _refund.Enabled = _refund.Visible && b is not null && b.TrangThai == TrangThaiLich.DaHuy && b.DaThu - b.DaHoan > 0;
@@ -904,6 +946,7 @@ internal sealed class BookingDetailDialog : Form
     private Control _servicesPanel = null!;
     private Control _resourcesPanel = null!;
     private Control _paymentsPanel = null!;
+    private ModernButton _reprintReceiptBtn = null!;
 
     public BookingDetailDialog(AppFacade app, LichChup booking)
     {
@@ -970,6 +1013,12 @@ internal sealed class BookingDetailDialog : Form
         layout.Controls.Add(bottomWrap, 0, 1);
         Controls.Add(layout);
 
+        _payments.SelectionChanged += (_, _) => UpdateReprintState();
+        _payments.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0) OpenHistoricalReceipt();
+        };
+
         SwitchDetailSection("services");
         UpdateSummary();
         Load += async (_, _) => await ReloadAsync();
@@ -1033,7 +1082,18 @@ internal sealed class BookingDetailDialog : Form
     private Control BuildPaymentsPanel()
     {
         var p = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
-        p.Controls.Add(Ui.DataHost(_payments));
+        var bar = DetailToolbar();
+
+        _reprintReceiptBtn = Theme.OutlineButton("Xem / In lại biên nhận", Theme.BorderStrong, IconKind.Printer);
+        _reprintReceiptBtn.Enabled = false;
+        _reprintReceiptBtn.Click += (_, _) => OpenHistoricalReceipt();
+
+        bar.Controls.Add(_reprintReceiptBtn);
+
+        var dataHost = Ui.DataHost(_payments);
+        p.Controls.Add(dataHost);
+        p.Controls.Add(bar);
+        bar.BringToFront();
         return p;
     }
 
@@ -1056,6 +1116,7 @@ internal sealed class BookingDetailDialog : Form
         var thu = await _app.BookingSupport.GetChildrenAsync(_booking.Id, "ThanhToan");
         var hoan = await _app.BookingSupport.GetChildrenAsync(_booking.Id, "HoanTien");
         Bind(_payments, thu.Select(x => TransactionRow(x, false)).Concat(hoan.Select(x => TransactionRow(x, true))).Cast<IDictionary<string, object?>>().ToList());
+        UpdateReprintState();
     }
 
     private static Dictionary<string, object?> TransactionRow(IDictionary<string, object?> row, bool refund)
@@ -1076,7 +1137,8 @@ internal sealed class BookingDetailDialog : Form
             ["Loại"] = type,
             ["Số tiền"] = row.TryGetValue("Số tiền", out var amount) ? amount : null,
             ["Ngày"] = row.TryGetValue("Ngày", out var date) ? date : null,
-            ["Ghi chú"] = note
+            ["Ghi chú"] = note,
+            ["IsRefund"] = refund
         };
     }
 
@@ -1095,11 +1157,87 @@ internal sealed class BookingDetailDialog : Form
         }
         grid.DataSource = dt;
         if (grid.Columns.Contains("Id")) grid.Columns["Id"].Visible = false;
+        if (grid.Columns.Contains("IsRefund")) grid.Columns["IsRefund"].Visible = false;
         if (grid.Columns.Contains("Số tiền"))
         {
             grid.Columns["Số tiền"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             grid.Columns["Số tiền"].DefaultCellStyle.Format = "N0";
         }
+        if (grid.Columns.Contains("Ngày"))
+        {
+            grid.Columns["Ngày"].DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+        }
+    }
+
+    private void UpdateReprintState()
+    {
+        if (_reprintReceiptBtn is null) return;
+        var row = _payments.CurrentRow;
+        if (row is null || row.Index < 0)
+        {
+            _reprintReceiptBtn.Enabled = false;
+            return;
+        }
+
+        var isRefund = IsRefundRow(row);
+        if (isRefund && _app.Session!.VaiTro != VaiTro.QuanTriVien)
+        {
+            _reprintReceiptBtn.Enabled = false;
+            return;
+        }
+
+        _reprintReceiptBtn.Enabled = true;
+    }
+
+    private static bool IsRefundRow(DataGridViewRow row)
+    {
+        if (row.Cells["IsRefund"].Value is bool b) return b;
+        var type = row.Cells["Loại"].Value?.ToString() ?? "";
+        return string.Equals(type, "Hoàn tiền", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OpenHistoricalReceipt()
+    {
+        var row = _payments.CurrentRow;
+        if (row is null || row.Index < 0)
+        {
+            Ui.Error(this, "Vui lòng chọn một dòng giao dịch trong bảng lịch sử.");
+            return;
+        }
+
+        var isRefund = IsRefundRow(row);
+        if (isRefund && _app.Session!.VaiTro != VaiTro.QuanTriVien)
+        {
+            Ui.Error(this, "Chỉ Quản trị viên mới có quyền xem hoặc in lại phiếu hoàn tiền.");
+            return;
+        }
+
+        var code = row.Cells["Mã"].Value?.ToString() ?? "[Chưa cấp mã]";
+        var type = row.Cells["Loại"].Value?.ToString() ?? (isRefund ? "Hoàn tiền" : "Thanh toán");
+        var amountVal = row.Cells["Số tiền"].Value;
+        var amount = 0m;
+        if (amountVal is decimal d) amount = d;
+        else if (amountVal is not null) decimal.TryParse(amountVal.ToString(), out amount);
+
+        DateTime? date = null;
+        var dateVal = row.Cells["Ngày"].Value;
+        if (dateVal is DateTime dt) date = dt;
+        else if (dateVal is not null && DateTime.TryParse(dateVal.ToString(), out var parsedDate)) date = parsedDate;
+
+        var note = row.Cells["Ghi chú"].Value?.ToString() ?? "";
+
+        using var receipt = new ReceiptPreviewForm(
+            _booking,
+            amount,
+            isRefund,
+            "[Không có trong dữ liệu lịch sử]",
+            note,
+            transactionCode: code,
+            transactionType: type,
+            transactionDate: date,
+            isReprint: true);
+
+        receipt.ShowDialog(this);
     }
 
     private async Task AddServiceAsync()
@@ -1316,6 +1454,7 @@ internal sealed class BookingDialog : Form
     private readonly DateTimePicker _start = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy HH:mm", ShowUpDown = true, Font = Theme.Font(9.5f) };
     private readonly DateTimePicker _end = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy HH:mm", ShowUpDown = true, Font = Theme.Font(9.5f) };
     private readonly TextBox _note = new() { Font = Theme.Font(9.5f) };
+    private ModernButton _addCustomer = null!;
 
     public BookingInput? Input { get; private set; }
 
@@ -1325,7 +1464,7 @@ internal sealed class BookingDialog : Form
         _existing = existing;
         Text = existing is null ? "Khởi tạo Lịch chụp mới • StudioManager" : $"Hiệu chỉnh Lịch chụp #{existing.Ma} • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(700, 540);
+        ClientSize = new Size(720, 540);
         BackColor = Theme.Background;
         Font = Theme.Font();
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -1359,14 +1498,49 @@ internal sealed class BookingDialog : Form
             BackColor = Color.Transparent
         };
 
+        var customerHost = new TableLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 36,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        customerHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        customerHost.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 138f));
+
+        _customer.Dock = DockStyle.Fill;
+        _customer.Margin = new Padding(0, 0, 6, 0);
+
+        _addCustomer = Theme.OutlineButton("Thêm khách hàng", Theme.Primary, IconKind.Plus);
+        _addCustomer.Dock = DockStyle.Fill;
+        _addCustomer.Margin = Padding.Empty;
+        _addCustomer.Font = Theme.Font(8.6f, FontStyle.Bold);
+        _addCustomer.Click += async (_, _) => await QuickCreateCustomerAsync();
+
+        customerHost.Controls.Add(_customer, 0, 0);
+        customerHost.Controls.Add(_addCustomer, 1, 0);
+
+        var customerField = new Panel
+        {
+            Width = 310,
+            Height = 64,
+            Margin = new Padding(0, 0, 14, 8),
+            BackColor = Color.Transparent
+        };
+        customerField.Controls.Add(customerHost);
+        customerField.Controls.Add(Ui.FieldLabel("KHÁCH HÀNG *"));
+
         body.Controls.AddRange([
-            Ui.Field("KHÁCH HÀNG *", _customer, 300),
-            Ui.Field("GÓI CHỤP STUDIO *", _package, 300),
-            Ui.Field("THỜI GIAN BẮT ĐẦU *", _start, 300),
-            Ui.Field("THỜI GIAN KẾT THÚC *", _end, 300),
-            Ui.Field("NHIẾP ẢNH GIA PHỤ TRÁCH *", _photographer, 300),
-            Ui.Field("KHÔNG GIAN PHÒNG CHỤP *", _room, 300),
-            Ui.Field("GHI CHÚ CONCEPT / YÊU CẦU ĐẶC BIỆT", _note, 614)
+            customerField,
+            Ui.Field("GÓI CHỤP STUDIO *", _package, 310),
+            Ui.Field("THỜI GIAN BẮT ĐẦU *", _start, 310),
+            Ui.Field("THỜI GIAN KẾT THÚC *", _end, 310),
+            Ui.Field("NHIẾP ẢNH GIA PHỤ TRÁCH *", _photographer, 310),
+            Ui.Field("KHÔNG GIAN PHÒNG CHỤP *", _room, 310),
+            Ui.Field("GHI CHÚ CONCEPT / YÊU CẦU ĐẶC BIỆT", _note, 634)
         ]);
 
         var footer = new FlowLayoutPanel
@@ -1398,6 +1572,47 @@ internal sealed class BookingDialog : Form
 
         Load += async (_, _) => await LoadLookupsAsync();
         AcceptButton = save;
+    }
+
+    private async Task QuickCreateCustomerAsync()
+    {
+        if (_addCustomer.Enabled == false) return;
+
+        var previousIds = (_customer.DataSource as IEnumerable<LookupView>)?.Select(x => x.Id).ToHashSet()
+            ?? new HashSet<long>();
+
+        using var dialog = new SimpleEditDialog("KhachHang", null, null);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            _addCustomer.Enabled = false;
+            var result = await _app.Administration.SaveAsync("KhachHang", null, dialog.Values, _app.Session!);
+            if (!result.Success)
+            {
+                Ui.Error(this, result.Message);
+                return;
+            }
+
+            Ui.Info(this, "Đã khởi tạo hồ sơ khách hàng thành công.");
+
+            var updatedLookups = await _app.BookingSupport.GetLookupsAsync("KhachHang");
+            Bind(_customer, updatedLookups);
+
+            var newlyAdded = updatedLookups.FirstOrDefault(x => !previousIds.Contains(x.Id));
+            if (newlyAdded is not null)
+            {
+                _customer.SelectedValue = newlyAdded.Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Ui.Error(this, ex.Message);
+        }
+        finally
+        {
+            _addCustomer.Enabled = true;
+        }
     }
 
     private async Task LoadLookupsAsync()
@@ -1611,39 +1826,75 @@ internal sealed class ReceiptPreviewForm : Form
     };
     private readonly System.Drawing.Printing.PrintDocument _document = new();
 
-    public ReceiptPreviewForm(LichChup booking, decimal amount, bool refund, string employee, string note)
+    public ReceiptPreviewForm(
+        LichChup booking,
+        decimal amount,
+        bool refund,
+        string employee,
+        string note,
+        string? transactionCode = null,
+        string? transactionType = null,
+        DateTime? transactionDate = null,
+        bool isReprint = false)
     {
-        Text = refund ? "Phiếu hoàn tiền • StudioManager" : "Biên nhận thanh toán • StudioManager";
+        var titleType = refund ? "Phiếu hoàn tiền" : "Biên nhận thanh toán";
+        Text = isReprint ? $"{titleType} (Bản in lại) • StudioManager" : $"{titleType} • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(680, 680);
         BackColor = Theme.Background;
         Padding = new Padding(20);
         Font = Theme.Font();
 
-        var type = refund ? "PHIẾU HOÀN TIỀN KHÁCH HÀNG" : "BIÊN NHẬN THANH TOÁN DỊCH VỤ";
+        var typeHeader = refund ? "PHIẾU HOÀN TIỀN KHÁCH HÀNG" : "BIÊN NHẬN THANH TOÁN DỊCH VỤ";
+        if (isReprint) typeHeader += " (BẢN IN LẠI)";
         var separator = new string('═', 54);
         var subSep = new string('─', 54);
 
-        _preview.Text =
-            $"{separator}\n" +
-            $"           ATELIER LUMIÈRE • STUDIO MANAGER\n" +
-            $"           {type}\n" +
-            $"{separator}\n\n" +
-            $"Mã lịch chụp   : {booking.Ma}\n" +
-            $"Khách hàng     : {booking.KhachHang}\n" +
-            $"Gói dịch vụ    : {booking.TenGoiChot}\n" +
-            $"Thời điểm GD   : {DateTime.Now:dd/MM/yyyy HH:mm:ss}\n" +
-            $"{subSep}\n" +
-            $"SỐ TIỀN GD     : {amount:N0} VNĐ\n" +
-            $"Tổng dịch vụ   : {booking.TongThanhToan:N0} VNĐ\n" +
-            $"Đã thu lũy kế  : {booking.DaThu:N0} VNĐ\n" +
-            $"Còn lại        : {booking.ConLai:N0} VNĐ\n" +
-            $"{subSep}\n" +
-            $"{(refund ? "Lý do hoàn" : "Ghi chú")}        : {note}\n" +
-            $"Nhân viên lập  : {employee}\n\n" +
-            $"{separator}\n" +
-            $"       Trân trọng cảm ơn quý khách đã đồng hành!\n" +
-            $"{separator}\n";
+        var timeDisplay = (transactionDate ?? DateTime.Now).ToString("dd/MM/yyyy HH:mm:ss");
+        var codeDisplay = !string.IsNullOrWhiteSpace(transactionCode) ? transactionCode : "[Chưa cấp mã]";
+        var transTypeDisplay = !string.IsNullOrWhiteSpace(transactionType) ? transactionType : (refund ? "Hoàn tiền" : "Thanh toán");
+        var noteDisplay = !string.IsNullOrWhiteSpace(note) ? note : "—";
+        var staffDisplay = !string.IsNullOrWhiteSpace(employee) ? employee : "[Không có trong dữ liệu lịch sử]";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(separator);
+        sb.AppendLine("           ATELIER LUMIÈRE • STUDIO MANAGER");
+        sb.AppendLine($"           {typeHeader}");
+        sb.AppendLine(separator);
+        sb.AppendLine();
+        if (isReprint || !string.IsNullOrWhiteSpace(transactionCode))
+        {
+            sb.AppendLine($"Mã giao dịch   : {codeDisplay}");
+        }
+        sb.AppendLine($"Mã lịch chụp   : {booking.Ma}");
+        sb.AppendLine($"Khách hàng     : {booking.KhachHang}");
+        sb.AppendLine($"Gói dịch vụ    : {booking.TenGoiChot}");
+        sb.AppendLine($"Phân loại GD   : {transTypeDisplay}");
+        sb.AppendLine($"Thời điểm GD   : {timeDisplay}");
+        sb.AppendLine(subSep);
+        sb.AppendLine($"SỐ TIỀN GD     : {amount:N0} VNĐ");
+        sb.AppendLine($"Tổng dịch vụ   : {booking.TongThanhToan:N0} VNĐ");
+        if (!isReprint)
+        {
+            sb.AppendLine($"Đã thu lũy kế  : {booking.DaThu:N0} VNĐ");
+            sb.AppendLine($"Còn lại        : {booking.ConLai:N0} VNĐ");
+        }
+        sb.AppendLine(subSep);
+        sb.AppendLine($"{(refund ? "Lý do hoàn" : "Ghi chú")}        : {noteDisplay}");
+        sb.AppendLine($"Nhân viên lập  : {staffDisplay}");
+        sb.AppendLine();
+        sb.AppendLine(separator);
+        if (isReprint)
+        {
+            sb.AppendLine("       Trích xuất từ dữ liệu lịch sử hệ thống");
+        }
+        else
+        {
+            sb.AppendLine("       Trân trọng cảm ơn quý khách đã đồng hành!");
+        }
+        sb.AppendLine(separator);
+
+        _preview.Text = sb.ToString();
 
         var previewCard = new CardPanel
         {

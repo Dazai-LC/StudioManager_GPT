@@ -170,7 +170,7 @@ public sealed class AccountsPage : UserControl
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 52,
+            Height = 70,
             BackColor = Color.Transparent
         };
         var overline = new Label
