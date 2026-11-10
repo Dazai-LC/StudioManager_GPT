@@ -42,6 +42,8 @@ public sealed class AccountsPage : UserControl
 
         Controls.Add(workbench);
         Controls.Add(bar);
+        bar.SendToBack();
+        workbench.BringToFront();
 
         _search.KeyDown += async (_, e) =>
         {
@@ -127,7 +129,7 @@ public sealed class AccountsPage : UserControl
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(0, 6, 0, 0),
+            Padding = new Padding(0, 8, 0, 0),
             BackColor = Color.Transparent
         };
         split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64f));
@@ -170,16 +172,17 @@ public sealed class AccountsPage : UserControl
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 70,
+            Height = 76,
             BackColor = Color.Transparent
         };
         var overline = new Label
         {
             Dock = DockStyle.Top,
-            Height = 14,
+            Height = 18,
             Text = "HỒ SƠ BẢO MẬT & KIỂM SOÁT TRUY CẬP",
             Font = Theme.MonoFont(7.4f, FontStyle.Bold),
-            ForeColor = Theme.Primary
+            ForeColor = Theme.Primary,
+            TextAlign = ContentAlignment.MiddleLeft
         };
         head.Controls.Add(_inspTitle);
         head.Controls.Add(_inspSubtitle);
@@ -188,7 +191,7 @@ public sealed class AccountsPage : UserControl
         var policyCard = new CardPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 62,
+            Height = 72,
             Padding = new Padding(12, 8, 12, 8),
             Margin = new Padding(0, 6, 0, 8),
             CornerRadius = 8,
@@ -207,28 +210,37 @@ public sealed class AccountsPage : UserControl
             TextAlign = ContentAlignment.MiddleLeft
         });
 
-        var actions = new FlowLayoutPanel
+        var actions = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
+            Height = 46,
+            ColumnCount = 3,
+            RowCount = 1,
             Padding = new Padding(0, 6, 0, 0),
             BackColor = Color.Transparent
         };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36f));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32f));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32f));
+        actions.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-        _resetButton = Theme.Button("Đặt lại mật khẩu", Theme.Warning, IconKind.Key);
+        _resetButton = Theme.Button("Đặt lại MK", Theme.Warning, IconKind.Key);
+        _resetButton.Dock = DockStyle.Fill;
+        _resetButton.Margin = new Padding(0, 0, 4, 0);
         _resetButton.Click += async (_, _) => await ResetAsync();
 
+        _lockButton.Dock = DockStyle.Fill;
+        _lockButton.Margin = new Padding(2, 0, 2, 0);
         _lockButton.Click += async (_, _) => await LockAsync();
 
-        _detailButton = Theme.OutlineButton("Bản in chi tiết", Theme.BorderStrong, IconKind.Eye);
+        _detailButton = Theme.OutlineButton("Chi tiết", Theme.BorderStrong, IconKind.Eye);
+        _detailButton.Dock = DockStyle.Fill;
+        _detailButton.Margin = new Padding(4, 0, 0, 0);
         _detailButton.Click += (_, _) => ShowDetails();
 
-        actions.Controls.Add(_resetButton);
-        actions.Controls.Add(_lockButton);
-        actions.Controls.Add(_detailButton);
+        actions.Controls.Add(_resetButton, 0, 0);
+        actions.Controls.Add(_lockButton, 1, 0);
+        actions.Controls.Add(_detailButton, 2, 0);
 
         var body = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(0, 8, 0, 0) };
         body.Controls.Add(_dossierFields);
@@ -237,6 +249,10 @@ public sealed class AccountsPage : UserControl
         card.Controls.Add(head);
         card.Controls.Add(policyCard);
         card.Controls.Add(actions);
+        head.SendToBack();
+        actions.SendToBack();
+        policyCard.SendToBack();
+        body.BringToFront();
         return card;
     }
 
@@ -425,7 +441,7 @@ internal sealed class PasswordPrompt : Form
     {
         Text = "Đặt lại mật khẩu tạm • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(460, 240);
+        ClientSize = new Size(460, 260);
         BackColor = Theme.Background;
         Padding = new Padding(18);
         Font = Theme.Font();
@@ -488,7 +504,7 @@ internal sealed class AccountDialog : Form
     {
         Text = "Khởi tạo tài khoản truy cập • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(500, 440);
+        ClientSize = new Size(500, 470);
         BackColor = Theme.Background;
         Padding = new Padding(18);
         Font = Theme.Font();

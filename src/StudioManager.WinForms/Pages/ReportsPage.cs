@@ -33,21 +33,36 @@ public sealed class ReportsPage : UserControl
         _app = app;
         BackColor = Theme.Background;
 
-        var topBar = BuildTopFilterConsole();
-        var bannerHost = new Panel
+        var root = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
-            Height = 128,
-            Padding = new Padding(0, 0, 0, 10),
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
             BackColor = Color.Transparent
         };
-        bannerHost.Controls.Add(_proportionBanner);
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86f));   // 1. Report Filter & Action Toolbar
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 134f));  // 2. Financial Summary Banner
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));   // 3. Charts & Data Sections
+
+        var topBar = BuildTopFilterConsole();
+        topBar.Dock = DockStyle.Fill;
+        topBar.Margin = new Padding(0, 0, 0, 10);
+
+        _proportionBanner.Dock = DockStyle.Fill;
+        _proportionBanner.Margin = new Padding(0, 0, 0, 12);
 
         var splitAnalytics = BuildBottomAnalyticalSplit();
+        splitAnalytics.Dock = DockStyle.Fill;
+        splitAnalytics.Margin = Padding.Empty;
 
-        Controls.Add(splitAnalytics);
-        Controls.Add(bannerHost);
-        Controls.Add(topBar);
+        root.Controls.Add(topBar, 0, 0);
+        root.Controls.Add(_proportionBanner, 0, 1);
+        root.Controls.Add(splitAnalytics, 0, 2);
+
+        Controls.Add(root);
 
         Load += async (_, _) => await LoadAsync();
     }
@@ -56,8 +71,8 @@ public sealed class ReportsPage : UserControl
     {
         var card = new CardPanel
         {
-            Dock = DockStyle.Top,
-            Height = 68,
+            Dock = DockStyle.Fill,
+            Height = 76,
             Padding = new Padding(14, 8, 14, 8),
             Margin = new Padding(0, 0, 0, 10),
             CornerRadius = 10,
@@ -68,14 +83,18 @@ public sealed class ReportsPage : UserControl
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = 5,
             RowCount = 1,
-            BackColor = Theme.Surface
+            BackColor = Theme.Surface,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 404));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 396));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 324));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 134));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
+        row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         _presetTabs.SetItems([
             new("month", "Tháng này", IconKind.Calendar),
@@ -110,7 +129,7 @@ public sealed class ReportsPage : UserControl
             await LoadAsync();
         };
 
-        var presetHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 7, 0, 0) };
+        var presetHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 8, 0, 8), Margin = Padding.Empty };
         presetHost.Controls.Add(_presetTabs);
 
         var dateRangeFlow = new FlowLayoutPanel
@@ -118,25 +137,29 @@ public sealed class ReportsPage : UserControl
             Dock = DockStyle.Fill,
             WrapContents = false,
             Padding = new Padding(8, 2, 0, 0),
+            Margin = Padding.Empty,
             BackColor = Color.Transparent
         };
         dateRangeFlow.Controls.Add(CompactDateSlot("TỪ NGÀY", _from));
         dateRangeFlow.Controls.Add(CompactDateSlot("ĐẾN NGÀY", _to));
 
+        var spacer = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent, Margin = Padding.Empty };
+
         var runBtn = Theme.Button("Phân tích", Theme.Primary, IconKind.ChartBar);
         runBtn.Dock = DockStyle.Fill;
-        runBtn.Margin = new Padding(6, 7, 0, 7);
+        runBtn.Margin = new Padding(6, 9, 0, 9);
         runBtn.Click += async (_, _) => await LoadAsync();
 
         var exportBtn = Theme.Button("Xuất Excel", Theme.Excel, IconKind.Download);
         exportBtn.Dock = DockStyle.Fill;
-        exportBtn.Margin = new Padding(8, 7, 0, 7);
+        exportBtn.Margin = new Padding(8, 9, 0, 9);
         exportBtn.Click += (_, _) => Ui.ExportGrid(_grid, this, "bao-cao-goi-chup");
 
         row.Controls.Add(presetHost, 0, 0);
         row.Controls.Add(dateRangeFlow, 1, 0);
-        row.Controls.Add(runBtn, 2, 0);
-        row.Controls.Add(exportBtn, 3, 0);
+        row.Controls.Add(spacer, 2, 0);
+        row.Controls.Add(runBtn, 3, 0);
+        row.Controls.Add(exportBtn, 4, 0);
 
         card.Controls.Add(row);
         return card;
@@ -144,14 +167,15 @@ public sealed class ReportsPage : UserControl
 
     private static Control CompactDateSlot(string label, DateTimePicker picker)
     {
-        var panel = new Panel { Width = 148, Height = 46, Margin = new Padding(0, 0, 10, 0), BackColor = Color.Transparent };
+        var panel = new Panel { Width = 148, Height = 54, Margin = new Padding(0, 0, 10, 0), BackColor = Color.Transparent };
         var lbl = new Label
         {
             Dock = DockStyle.Top,
-            Height = 16,
+            Height = 18,
             Text = label,
             Font = Theme.MonoFont(7.4f, FontStyle.Bold),
-            ForeColor = Theme.Muted
+            ForeColor = Theme.Muted,
+            TextAlign = ContentAlignment.MiddleLeft
         };
         picker.Dock = DockStyle.Bottom;
         panel.Controls.Add(picker);
@@ -323,26 +347,49 @@ internal sealed class FinancialProportionBanner : CardPanel
         var slotW = (Width - 32f) / 4f;
         using var divPen = new Pen(Theme.Border, 1f);
         using var lblFont = Theme.MonoFont(7.5f, FontStyle.Bold);
-        using var valFont = Theme.Font(15.0f, FontStyle.Bold);
         using var subFont = Theme.Font(8.0f, FontStyle.Bold);
+
+        var barY = Height - 20f;
+        var lblH = Math.Max(18, lblFont.Height + 2);
+        var subH = Math.Max(18, subFont.Height + 2);
+        const int topY = 10;
+        var subY = Math.Max(topY + lblH + 26, (int)barY - subH - 6);
+        var valY = topY + lblH;
+        var valH = Math.Max(26, subY - valY);
 
         for (var i = 0; i < tiles.Length; i++)
         {
             var t = tiles[i];
             var x = 16f + i * slotW;
-            if (i > 0) g.DrawLine(divPen, x, 14, x, 74);
+            if (i > 0) g.DrawLine(divPen, x, 14, x, barY - 8);
 
-            VectorIcons.Draw(g, t.Icon, new RectangleF(x + 10, 16, 20, 20), t.Accent, 1.85f);
+            VectorIcons.Draw(g, t.Icon, new RectangleF(x + 10, topY + (subY + subH - topY - 22) / 2f, 22, 22), t.Accent, 1.85f);
 
-            var tx = (int)(x + 38);
-            var tw = Math.Max(40, (int)slotW - 46);
-            TextRenderer.DrawText(g, t.Label, lblFont, new Rectangle(tx, 12, tw, 16), Theme.Muted, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-            TextRenderer.DrawText(g, t.Value, valFont, new Rectangle(tx, 28, tw, 26), Theme.Text, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-            TextRenderer.DrawText(g, t.Sub, subFont, new Rectangle(tx, 54, tw, 18), t.Accent, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            var tx = (int)(x + 40);
+            var tw = Math.Max(40, (int)slotW - 48);
+            TextRenderer.DrawText(g, t.Label, lblFont, new Rectangle(tx, topY, tw, lblH),
+                Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+
+            var valPt = 14.8f;
+            while (valPt > 8.6f)
+            {
+                using var testFont = Theme.Font(valPt, FontStyle.Bold);
+                var sz = TextRenderer.MeasureText(g, t.Value, testFont, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                if (sz.Width <= tw && sz.Height <= valH + 2)
+                    break;
+                valPt -= 0.8f;
+            }
+            using (var itemValFont = Theme.Font(valPt, FontStyle.Bold))
+            {
+                TextRenderer.DrawText(g, t.Value, itemValFont, new Rectangle(tx, valY, tw, valH),
+                    Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+
+            TextRenderer.DrawText(g, t.Sub, subFont, new Rectangle(tx, subY, tw, subH),
+                t.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         }
 
         // Bottom Stacked Financial Proportion Bar (Cash vs Debt)
-        var barY = Height - 22f;
         var barW = Math.Max(60f, Width - 32f);
         var trackRect = new RectangleF(16f, barY, barW, 8f);
         using (var tPath = Theme.RoundedRectangle(trackRect, 4f))

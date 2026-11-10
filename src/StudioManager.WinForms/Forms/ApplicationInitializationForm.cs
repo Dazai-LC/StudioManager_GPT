@@ -64,8 +64,9 @@ public sealed class ApplicationInitializationForm : Form
         _app = app;
         Text = "Hiệu chuẩn hệ thống • StudioManager";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(720, 420);
-        MinimumSize = new Size(680, 400);
+        ClientSize = new Size(740, 440);
+        MinimumSize = new Size(700, 410);
+        AutoScaleMode = AutoScaleMode.Dpi;
         MaximizeBox = false;
         MinimizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -85,7 +86,7 @@ public sealed class ApplicationInitializationForm : Form
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(36, 28, 36, 24),
+            Padding = new Padding(36, 26, 36, 22),
             Margin = new Padding(18),
             BackColor = Theme.Surface,
             BorderColor = Theme.BorderStrong,
@@ -101,17 +102,18 @@ public sealed class ApplicationInitializationForm : Form
             RowCount = 4,
             BackColor = Theme.Surface
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));  // Top Header Row (Aperture Spinner + Headline)
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));  // Top Header Row (Aperture Spinner + Headline)
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // Horizontal 5-Node Stepper
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));  // Telemetry Status Strip
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));  // Action Row
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));  // Telemetry Status Strip
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));  // Action Row
 
         var topHeader = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
-        var textCol = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16, 4, 0, 0), BackColor = Color.Transparent };
+        var textCol = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16, 2, 0, 0), BackColor = Color.Transparent };
         textCol.Controls.Add(_detail);
         textCol.Controls.Add(_headline);
         _headline.Dock = DockStyle.Top;
-        _headline.Height = 32;
+        _headline.Height = 36;
 
         topHeader.Controls.Add(textCol);
         topHeader.Controls.Add(_spinner);
@@ -166,11 +168,14 @@ public sealed class ApplicationInitializationForm : Form
         _detail.Text = "StudioManager đang chuẩn bị dữ liệu và kiểm tra phân quyền truy cập";
         _stepper.Reset();
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             _stepper.SetStepState(0, StepNodeState.Completed);
             if (_app.Session is null) throw new InvalidOperationException("Phiên đăng nhập không còn hợp lệ.");
 
+            // Smooth async step cadence giving user clear visual feedback
+            await Task.Delay(130, ct);
             _stepper.SetStepState(1, StepNodeState.Completed);
             _ = _app.Session.VaiTro switch
             {
@@ -179,6 +184,7 @@ public sealed class ApplicationInitializationForm : Form
                 _ => throw new UnauthorizedAccessException("Vai trò tài khoản không hợp lệ.")
             };
 
+            await Task.Delay(130, ct);
             _stepper.SetStepState(2, StepNodeState.Completed);
             _stepper.SetStepState(3, StepNodeState.Active);
             _detail.Text = "Đang nạp dữ liệu lịch chụp, doanh thu và chỉ số vận hành studio...";
@@ -190,6 +196,13 @@ public sealed class ApplicationInitializationForm : Form
             _headline.Text = "Không gian làm việc đã sẵn sàng";
             _detail.Text = "Đang mở bàn điều khiển trung tâm...";
             _spinner.Running = false;
+
+            // Maintain gentle ~900-1100ms hold when local database responds unusually fast
+            var elapsed = sw.ElapsedMilliseconds;
+            if (elapsed < 950)
+            {
+                await Task.Delay((int)(950 - elapsed), ct);
+            }
 
             DialogResult = DialogResult.OK;
             Close();

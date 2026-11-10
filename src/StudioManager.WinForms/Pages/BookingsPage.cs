@@ -38,9 +38,9 @@ public sealed class BookingsPage : UserControl
         ForeColor = Theme.Muted,
         TextAlign = ContentAlignment.MiddleLeft
     };
-    private readonly BookingStageTrackControl _stageTrack = new() { Dock = DockStyle.Top, Height = 50 };
+    private readonly BookingStageTrackControl _stageTrack = new() { Dock = DockStyle.Top, Height = 54 };
     private readonly DossierFieldList _dossierFields = new() { Dock = DockStyle.Top, Height = 212 };
-    private readonly BookingFinancialGaugeControl _finGauge = new() { Dock = DockStyle.Top, Height = 96 };
+    private readonly BookingFinancialGaugeControl _finGauge = new() { Dock = DockStyle.Top, Height = 104 };
 
     private ModernButton _edit = null!;
     private ModernButton _detail = null!;
@@ -51,6 +51,7 @@ public sealed class BookingsPage : UserControl
 
     private IReadOnlyList<LichChup> _items = [];
     private bool _suppressStatusSync;
+    private BookingsTopHeaderPanel _topContainer = null!;
 
     public BookingsPage(AppFacade app)
     {
@@ -62,10 +63,11 @@ public sealed class BookingsPage : UserControl
         var ribbonHost = BuildStatusPipelineRibbon();
         var workbench = BuildMasterDetailWorkbench();
 
+        _topContainer = new BookingsTopHeaderPanel(topToolbar, ribbonHost, advancedFilters);
         Controls.Add(workbench);
-        Controls.Add(advancedFilters);
-        Controls.Add(ribbonHost);
-        Controls.Add(topToolbar);
+        Controls.Add(_topContainer);
+        _topContainer.SendToBack();
+        workbench.BringToFront();
 
         ConfigureGridPainting();
         _grid.CellDoubleClick += async (_, _) => await DetailAsync();
@@ -129,6 +131,7 @@ public sealed class BookingsPage : UserControl
         {
             advancedFilters.Visible = !advancedFilters.Visible;
             filterBtn.Text = advancedFilters.Visible ? "Ẩn bộ lọc" : "Bộ lọc sâu";
+            _topContainer.UpdateLayout();
         };
 
         var refresh = Theme.OutlineButton("Làm mới", Theme.BorderStrong, IconKind.Refresh);
@@ -306,16 +309,17 @@ public sealed class BookingsPage : UserControl
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 70,
+            Height = 76,
             BackColor = Color.Transparent
         };
         var overline = new Label
         {
             Dock = DockStyle.Top,
-            Height = 14,
+            Height = 18,
             Text = "HỒ SƠ LỊCH CHỤP & TÀI CHÍNH TRỰC TIẾP",
             Font = Theme.MonoFont(7.4f, FontStyle.Bold),
-            ForeColor = Theme.Primary
+            ForeColor = Theme.Primary,
+            TextAlign = ContentAlignment.MiddleLeft
         };
         header.Controls.Add(_inspCode);
         header.Controls.Add(_inspCustomer);
@@ -338,7 +342,7 @@ public sealed class BookingsPage : UserControl
         var actionConsole = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 92,
+            Height = 96,
             BackColor = Color.Transparent,
             Padding = new Padding(0, 6, 0, 0)
         };
@@ -346,7 +350,7 @@ public sealed class BookingsPage : UserControl
         var row0 = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 42,
+            Height = 44,
             ColumnCount = 3,
             RowCount = 1,
             BackColor = Color.Transparent
@@ -358,7 +362,7 @@ public sealed class BookingsPage : UserControl
         var row1 = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 42,
+            Height = 44,
             ColumnCount = isAdmin ? 3 : 2,
             RowCount = 1,
             BackColor = Color.Transparent
@@ -888,8 +892,8 @@ internal sealed class BookingFinancialGaugeControl : Control
         g.FillPath(bg, path);
         g.DrawPath(border, path);
 
-        using var headFont = Theme.MonoFont(7.6f, FontStyle.Bold);
-        using var totalFont = Theme.Font(12.5f, FontStyle.Bold);
+        using var headFont = Theme.MonoFont(7.5f, FontStyle.Bold);
+        using var totalFont = Theme.Font(11.8f, FontStyle.Bold);
         using var subFont = Theme.Font(8.2f, FontStyle.Bold);
 
         var total = _booking?.TongThanhToan ?? 0m;
@@ -897,18 +901,26 @@ internal sealed class BookingFinancialGaugeControl : Control
         var remain = _booking?.ConLai ?? 0m;
         var ratio = total > 0 ? (float)Math.Clamp(netPaid / total, 0m, 1m) : 0f;
 
-        TextRenderer.DrawText(g, "TIẾN ĐỘ THANH TOÁN", headFont, new Rectangle(12, 10, 160, 16),
-            Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        var headH = Math.Max(16, headFont.Height + 2);
+        var midH = Math.Max(24, totalFont.Height + 2);
+        var botH = Math.Max(18, subFont.Height + 2);
 
-        TextRenderer.DrawText(g, $"Tổng: {total:N0} đ", totalFont, new Rectangle(12, 26, Width - 24, 24),
-            Theme.Text, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        TextRenderer.DrawText(g, "TIẾN ĐỘ THANH TOÁN", headFont, new Rectangle(12, 8, Width - 24, headH),
+            Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
-        TextRenderer.DrawText(g, $"Thực thu: {netPaid:N0} đ", subFont, new Rectangle(12, 30, (Width - 24) / 2, 20),
-            Theme.Success, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        var midY = 8 + headH + 1;
+        var halfW = Math.Max(60, (Width - 28) / 2);
+
+        TextRenderer.DrawText(g, $"Thực thu: {netPaid:N0} đ", subFont, new Rectangle(12, midY, halfW, midH),
+            Theme.Success, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+
+        TextRenderer.DrawText(g, $"Tổng: {total:N0} đ", totalFont, new Rectangle(12 + halfW, midY, Width - 24 - halfW, midH),
+            Theme.Text, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
         // Progress Bar
+        var barY = midY + midH + 4;
         var barW = Math.Max(40f, Width - 24f);
-        var trackRect = new RectangleF(12, 56, barW, 8f);
+        var trackRect = new RectangleF(12, barY, barW, 8f);
         using (var tPath = Theme.RoundedRectangle(trackRect, 4f))
         using (var tBrush = new SolidBrush(Theme.Primitives.Alabaster200))
         {
@@ -918,15 +930,15 @@ internal sealed class BookingFinancialGaugeControl : Control
         if (ratio > 0)
         {
             var fillW = Math.Max(8f, barW * ratio);
-            using var fPath = Theme.RoundedRectangle(new RectangleF(12, 56, fillW, 8f), 4f);
+            using var fPath = Theme.RoundedRectangle(new RectangleF(12, barY, fillW, 8f), 4f);
             using var fBrush = new SolidBrush(remain <= 0 ? Theme.Success : Theme.Primary);
             g.FillPath(fBrush, fPath);
         }
 
         var remainStr = remain > 0 ? $"Còn phải thu: {remain:N0} đ" : "Đã thanh toán hoàn tất (0 đ)";
-        TextRenderer.DrawText(g, remainStr, subFont, new Rectangle(12, 68, Width - 24, 18),
+        TextRenderer.DrawText(g, remainStr, subFont, new Rectangle(12, barY + 11, Width - 24, botH),
             remain > 0 ? Theme.Danger : Theme.Success,
-            TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+            TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
     }
 }
 
@@ -940,7 +952,7 @@ internal sealed class BookingDetailDialog : Form
 
     private readonly DossierFieldList _leftSummary = new() { Dock = DockStyle.Fill };
     private readonly DossierFieldList _rightSummary = new() { Dock = DockStyle.Fill };
-    private readonly SegmentedTabBar _sectionTabs = new() { Dock = DockStyle.Top, Height = 40 };
+    private readonly SegmentedTabBar _sectionTabs = new() { Dock = DockStyle.Top, Height = 42 };
     private readonly Panel _tabBodyHost = new() { Dock = DockStyle.Fill, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
 
     private Control _servicesPanel = null!;
@@ -954,8 +966,9 @@ internal sealed class BookingDetailDialog : Form
         _booking = booking;
         Text = $"Hồ sơ điều phối lịch chụp #{booking.Ma} • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(1040, 720);
-        MinimumSize = new Size(920, 660);
+        ClientSize = new Size(1060, 740);
+        MinimumSize = new Size(940, 680);
+        AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Theme.Background;
         Font = Theme.Font();
 
@@ -966,7 +979,8 @@ internal sealed class BookingDetailDialog : Form
             Padding = new Padding(18, 12, 18, 12),
             CornerRadius = 10,
             AccentStripeColor = Theme.Primary,
-            AccentStripeThickness = 4
+            AccentStripeThickness = 4,
+            AutoScroll = true
         };
 
         var summarySplit = new TableLayoutPanel
@@ -998,6 +1012,8 @@ internal sealed class BookingDetailDialog : Form
         var bottomWrap = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
         bottomWrap.Controls.Add(_tabBodyHost);
         bottomWrap.Controls.Add(_sectionTabs);
+        _sectionTabs.SendToBack();
+        _tabBodyHost.BringToFront();
 
         var layout = new TableLayoutPanel
         {
@@ -1006,7 +1022,8 @@ internal sealed class BookingDetailDialog : Form
             RowCount = 2,
             Padding = new Padding(18)
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 204));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 226));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         layout.Controls.Add(summaryCard, 0, 0);
@@ -1054,8 +1071,11 @@ internal sealed class BookingDetailDialog : Form
         bar.Controls.Add(remove);
         bar.Controls.Add(discount);
 
-        p.Controls.Add(Ui.DataHost(_services));
+        var dataHost = Ui.DataHost(_services);
+        p.Controls.Add(dataHost);
         p.Controls.Add(bar);
+        bar.SendToBack();
+        dataHost.BringToFront();
         return p;
     }
 
@@ -1074,8 +1094,11 @@ internal sealed class BookingDetailDialog : Form
         bar.Controls.Add(returned);
         bar.Controls.Add(cancel);
 
-        p.Controls.Add(Ui.DataHost(_resources));
+        var dataHost = Ui.DataHost(_resources);
+        p.Controls.Add(dataHost);
         p.Controls.Add(bar);
+        bar.SendToBack();
+        dataHost.BringToFront();
         return p;
     }
 
@@ -1093,7 +1116,8 @@ internal sealed class BookingDetailDialog : Form
         var dataHost = Ui.DataHost(_payments);
         p.Controls.Add(dataHost);
         p.Controls.Add(bar);
-        bar.BringToFront();
+        bar.SendToBack();
+        dataHost.BringToFront();
         return p;
     }
 
@@ -1336,7 +1360,7 @@ internal sealed class SelectQuantityDialog : Form
     {
         Text = title + " • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(480, 290);
+        ClientSize = new Size(480, 320);
         BackColor = Theme.Background;
         Padding = new Padding(18);
         Font = Theme.Font();
@@ -1393,7 +1417,7 @@ internal sealed class DiscountDialog : Form
     {
         Text = "Thiết lập chiết khấu & giảm giá • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(480, 300);
+        ClientSize = new Size(480, 325);
         BackColor = Theme.Background;
         Padding = new Padding(18);
         Font = Theme.Font();
@@ -1464,7 +1488,9 @@ internal sealed class BookingDialog : Form
         _existing = existing;
         Text = existing is null ? "Khởi tạo Lịch chụp mới • StudioManager" : $"Hiệu chỉnh Lịch chụp #{existing.Ma} • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(720, 540);
+        ClientSize = new Size(760, 560);
+        MinimumSize = new Size(720, 520);
+        AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Theme.Background;
         Font = Theme.Font();
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -1487,21 +1513,29 @@ internal sealed class BookingDialog : Form
             Height = 36,
             Text = existing is null ? "Thiết lập thông tin ca chụp & phân bổ phòng máy" : $"Cập nhật thông tin lịch chụp #{existing.Ma}",
             Font = Theme.Font(12.5f, FontStyle.Bold),
-            ForeColor = Theme.Text
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        var body = new FlowLayoutPanel
+        var body = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 4,
             Padding = new Padding(0, 8, 0, 0),
-            AutoScroll = true,
             BackColor = Color.Transparent
         };
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 76f));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 76f));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 76f));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 76f));
 
         var customerHost = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 36,
+            Height = 38,
             ColumnCount = 2,
             RowCount = 1,
             BackColor = Color.Transparent,
@@ -1509,15 +1543,16 @@ internal sealed class BookingDialog : Form
             Padding = Padding.Empty
         };
         customerHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        customerHost.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 138f));
+        customerHost.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 134f));
+        customerHost.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
         _customer.Dock = DockStyle.Fill;
-        _customer.Margin = new Padding(0, 0, 6, 0);
+        _customer.Margin = new Padding(0, 2, 6, 0);
 
         _addCustomer = Theme.OutlineButton("Thêm khách hàng", Theme.Primary, IconKind.Plus);
         _addCustomer.Dock = DockStyle.Fill;
         _addCustomer.Margin = Padding.Empty;
-        _addCustomer.Font = Theme.Font(8.6f, FontStyle.Bold);
+        _addCustomer.Font = Theme.Font(8.4f, FontStyle.Bold);
         _addCustomer.Click += async (_, _) => await QuickCreateCustomerAsync();
 
         customerHost.Controls.Add(_customer, 0, 0);
@@ -1525,23 +1560,33 @@ internal sealed class BookingDialog : Form
 
         var customerField = new Panel
         {
-            Width = 310,
-            Height = 64,
-            Margin = new Padding(0, 0, 14, 8),
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 8, 8),
             BackColor = Color.Transparent
         };
         customerField.Controls.Add(customerHost);
         customerField.Controls.Add(Ui.FieldLabel("KHÁCH HÀNG *"));
 
-        body.Controls.AddRange([
-            customerField,
-            Ui.Field("GÓI CHỤP STUDIO *", _package, 310),
-            Ui.Field("THỜI GIAN BẮT ĐẦU *", _start, 310),
-            Ui.Field("THỜI GIAN KẾT THÚC *", _end, 310),
-            Ui.Field("NHIẾP ẢNH GIA PHỤ TRÁCH *", _photographer, 310),
-            Ui.Field("KHÔNG GIAN PHÒNG CHỤP *", _room, 310),
-            Ui.Field("GHI CHÚ CONCEPT / YÊU CẦU ĐẶC BIỆT", _note, 634)
-        ]);
+        static Panel CellField(string label, Control input, bool isLeft)
+        {
+            var f = Ui.Field(label, input, 320);
+            f.Dock = DockStyle.Fill;
+            f.Margin = isLeft ? new Padding(0, 0, 8, 8) : new Padding(8, 0, 0, 8);
+            return f;
+        }
+
+        var noteField = Ui.Field("GHI CHÚ CONCEPT / YÊU CẦU ĐẶC BIỆT", _note, 660);
+        noteField.Dock = DockStyle.Fill;
+        noteField.Margin = new Padding(0, 0, 0, 8);
+
+        body.Controls.Add(customerField, 0, 0);
+        body.Controls.Add(CellField("GÓI CHỤP STUDIO *", _package, false), 1, 0);
+        body.Controls.Add(CellField("THỜI GIAN BẮT ĐẦU *", _start, true), 0, 1);
+        body.Controls.Add(CellField("THỜI GIAN KẾT THÚC *", _end, false), 1, 1);
+        body.Controls.Add(CellField("NHIẾP ẢNH GIA PHỤ TRÁCH *", _photographer, true), 0, 2);
+        body.Controls.Add(CellField("KHÔNG GIAN PHÒNG CHỤP *", _room, false), 1, 2);
+        body.Controls.Add(noteField, 0, 3);
+        body.SetColumnSpan(noteField, 2);
 
         var footer = new FlowLayoutPanel
         {
@@ -1564,6 +1609,9 @@ internal sealed class BookingDialog : Form
         card.Controls.Add(body);
         card.Controls.Add(title);
         card.Controls.Add(footer);
+        title.SendToBack();
+        footer.SendToBack();
+        body.BringToFront();
         Controls.Add(card);
 
         _start.Value = existing?.BatDau ?? DateTime.Today.AddDays(1).AddHours(8);
@@ -1738,7 +1786,7 @@ internal sealed class MoneyDialog : Form
     {
         Text = title + " • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(500, 390);
+        ClientSize = new Size(500, 425);
         BackColor = Theme.Background;
         Padding = new Padding(18);
         Font = Theme.Font();
@@ -1939,5 +1987,51 @@ internal sealed class ReceiptPreviewForm : Form
 
         Controls.Add(previewCard);
         Controls.Add(actions);
+    }
+}
+
+internal sealed class BookingsTopHeaderPanel : Panel
+{
+    private readonly Control _toolbar;
+    private readonly Control _ribbon;
+    private readonly Control _advancedFilters;
+
+    public BookingsTopHeaderPanel(Control toolbar, Control ribbon, Control advancedFilters)
+    {
+        _toolbar = toolbar;
+        _ribbon = ribbon;
+        _advancedFilters = advancedFilters;
+        Dock = DockStyle.Top;
+        BackColor = Color.Transparent;
+
+        Controls.Add(_advancedFilters);
+        Controls.Add(_ribbon);
+        Controls.Add(_toolbar);
+        UpdateLayout();
+    }
+
+    public void UpdateLayout()
+    {
+        int w = ClientSize.Width;
+        int y = 0;
+
+        _toolbar.SetBounds(0, y, w, _toolbar.Height);
+        y += _toolbar.Height + 8;
+
+        _ribbon.SetBounds(0, y, w, _ribbon.Height);
+        y += _ribbon.Height + 8;
+
+        if (_advancedFilters.Visible)
+        {
+            _advancedFilters.SetBounds(0, y, w, _advancedFilters.Height);
+            y += _advancedFilters.Height + 8;
+        }
+
+        Height = y;
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        UpdateLayout();
     }
 }

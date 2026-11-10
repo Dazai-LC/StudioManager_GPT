@@ -257,12 +257,12 @@ public static class Theme
             AutoSize = false,
             Height = 38,
             Font = Font(9.2f, FontStyle.Bold),
-            Padding = new Padding(14, 0, 14, 0),
+            Padding = new Padding(12, 0, 12, 0),
             Margin = new Padding(4),
             TextAlign = ContentAlignment.MiddleCenter,
             AutoEllipsis = false
         };
-        b.MinimumSize = new Size(96, 38);
+        b.MinimumSize = new Size(68, 36);
         b.Width = Math.Max(b.MinimumSize.Width, b.RequiredWidth);
         return b;
     }
@@ -278,9 +278,9 @@ public static class Theme
             Font = Font(9.0f, FontStyle.Bold),
             ForeColor = TextSecondary,
             BorderColor = col,
-            Padding = new Padding(12, 0, 12, 0),
+            Padding = new Padding(10, 0, 10, 0),
             Margin = new Padding(4),
-            MinimumSize = new Size(90, 38)
+            MinimumSize = new Size(68, 36)
         };
         b.Width = Math.Max(b.MinimumSize.Width, b.RequiredWidth);
         return b;
@@ -295,9 +295,9 @@ public static class Theme
             Height = 36,
             Font = Font(9.0f, FontStyle.Bold),
             ForeColor = TextSecondary,
-            Padding = new Padding(10, 0, 10, 0),
+            Padding = new Padding(8, 0, 8, 0),
             Margin = new Padding(2),
-            MinimumSize = new Size(76, 36)
+            MinimumSize = new Size(64, 34)
         };
         b.Width = Math.Max(b.MinimumSize.Width, b.RequiredWidth);
         return b;
@@ -384,7 +384,7 @@ public static class Theme
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             MultiSelect = false,
             Font = Font(9.3f),
-            RowTemplate = { Height = 42 },
+            RowTemplate = { Height = 44 },
             EnableHeadersVisualStyles = false,
             CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
@@ -401,7 +401,7 @@ public static class Theme
             SelectionForeColor = TextSecondary,
             Alignment = DataGridViewContentAlignment.MiddleLeft
         };
-        g.ColumnHeadersHeight = 40;
+        g.ColumnHeadersHeight = 42;
         g.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
         g.DefaultCellStyle = new DataGridViewCellStyle
@@ -772,10 +772,18 @@ public sealed class ModernButton : Control, IButtonControl
     {
         get
         {
-            var iconSpace = _icon != IconKind.None ? 22 : 0;
-            var textWidth = TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-            return Math.Max(88, textWidth + Padding.Horizontal + iconSpace + 24);
+            var iconSpace = _icon != IconKind.None ? (string.IsNullOrEmpty(Text) ? 16 : 22) : 0;
+            var textWidth = string.IsNullOrEmpty(Text)
+                ? 0
+                : TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+            return Math.Max(68, textWidth + iconSpace + 22);
         }
+    }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var reqH = Math.Max(36, Font.Height + 14);
+        return new Size(RequiredWidth, Math.Max(Height, reqH));
     }
 
     protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); EnsureTextFits(); Invalidate(); }
@@ -823,8 +831,8 @@ public sealed class ModernButton : Control, IButtonControl
 
     protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
     {
-        if ((specified & BoundsSpecified.Width) != 0) width = Math.Max(width, RequiredWidth);
-        if ((specified & BoundsSpecified.Height) != 0) height = Math.Max(height, 34);
+        if ((specified & BoundsSpecified.Height) != 0 && Dock is DockStyle.None or DockStyle.Top or DockStyle.Bottom)
+            height = Math.Max(height, 32);
         base.SetBoundsCore(x, y, width, height, specified);
     }
 
@@ -889,33 +897,56 @@ public sealed class ModernButton : Control, IButtonControl
             g.DrawPath(focusPen, path);
         }
 
-        // Measure & center Icon + Text together
-        var textSize = TextRenderer.MeasureText(g, Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         var hasIcon = _icon != IconKind.None;
         const int iconSize = 15;
-        const int iconGap = 7;
-        var totalContentWidth = textSize.Width + (hasIcon ? iconSize + (string.IsNullOrEmpty(Text) ? 0 : iconGap) : 0);
-        var startX = Math.Max(Padding.Left / 2, (Width - totalContentWidth) / 2);
+        const int iconGap = 6;
+        var iconBlockWidth = hasIcon ? iconSize + (string.IsNullOrEmpty(Text) ? 0 : iconGap) : 0;
+
+        Font? scaledFont = null;
+        var activeFont = Font;
+        var textSize = string.IsNullOrEmpty(Text)
+            ? Size.Empty
+            : TextRenderer.MeasureText(g, Text, activeFont, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+
+        var maxAllowedContentWidth = Math.Max(16, Width - 10);
+        if (!string.IsNullOrEmpty(Text) && textSize.Width + iconBlockWidth > maxAllowedContentWidth)
+        {
+            for (var pt = activeFont.Size - 0.4f; pt >= 7.4f; pt -= 0.4f)
+            {
+                scaledFont?.Dispose();
+                scaledFont = new Font(activeFont.FontFamily, pt, activeFont.Style);
+                textSize = TextRenderer.MeasureText(g, Text, scaledFont, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                if (textSize.Width + iconBlockWidth <= maxAllowedContentWidth)
+                    break;
+            }
+            if (scaledFont is not null)
+                activeFont = scaledFont;
+        }
+
+        var totalContentWidth = Math.Min(maxAllowedContentWidth, textSize.Width + iconBlockWidth);
+        var startX = Math.Max(5, (Width - totalContentWidth) / 2);
 
         if (hasIcon)
         {
             var iconRect = new RectangleF(startX, (Height - iconSize) / 2f, iconSize, iconSize);
             VectorIcons.Draw(g, _icon, iconRect, textCol, 1.65f);
-            startX += iconSize + iconGap;
+            startX += iconSize + (string.IsNullOrEmpty(Text) ? 0 : iconGap);
         }
 
         if (!string.IsNullOrEmpty(Text))
         {
-            var textRect = new Rectangle(startX, 0, Math.Max(10, Width - startX - 4), Height);
-            TextRenderer.DrawText(g, Text, Font, textRect, textCol,
+            var textRect = new Rectangle(startX, 0, Math.Max(8, Width - startX - 4), Height);
+            TextRenderer.DrawText(g, Text, activeFont, textRect, textCol,
                 TextFormatFlags.SingleLine | TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         }
+
+        scaledFont?.Dispose();
     }
 
     private void EnsureTextFits()
     {
-        if (Width < RequiredWidth) Width = RequiredWidth;
-        if (Height < 34) Height = 34;
+        if (Dock == DockStyle.None && Width < RequiredWidth) Width = RequiredWidth;
+        if (Dock == DockStyle.None && Height < 34) Height = 34;
     }
 
     public DialogResult DialogResult { get => _dialogResult; set => _dialogResult = value; }

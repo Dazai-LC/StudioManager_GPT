@@ -76,19 +76,21 @@ public sealed class BackupPage : UserControl
         var overline = new Label
         {
             Dock = DockStyle.Top,
-            Height = 18,
+            Height = 20,
             Text = "CHAMBER 01  •  ACTIVE SNAPSHOT VAULT",
             Font = Theme.MonoFont(7.6f, FontStyle.Bold),
-            ForeColor = Theme.Success
+            ForeColor = Theme.Success,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var title = new Label
         {
             Dock = DockStyle.Top,
-            Height = 30,
+            Height = 34,
             Text = "Khởi tạo Bản sao lưu An toàn (.bak)",
-            Font = Theme.Font(12.5f, FontStyle.Bold),
-            ForeColor = Theme.Text
+            Font = Theme.Font(12.2f, FontStyle.Bold),
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var desc = new Label
@@ -109,6 +111,10 @@ public sealed class BackupPage : UserControl
         card.Controls.Add(title);
         card.Controls.Add(overline);
         card.Controls.Add(backupBtn);
+        overline.SendToBack();
+        title.SendToBack();
+        backupBtn.SendToBack();
+        desc.BringToFront();
         return card;
     }
 
@@ -129,19 +135,21 @@ public sealed class BackupPage : UserControl
         var overline = new Label
         {
             Dock = DockStyle.Top,
-            Height = 18,
+            Height = 20,
             Text = "CHAMBER 02  •  PROTECTED RECOVERY PROTOCOL (2-STEP)",
             Font = Theme.MonoFont(7.6f, FontStyle.Bold),
-            ForeColor = Theme.Danger
+            ForeColor = Theme.Danger,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var title = new Label
         {
             Dock = DockStyle.Top,
-            Height = 30,
+            Height = 34,
             Text = "Phục hồi Cơ sở dữ liệu từ Bản sao lưu",
-            Font = Theme.Font(12.5f, FontStyle.Bold),
-            ForeColor = Theme.Primitives.Crimson700
+            Font = Theme.Font(12.2f, FontStyle.Bold),
+            ForeColor = Theme.Primitives.Crimson700,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var desc = new Label
@@ -162,6 +170,10 @@ public sealed class BackupPage : UserControl
         card.Controls.Add(title);
         card.Controls.Add(overline);
         card.Controls.Add(restoreBtn);
+        overline.SendToBack();
+        title.SendToBack();
+        restoreBtn.SendToBack();
+        desc.BringToFront();
         return card;
     }
 
@@ -182,14 +194,14 @@ public sealed class BackupPage : UserControl
         var topBar = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 42,
+            Height = 46,
             BackColor = Color.Transparent,
-            Padding = new Padding(0, 0, 0, 6)
+            Padding = new Padding(0, 0, 0, 8)
         };
 
         var refreshBtn = Theme.OutlineButton("Làm mới nhật ký", Theme.BorderStrong, IconKind.Refresh);
         refreshBtn.Dock = DockStyle.Right;
-        refreshBtn.Height = 34;
+        refreshBtn.Height = 36;
         refreshBtn.Click += async (_, _) => await LoadHistoryAsync();
 
         var historyTitle = new Label
@@ -198,17 +210,23 @@ public sealed class BackupPage : UserControl
             Dock = DockStyle.Fill,
             Font = Theme.Font(10.8f, FontStyle.Bold),
             ForeColor = Theme.Text,
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
         };
 
         topBar.Controls.Add(historyTitle);
         topBar.Controls.Add(_historyCount);
         topBar.Controls.Add(refreshBtn);
+        refreshBtn.SendToBack();
+        _historyCount.SendToBack();
+        historyTitle.BringToFront();
 
         _history.Margin = Padding.Empty;
-        historyCard.Controls.Add(Ui.DataHost(_history));
+        var dataHost = Ui.DataHost(_history);
+        historyCard.Controls.Add(dataHost);
         historyCard.Controls.Add(topBar);
-        topBar.BringToFront();
+        topBar.SendToBack();
+        dataHost.BringToFront();
         return historyCard;
     }
 

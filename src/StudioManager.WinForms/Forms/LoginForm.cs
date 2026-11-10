@@ -62,12 +62,13 @@ public sealed class LoginForm : Form
         _app = app;
         Text = "StudioManager — Atelier Lumière Edition";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(1160, 690);
-        MinimumSize = new Size(1040, 650);
+        ClientSize = new Size(1220, 740);
+        MinimumSize = new Size(1040, 660);
+        AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Theme.Background;
         Font = Theme.Font();
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
 
         var root = new TableLayoutPanel
         {
@@ -78,7 +79,7 @@ public sealed class LoginForm : Form
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         root.Controls.Add(BuildTopArchitecturalRibbon(), 0, 0);
@@ -136,19 +137,30 @@ public sealed class LoginForm : Form
 
             using var titleFont = Theme.Font(9.5f, FontStyle.Bold);
             using var subFont = Theme.MonoFont(8.2f, FontStyle.Regular);
-            using var lightBrush = new SolidBrush(Theme.Primitives.Alabaster100);
-            using var mutedBrush = new SolidBrush(Theme.SidebarMuted);
 
-            g.DrawString("STUDIOMANAGER", titleFont, lightBrush, 54, (ribbon.Height - 18) / 2f);
-            g.DrawString("ATELIER LUMIÈRE  //  DESKTOP COMMAND WORKBENCH", subFont, mutedBrush, 182, (ribbon.Height - 16) / 2f);
+            const string brandTitle = "STUDIOMANAGER";
+            const string brandSub = "ATELIER LUMIÈRE  //  DESKTOP COMMAND WORKBENCH";
+            const string badgeText = "SQL SERVER ENGINE  •  LOCAL WORKSPACE";
 
-            // Right telemetry badge
-            var badgeText = "SQL SERVER ENGINE  •  LOCAL WORKSPACE";
-            var sz = g.MeasureString(badgeText, subFont);
-            var bx = ribbon.Width - sz.Width - 28;
+            var titleSz = TextRenderer.MeasureText(g, brandTitle, titleFont, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            var badgeSz = TextRenderer.MeasureText(g, badgeText, subFont, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+
+            var titleRect = new Rectangle(54, 0, titleSz.Width + 6, ribbon.Height);
+            TextRenderer.DrawText(g, brandTitle, titleFont, titleRect, Theme.Primitives.Alabaster100,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+
+            var bx = Math.Max(titleRect.Right + 160, ribbon.Width - badgeSz.Width - 28);
             using var dotBrush = new SolidBrush(Theme.Primitives.Sage600);
             g.FillEllipse(dotBrush, bx - 14, (ribbon.Height - 7) / 2f, 7, 7);
-            g.DrawString(badgeText, subFont, mutedBrush, bx, (ribbon.Height - sz.Height) / 2f);
+            var badgeRect = new Rectangle(bx, 0, badgeSz.Width + 8, ribbon.Height);
+            TextRenderer.DrawText(g, badgeText, subFont, badgeRect, Theme.SidebarMuted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+
+            var subStartX = titleRect.Right + 16;
+            var subMaxW = Math.Max(60, bx - 28 - subStartX);
+            var subRect = new Rectangle(subStartX, 0, subMaxW, ribbon.Height);
+            TextRenderer.DrawText(g, brandSub, subFont, subRect, Theme.SidebarMuted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
 
         return ribbon;
@@ -179,7 +191,7 @@ public sealed class LoginForm : Form
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 0, 12, 0),
-            Padding = new Padding(36, 34, 36, 30)
+            Padding = new Padding(34, 28, 34, 24)
         };
 
         var layout = new TableLayoutPanel
@@ -189,11 +201,12 @@ public sealed class LoginForm : Form
             RowCount = 5,
             BackColor = Color.Transparent
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));  // Tagline pill
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 106)); // Editorial Headline
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));  // Editorial Lead
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));  // Tagline pill
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112)); // Editorial Headline
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));  // Editorial Lead
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // 3 Architectural Pillar Cards
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));  // Footer signature
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));  // Footer signature
 
         var overline = new Label
         {
@@ -201,7 +214,8 @@ public sealed class LoginForm : Form
             Text = "PRO PHOTOGRAPHY OPERATIONS SYSTEM",
             ForeColor = Theme.Primitives.Terracotta200,
             Font = Theme.MonoFont(8.2f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
         };
 
         var headline = new Label
@@ -209,7 +223,7 @@ public sealed class LoginForm : Form
             Dock = DockStyle.Fill,
             Text = "Nghệ thuật điều phối\nkhông gian nhiếp ảnh.",
             ForeColor = Theme.Primitives.Alabaster50,
-            Font = Theme.Font(21.5f, FontStyle.Bold),
+            Font = Theme.Font(19.5f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft
         };
 
@@ -218,8 +232,18 @@ public sealed class LoginForm : Form
             Dock = DockStyle.Fill,
             Text = "Kiểm soát trọn vẹn quy trình từ đặt lịch phòng máy, điều phối nhiếp ảnh gia, hậu kỳ hình ảnh đến quyết toán tài chính.",
             ForeColor = Theme.Primitives.Stone300,
-            Font = Theme.Font(9.3f),
-            TextAlign = ContentAlignment.TopLeft
+            Font = Theme.Font(9.2f),
+            TextAlign = ContentAlignment.TopLeft,
+            Padding = new Padding(0, 4, 0, 0)
+        };
+
+        layout.Resize += (_, _) =>
+        {
+            var w = Math.Max(200, layout.ClientSize.Width - 8);
+            var hSize = TextRenderer.MeasureText(headline.Text, headline.Font, new Size(w, 240), TextFormatFlags.WordBreak);
+            var lSize = TextRenderer.MeasureText(lead.Text, lead.Font, new Size(w, 200), TextFormatFlags.WordBreak);
+            layout.RowStyles[1].Height = Math.Max(88, hSize.Height + 16);
+            layout.RowStyles[2].Height = Math.Max(54, lSize.Height + 14);
         };
 
         var pillars = new TableLayoutPanel
@@ -228,8 +252,9 @@ public sealed class LoginForm : Form
             ColumnCount = 1,
             RowCount = 3,
             BackColor = Color.Transparent,
-            Padding = new Padding(0, 8, 0, 8)
+            Padding = new Padding(0, 6, 0, 6)
         };
+        pillars.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         pillars.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33f));
         pillars.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33f));
         pillars.RowStyles.Add(new RowStyle(SizeType.Percent, 33.34f));
@@ -244,7 +269,8 @@ public sealed class LoginForm : Form
             Text = "ATELIER LUMIÈRE DESIGN SYSTEM  •  NATIVE WINFORMS .NET 8",
             ForeColor = Theme.Primitives.Stone400,
             Font = Theme.MonoFont(7.8f),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = ContentAlignment.BottomLeft,
+            AutoEllipsis = true
         };
 
         layout.Controls.Add(overline, 0, 0);
@@ -262,7 +288,7 @@ public sealed class LoginForm : Form
         var tile = new Panel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 5, 0, 5),
+            Margin = new Padding(0, 4, 0, 4),
             BackColor = Color.Transparent
         };
 
@@ -272,7 +298,7 @@ public sealed class LoginForm : Form
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            var bounds = new RectangleF(0.5f, 0.5f, tile.Width - 1, tile.Height - 1);
+            var bounds = new RectangleF(0.5f, 0.5f, Math.Max(1, tile.Width - 1), Math.Max(1, tile.Height - 1));
             using var path = Theme.RoundedRectangle(bounds, 10f);
             using var fill = new SolidBrush(Color.FromArgb(150, Theme.Primitives.Espresso800));
             using var border = new Pen(Color.FromArgb(45, Theme.Primitives.Stone300), 1f);
@@ -285,13 +311,27 @@ public sealed class LoginForm : Form
             g.FillPath(iconFill, iconPath);
             VectorIcons.Draw(g, icon, new RectangleF(iconBox.Left + 9, iconBox.Top + 9, 18, 18), Theme.Primitives.Terracotta200, 1.8f);
 
-            using var tFont = Theme.Font(9.4f, FontStyle.Bold);
-            using var sFont = Theme.Font(8.3f);
-            using var tBrush = new SolidBrush(Theme.Primitives.Alabaster50);
-            using var sBrush = new SolidBrush(Theme.Primitives.Stone300);
+            using var tFont = Theme.Font(9.2f, FontStyle.Bold);
+            using var sFont = Theme.Font(8.2f);
 
-            g.DrawString(title, tFont, tBrush, 62, tile.Height / 2f - 17);
-            g.DrawString(subtitle, sFont, sBrush, new RectangleF(62, tile.Height / 2f + 2, tile.Width - 74, 24));
+            var textX = 62;
+            var textW = Math.Max(60, tile.Width - textX - 12);
+            var tH = Math.Max(20, tFont.Height + 2);
+            var sMeasured = TextRenderer.MeasureText(g, subtitle, sFont, new Size(textW, 120), TextFormatFlags.WordBreak);
+            var sH = Math.Max(22, sMeasured.Height + 2);
+
+            var totalBlockH = tH + 3 + sH;
+            var startY = Math.Max(6, (tile.Height - totalBlockH) / 2);
+
+            var titleRect = new Rectangle(textX, startY, textW, tH);
+            TextRenderer.DrawText(g, title, tFont, titleRect, Theme.Primitives.Alabaster50,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+
+            var subY = startY + tH + 2;
+            var subAvailH = Math.Max(20, tile.Height - subY - 4);
+            var subRect = new Rectangle(textX, subY, textW, subAvailH);
+            TextRenderer.DrawText(g, subtitle, sFont, subRect, Theme.Primitives.Stone300,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
 
         return tile;
@@ -303,12 +343,13 @@ public sealed class LoginForm : Form
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(12, 0, 0, 0),
-            Padding = new Padding(52, 34, 52, 26),
+            Padding = new Padding(44, 28, 44, 22),
             BackColor = Theme.Surface,
             BorderColor = Theme.BorderStrong,
             CornerRadius = 12,
             AccentStripeColor = Theme.Primary,
-            AccentStripeThickness = 4
+            AccentStripeThickness = 4,
+            AutoScroll = true
         };
 
         var form = new TableLayoutPanel
@@ -319,15 +360,15 @@ public sealed class LoginForm : Form
             BackColor = Theme.Surface,
             Margin = Padding.Empty
         };
-
-        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 52)); // 0: Header badge
-        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); // 1: Title
-        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 30)); // 2: Subtitle
+        form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 0: Header badge
+        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); // 1: Title
+        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); // 2: Subtitle
         form.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // 3: Username
         form.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // 4: Password
-        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 36)); // 5: Options row
-        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 6: Primary CTA Button
-        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 54)); // 7: Inline Error Banner
+        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 5: Options row
+        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // 6: Primary CTA Button
+        form.RowStyles.Add(new RowStyle(SizeType.Absolute, 56)); // 7: Inline Error Banner
         form.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // 8: Footer
 
         var emblemCanvas = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
@@ -335,65 +376,83 @@ public sealed class LoginForm : Form
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            var box = new RectangleF(0, 4, 42, 42);
+            var box = new RectangleF(0, (emblemCanvas.Height - 40) / 2f, 40, 40);
             using var path = Theme.RoundedRectangle(box, 10f);
             using var fill = new SolidBrush(Theme.PrimaryLight);
             using var pen = new Pen(Theme.PrimaryLightBorder, 1f);
             g.FillPath(fill, path);
             g.DrawPath(pen, path);
-            VectorIcons.Draw(g, IconKind.Shield, new RectangleF(10, 14, 22, 22), Theme.Primary, 1.9f);
+            VectorIcons.Draw(g, IconKind.Shield, new RectangleF(box.Left + 9, box.Top + 9, 22, 22), Theme.Primary, 1.9f);
 
             using var badgeFont = Theme.MonoFont(8.0f, FontStyle.Bold);
-            using var badgeBrush = new SolidBrush(Theme.Primary);
-            g.DrawString("XÁC THỰC PHIÊN LÀM VIỆC", badgeFont, badgeBrush, 54, 18);
+            var badgeRect = new Rectangle(52, 0, Math.Max(100, emblemCanvas.Width - 56), emblemCanvas.Height);
+            TextRenderer.DrawText(g, "XÁC THỰC PHIÊN LÀM VIỆC", badgeFont, badgeRect, Theme.Primary,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
 
         var title = new Label
         {
             Dock = DockStyle.Fill,
             Text = "Đăng nhập bàn điều khiển",
-            Font = Theme.Font(19.5f, FontStyle.Bold),
+            Font = Theme.Font(18.5f, FontStyle.Bold),
             ForeColor = Theme.Text,
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
         };
 
         var desc = new Label
         {
             Dock = DockStyle.Fill,
             Text = "Sử dụng tài khoản Quản trị viên hoặc Nhân viên được cấp phép để truy cập.",
-            Font = Theme.Font(9.2f),
+            Font = Theme.Font(9.1f),
             ForeColor = Theme.Muted,
-            TextAlign = ContentAlignment.TopLeft
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        var options = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.Transparent };
+        var options = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        options.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
         var remember = new CheckBox
         {
-            Dock = DockStyle.Left,
-            AutoSize = true,
+            Dock = DockStyle.Fill,
+            AutoSize = false,
+            AutoEllipsis = true,
             Text = "Duy trì trạng thái làm việc trên thiết bị này",
             Checked = true,
             ForeColor = Theme.TextSecondary,
-            Font = Theme.Font(8.9f)
+            Font = Theme.Font(8.8f),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = Padding.Empty
         };
 
         var forgot = new LinkLabel
         {
-            Dock = DockStyle.Right,
-            Width = 148,
+            AutoSize = true,
+            Anchor = AnchorStyles.Right,
             Text = "Cần cấp lại mật khẩu?",
             TextAlign = ContentAlignment.MiddleRight,
             LinkColor = Theme.Primary,
             ActiveLinkColor = Theme.PrimaryHover,
             Cursor = Cursors.Hand,
-            Font = Theme.Font(8.9f, FontStyle.Bold)
+            Font = Theme.Font(8.8f, FontStyle.Bold),
+            Margin = new Padding(10, 0, 0, 0)
         };
         forgot.LinkClicked += (_, _) => MessageBox.Show(this,
             "Để bảo đảm an toàn dữ liệu, việc đặt lại mật khẩu do Quản trị viên thực hiện.\n\nHướng dẫn cho Quản trị viên:\nTrung tâm Hệ thống → Tài khoản & Phân quyền → Đặt lại mật khẩu.",
             "Chính sách bảo mật tài khoản", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-        options.Controls.Add(forgot);
-        options.Controls.Add(remember);
+        options.Controls.Add(remember, 0, 0);
+        options.Controls.Add(forgot, 1, 0);
 
         ConfigureLoginButton();
         _errorPanel.Controls.Add(_errorLabel);
@@ -461,38 +520,37 @@ public sealed class LoginForm : Form
             Text = label,
             ForeColor = Theme.TextSecondary,
             Font = Theme.Font(8.0f, FontStyle.Bold),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var border = new ModernInputContainer
         {
             Dock = DockStyle.Bottom,
-            Height = 46,
-            Padding = new Padding(40, 12, allowReveal ? 44 : 12, 10),
+            Height = 48,
             BackColor = Theme.Primitives.Alabaster50,
             LeadingIcon = icon
         };
 
         input.BackColor = Theme.Primitives.Alabaster50;
-        input.Dock = DockStyle.Fill;
         input.GotFocus += (_, _) => border.Invalidate();
         input.LostFocus += (_, _) => border.Invalidate();
         border.Click += (_, _) => input.Focus();
         border.Controls.Add(input);
 
+        Panel? revealBtn = null;
         if (allowReveal)
         {
-            var revealBtn = new Panel
+            revealBtn = new Panel
             {
                 Dock = DockStyle.Right,
-                Width = 36,
+                Width = 38,
                 Cursor = Cursors.Hand,
                 BackColor = Color.Transparent
             };
             revealBtn.Paint += (_, e) =>
             {
                 var k = input.UseSystemPasswordChar ? IconKind.Eye : IconKind.EyeOff;
-                VectorIcons.Draw(e.Graphics, k, new RectangleF(9, (revealBtn.Height - 16) / 2f, 16, 16), Theme.Primary, 1.75f);
+                VectorIcons.Draw(e.Graphics, k, new RectangleF(10, (revealBtn.Height - 16) / 2f, 16, 16), Theme.Primary, 1.75f);
             };
             revealBtn.Click += (_, _) =>
             {
@@ -502,6 +560,18 @@ public sealed class LoginForm : Form
             };
             border.Controls.Add(revealBtn);
         }
+
+        void LayoutInput()
+        {
+            var rightGutter = revealBtn is not null ? 42 : 14;
+            var th = Math.Max(20, input.PreferredHeight);
+            input.SetBounds(40, Math.Max(4, (border.ClientSize.Height - th) / 2),
+                Math.Max(40, border.ClientSize.Width - 40 - rightGutter), th);
+        }
+
+        border.Resize += (_, _) => LayoutInput();
+        input.FontChanged += (_, _) => LayoutInput();
+        LayoutInput();
 
         p.Controls.Add(border);
         p.Controls.Add(caption);

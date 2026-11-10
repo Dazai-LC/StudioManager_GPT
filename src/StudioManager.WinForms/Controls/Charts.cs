@@ -252,9 +252,10 @@ public sealed class StatusDonutChart : Control
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
         var total = _data.Values.Sum();
-        var diameter = Math.Min(132, Math.Min(Height - 36, Math.Max(90, Width / 2 - 24)));
-        var donutRect = new Rectangle(14, (Height - diameter) / 2, diameter, diameter);
-        const float strokeWidth = 18f;
+        var diameter = Math.Min(124, Math.Min(Height - 36, Math.Max(80, (Width - 180) / 2)));
+        if (diameter < 75) diameter = 75;
+        var donutRect = new Rectangle(12, (Height - diameter) / 2, diameter, diameter);
+        const float strokeWidth = 16f;
 
         if (total == 0)
         {
@@ -283,32 +284,41 @@ public sealed class StatusDonutChart : Control
         }
 
         // Center total metric inside aperture ring
-        using var totalFont = Theme.Font(17f, FontStyle.Bold);
-        using var captionFont = Theme.Font(7.6f, FontStyle.Bold);
+        using var totalFont = Theme.Font(15.5f, FontStyle.Bold);
+        using var captionFont = Theme.Font(7.2f, FontStyle.Bold);
         using var textBrush = new SolidBrush(Theme.Text);
         using var mutedBrush = new SolidBrush(Theme.Muted);
 
         var totalStr = total.ToString();
         var totalSize = g.MeasureString(totalStr, totalFont);
-        g.DrawString(totalStr, totalFont, textBrush,
-            donutRect.Left + (donutRect.Width - totalSize.Width) / 2f,
-            donutRect.Top + donutRect.Height / 2f - 18f);
-
         var capStr = "TỔNG LỊCH";
         var capSize = g.MeasureString(capStr, captionFont);
+
+        var centerBlockH = totalSize.Height + capSize.Height - 2f;
+        var centerStartY = donutRect.Top + (donutRect.Height - centerBlockH) / 2f;
+
+        g.DrawString(totalStr, totalFont, textBrush,
+            donutRect.Left + (donutRect.Width - totalSize.Width) / 2f,
+            centerStartY);
+
         g.DrawString(capStr, captionFont, mutedBrush,
             donutRect.Left + (donutRect.Width - capSize.Width) / 2f,
-            donutRect.Top + donutRect.Height / 2f + 6f);
+            centerStartY + totalSize.Height - 2f);
 
         // Right-hand Pipeline Stage Progress Bars
-        var lx = donutRect.Right + 22;
+        var lx = donutRect.Right + 16;
         var rightW = Math.Max(80, Width - lx - 10);
         var items = _data.OrderByDescending(x => x.Value).Take(6).ToList();
-        var rowH = 28;
-        var ly = Math.Max(10, (Height - items.Count * rowH) / 2);
 
-        using var legFont = Theme.Font(8.2f, FontStyle.Regular);
-        using var valFont = Theme.Font(8.2f, FontStyle.Bold);
+        using var legFont = Theme.Font(8.0f, FontStyle.Regular);
+        using var valFont = Theme.Font(8.0f, FontStyle.Bold);
+
+        var textLineH = Math.Max(16, valFont.Height + 2);
+        var naturalRowH = textLineH + 11;
+        var rowH = items.Count > 0
+            ? Math.Clamp((Height - 12) / items.Count, 24, Math.Max(28, naturalRowH))
+            : naturalRowH;
+        var ly = Math.Max(6, (Height - items.Count * rowH) / 2);
 
         for (var i = 0; i < items.Count; i++)
         {
@@ -316,16 +326,21 @@ public sealed class StatusDonutChart : Control
             var col = ColorForStatus(item.Key, i);
             var pct = total > 0 ? (item.Value * 100f / total) : 0f;
 
-            // Label & Count
-            var labelText = item.Key.Length > 18 ? item.Key[..16] + "…" : item.Key;
-            g.DrawString(labelText, legFont, textBrush, lx, ly);
-
+            // Value & Percentage
             var countText = $"{item.Value} ({pct:0}%)";
             var countSize = g.MeasureString(countText, valFont);
-            g.DrawString(countText, valFont, mutedBrush, lx + rightW - countSize.Width, ly);
+            var countX = lx + rightW - countSize.Width;
+            g.DrawString(countText, valFont, mutedBrush, countX, ly);
+
+            // Ellipsis-safe status label
+            var labelW = Math.Max(30, (int)(countX - lx - 6));
+            var labelRect = new Rectangle(lx, ly, labelW, (int)Math.Ceiling(countSize.Height) + 2);
+            TextRenderer.DrawText(g, item.Key, legFont, labelRect, Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
             // Mini stage progress track
-            var trackRect = new RectangleF(lx, ly + 17, rightW, 5f);
+            var trackY = ly + Math.Min(rowH - 6f, Math.Max(16f, countSize.Height + 1f));
+            var trackRect = new RectangleF(lx, trackY, rightW, 5f);
             using (var trackPath = Theme.RoundedRectangle(trackRect, 2.5f))
             using (var trackBrush = new SolidBrush(Theme.Primitives.Alabaster200))
             {
@@ -335,7 +350,7 @@ public sealed class StatusDonutChart : Control
             if (pct > 0)
             {
                 var fillW = Math.Max(6f, rightW * (pct / 100f));
-                var fillRect = new RectangleF(lx, ly + 17, fillW, 5f);
+                var fillRect = new RectangleF(lx, trackY, fillW, 5f);
                 using var fillPath = Theme.RoundedRectangle(fillRect, 2.5f);
                 using var fillBrush = new SolidBrush(col);
                 g.FillPath(fillBrush, fillPath);
@@ -393,16 +408,19 @@ public sealed class PackageHorizontalBarChart : Control
         var maxVal = Math.Max(1m, items.Max(x => x.Value));
         var totalVal = Math.Max(1m, _data.Sum(x => x.Value));
 
-        using var rankFont = Theme.MonoFont(8.2f, FontStyle.Bold);
-        using var nameFont = Theme.Font(9.0f, FontStyle.Bold);
-        using var valFont = Theme.Font(8.6f, FontStyle.Bold);
+        using var rankFont = Theme.MonoFont(8.0f, FontStyle.Bold);
+        using var nameFont = Theme.Font(8.9f, FontStyle.Bold);
+        using var valFont = Theme.Font(8.5f, FontStyle.Bold);
         using var textBrush = new SolidBrush(Theme.Text);
         using var mutedBrush = new SolidBrush(Theme.Muted);
+        using var primaryBrush = new SolidBrush(Theme.Primary);
 
         var padX = 10f;
         var usableW = Math.Max(100f, Width - padX * 2);
-        var rowH = Math.Clamp((Height - 16f) / Math.Max(1, items.Count), 38f, 52f);
-        var y = 8f;
+        var textH = Math.Max(18f, nameFont.Height + 2f);
+        var minRowH = textH + 16f;
+        var rowH = Math.Clamp((Height - 12f) / Math.Max(1, items.Count), minRowH, Math.Max(minRowH, 54f));
+        var y = 6f;
 
         for (var i = 0; i < items.Count; i++)
         {
@@ -411,7 +429,8 @@ public sealed class PackageHorizontalBarChart : Control
             var barRatio = (float)(item.Value / maxVal);
 
             // Rank badge
-            var rankBadge = new RectangleF(padX, y + 2, 24, 18);
+            var badgeH = Math.Max(18f, textH - 2f);
+            var rankBadge = new RectangleF(padX, y + 1f, 26f, badgeH);
             using (var rPath = Theme.RoundedRectangle(rankBadge, 4f))
             using (var rFill = new SolidBrush(i == 0 ? Theme.Primary : Theme.Primitives.Alabaster200))
             using (var rText = new SolidBrush(i == 0 ? Color.White : Theme.TextSecondary))
@@ -419,20 +438,27 @@ public sealed class PackageHorizontalBarChart : Control
                 g.FillPath(rFill, rPath);
                 var rStr = $"#{i + 1}";
                 var rSz = g.MeasureString(rStr, rankFont);
-                g.DrawString(rStr, rankFont, rText, rankBadge.Left + (rankBadge.Width - rSz.Width) / 2f, rankBadge.Top + (rankBadge.Height - rSz.Height) / 2f);
+                g.DrawString(rStr, rankFont, rText,
+                    rankBadge.Left + (rankBadge.Width - rSz.Width) / 2f,
+                    rankBadge.Top + (rankBadge.Height - rSz.Height) / 2f);
             }
-
-            // Package name
-            var pkgName = item.Name.Length > 34 ? item.Name[..32] + "…" : item.Name;
-            g.DrawString(pkgName, nameFont, textBrush, padX + 32, y + 1);
 
             // Revenue + Share % on the right
             var metricStr = $"{item.Value:N0} đ ({share:0.#}%)";
             var mSize = g.MeasureString(metricStr, valFont);
-            g.DrawString(metricStr, valFont, i == 0 ? new SolidBrush(Theme.Primary) : mutedBrush, padX + usableW - mSize.Width, y + 2);
+            var metricX = padX + usableW - mSize.Width;
+            g.DrawString(metricStr, valFont, i == 0 ? primaryBrush : mutedBrush, metricX, y + 1f);
+
+            // Package name (ellipsis-safe, never overlaps revenue on the right)
+            var nameStartX = (int)(padX + 32f);
+            var maxNameW = Math.Max(36, (int)(metricX - nameStartX - 8f));
+            var nameRect = new Rectangle(nameStartX, (int)y, maxNameW, (int)textH);
+            TextRenderer.DrawText(g, item.Name, nameFont, nameRect, Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
             // Horizontal Bar Track
-            var trackRect = new RectangleF(padX, y + 23, usableW, 8f);
+            var barY = y + textH + 4f;
+            var trackRect = new RectangleF(padX, barY, usableW, 8f);
             using (var tPath = Theme.RoundedRectangle(trackRect, 4f))
             using (var tFill = new SolidBrush(Theme.Primitives.Alabaster100))
             {
@@ -440,10 +466,10 @@ public sealed class PackageHorizontalBarChart : Control
             }
 
             var fillW = Math.Max(8f, usableW * barRatio);
-            var fillRect = new RectangleF(padX, y + 23, fillW, 8f);
+            var fillRect = new RectangleF(padX, barY, fillW, 8f);
             using (var fPath = Theme.RoundedRectangle(fillRect, 4f))
             using (var fBrush = new LinearGradientBrush(
-                new RectangleF(padX, y + 23, usableW, 8f),
+                new RectangleF(padX, barY, usableW, 8f),
                 i == 0 ? Theme.Primary : Theme.Primitives.Ochre600,
                 i == 0 ? Theme.Primitives.Ochre600 : Theme.Primitives.Terracotta500,
                 LinearGradientMode.Horizontal))

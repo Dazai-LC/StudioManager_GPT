@@ -60,8 +60,9 @@ public sealed class ChangePasswordForm : Form
         _session = session;
         Text = "Thiết lập mật khẩu bảo mật • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(520, 500);
-        MinimumSize = new Size(480, 480);
+        ClientSize = new Size(540, 530);
+        MinimumSize = new Size(500, 500);
+        AutoScaleMode = AutoScaleMode.Dpi;
         MaximizeBox = false;
         MinimizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -71,7 +72,7 @@ public sealed class ChangePasswordForm : Form
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(34, 26, 34, 22),
+            Padding = new Padding(34, 24, 34, 20),
             Margin = new Padding(16),
             BackColor = Theme.Surface,
             BorderColor = Theme.BorderStrong,
@@ -87,14 +88,14 @@ public sealed class ChangePasswordForm : Form
             ColumnCount = 1,
             BackColor = Theme.Surface
         };
-
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58)); // 0: Header Badge + Title
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); // 1: Intro
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78)); // 2: Password
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78)); // 3: Confirm
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 4: Policy Card
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); // 5: Error Banner
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 6: Save Button
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 1: Intro
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); // 2: Password
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); // 3: Confirm
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56)); // 4: Policy Card
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 5: Error Banner
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // 6: Save Button
 
         var headerPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
         headerPanel.Paint += (_, e) =>
@@ -209,33 +210,32 @@ public sealed class ChangePasswordForm : Form
         var caption = new Label
         {
             Dock = DockStyle.Top,
-            Height = 22,
+            Height = 24,
             Text = label,
             ForeColor = Theme.TextSecondary,
             Font = Theme.Font(8.0f, FontStyle.Bold),
-            TextAlign = ContentAlignment.BottomLeft
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var border = new ModernInputContainer
         {
             Dock = DockStyle.Bottom,
-            Height = 44,
+            Height = 48,
             BackColor = Theme.Primitives.Alabaster50,
-            Padding = new Padding(40, 11, 42, 10),
             LeadingIcon = IconKind.Lock
         };
 
         var revealBtn = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 34,
+            Width = 38,
             Cursor = Cursors.Hand,
             BackColor = Color.Transparent
         };
         revealBtn.Paint += (_, e) =>
         {
             var k = input.UseSystemPasswordChar ? IconKind.Eye : IconKind.EyeOff;
-            VectorIcons.Draw(e.Graphics, k, new RectangleF(8, (revealBtn.Height - 16) / 2f, 16, 16), Theme.Primary, 1.75f);
+            VectorIcons.Draw(e.Graphics, k, new RectangleF(10, (revealBtn.Height - 16) / 2f, 16, 16), Theme.Primary, 1.75f);
         };
         revealBtn.Click += (_, _) =>
         {
@@ -244,11 +244,20 @@ public sealed class ChangePasswordForm : Form
             input.Focus();
         };
 
-        input.Dock = DockStyle.Fill;
         input.GotFocus += (_, _) => border.Invalidate();
         input.LostFocus += (_, _) => border.Invalidate();
         border.Controls.Add(input);
         border.Controls.Add(revealBtn);
+
+        void LayoutInput()
+        {
+            var th = Math.Max(20, input.PreferredHeight);
+            input.SetBounds(40, Math.Max(4, (border.ClientSize.Height - th) / 2),
+                Math.Max(40, border.ClientSize.Width - 40 - 42), th);
+        }
+        border.Resize += (_, _) => LayoutInput();
+        input.FontChanged += (_, _) => LayoutInput();
+        LayoutInput();
 
         panel.Controls.Add(border);
         panel.Controls.Add(caption);

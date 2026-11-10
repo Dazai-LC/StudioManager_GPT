@@ -152,6 +152,8 @@ public sealed class CrudPage : UserControl
 
         Controls.Add(splitWorkbench);
         Controls.Add(toolbar);
+        toolbar.SendToBack();
+        splitWorkbench.BringToFront();
 
         _search.KeyDown += async (_, e) =>
         {
@@ -180,7 +182,7 @@ public sealed class CrudPage : UserControl
         var card = new CardPanel
         {
             Dock = DockStyle.Top,
-            Height = 60,
+            Height = 62,
             Padding = new Padding(12, 10, 12, 10),
             Margin = new Padding(0, 0, 0, 10),
             CornerRadius = 10,
@@ -198,12 +200,12 @@ public sealed class CrudPage : UserControl
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // Search
         if (hasStatus)
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172)); // Status Filter
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176)); // Status Filter
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114)); // Find
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114)); // Refresh
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124)); // Export
         if (!_readOnly)
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168)); // Add
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178)); // Add
 
         _search.Dock = DockStyle.Fill;
         _search.Margin = Padding.Empty;
@@ -260,7 +262,7 @@ public sealed class CrudPage : UserControl
         var card = new CardPanel
         {
             Dock = DockStyle.Top,
-            Height = 112,
+            Height = 128,
             Padding = new Padding(12, 8, 12, 8),
             Margin = new Padding(0, 0, 0, 10),
             CornerRadius = 10,
@@ -275,8 +277,9 @@ public sealed class CrudPage : UserControl
             RowCount = 2,
             BackColor = Color.Transparent
         };
-        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        container.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
 
         // Row 0: Search + Actions
         var topRow = new TableLayoutPanel
@@ -333,16 +336,16 @@ public sealed class CrudPage : UserControl
             BackColor = Color.Transparent
         };
 
-        filterRow.Controls.Add(CompactFilterSlot("TỪ NGÀY", _auditFrom, 134));
-        filterRow.Controls.Add(CompactFilterSlot("ĐẾN NGÀY", _auditTo, 134));
-        filterRow.Controls.Add(CompactFilterSlot("HÀNH ĐỘNG HỆ THỐNG", _actionFilter, 190));
-        filterRow.Controls.Add(CompactFilterSlot("LOẠI ĐỐI TƯỢNG", _targetFilter, 170));
+        filterRow.Controls.Add(CompactFilterSlot("TỪ NGÀY", _auditFrom, 142));
+        filterRow.Controls.Add(CompactFilterSlot("ĐẾN NGÀY", _auditTo, 142));
+        filterRow.Controls.Add(CompactFilterSlot("HÀNH ĐỘNG HỆ THỐNG", _actionFilter, 196));
+        filterRow.Controls.Add(CompactFilterSlot("LOẠI ĐỐI TƯỢNG", _targetFilter, 176));
 
         var clearBtn = Theme.OutlineButton("Xóa lọc", Theme.BorderStrong, IconKind.Refresh);
-        clearBtn.Height = 28;
-        clearBtn.Width = 92;
-        clearBtn.Margin = new Padding(4, 14, 0, 0);
-        clearBtn.Font = Theme.Font(8.4f);
+        clearBtn.Height = 34;
+        clearBtn.Width = 98;
+        clearBtn.Margin = new Padding(4, 18, 0, 0);
+        clearBtn.Font = Theme.Font(8.4f, FontStyle.Bold);
         clearBtn.Click += (_, _) =>
         {
             _auditFrom.Checked = false;
@@ -361,17 +364,18 @@ public sealed class CrudPage : UserControl
 
     private static Panel CompactFilterSlot(string label, Control input, int width = 150)
     {
-        var p = new Panel { Width = width, Height = 42, Margin = new Padding(0, 0, 10, 0), BackColor = Color.Transparent };
+        var p = new Panel { Width = width, Height = 52, Margin = new Padding(0, 0, 10, 0), BackColor = Color.Transparent };
         var lbl = new Label
         {
             Dock = DockStyle.Top,
-            Height = 14,
+            Height = 18,
             Text = label,
-            Font = Theme.MonoFont(7.0f, FontStyle.Bold),
-            ForeColor = Theme.Muted
+            Font = Theme.MonoFont(7.2f, FontStyle.Bold),
+            ForeColor = Theme.Muted,
+            TextAlign = ContentAlignment.MiddleLeft
         };
         input.Dock = DockStyle.Bottom;
-        input.Height = 26;
+        input.Height = 32;
         p.Controls.Add(input);
         p.Controls.Add(lbl);
         return p;
@@ -387,7 +391,7 @@ public sealed class CrudPage : UserControl
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(0, 6, 0, 0),
+            Padding = new Padding(0, 8, 0, 0),
             BackColor = Color.Transparent
         };
         split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64f));
@@ -452,16 +456,17 @@ public sealed class CrudPage : UserControl
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 70,
+            Height = 76,
             BackColor = Color.Transparent
         };
         var overline = new Label
         {
             Dock = DockStyle.Top,
-            Height = 14,
+            Height = 18,
             Text = _entity == "NhatKy" ? "TRUY VẾT DỮ LIỆU TRƯỚC & SAU THAO TÁC" : $"HỒ SƠ CHI TIẾT  •  {EntityDisplayName(_entity).ToUpperInvariant()}",
             Font = Theme.MonoFont(7.4f, FontStyle.Bold),
-            ForeColor = Theme.Primary
+            ForeColor = Theme.Primary,
+            TextAlign = ContentAlignment.MiddleLeft
         };
         head.Controls.Add(_dossierTitle);
         head.Controls.Add(_dossierSubtitle);
@@ -953,7 +958,9 @@ internal sealed class SimpleEditDialog : Form
     {
         Text = (id is null ? "Thêm mới " : "Cập nhật ") + EntityDisplayName(entity) + " • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(660, 520);
+        ClientSize = new Size(700, 520);
+        MinimumSize = new Size(660, 480);
+        AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Theme.Background;
         Font = Theme.Font();
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -974,32 +981,52 @@ internal sealed class SimpleEditDialog : Form
         var title = new Label
         {
             Dock = DockStyle.Top,
-            Height = 34,
+            Height = 36,
             Text = (id is null ? "Khởi tạo hồ sơ " : "Hiệu chỉnh hồ sơ ") + EntityDisplayName(entity),
             Font = Theme.Font(12.5f, FontStyle.Bold),
-            ForeColor = Theme.Text
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        var body = new FlowLayoutPanel
+        var fieldDefs = Fields(entity).ToList();
+        var rowCount = Math.Max(1, (fieldDefs.Count + 1) / 2);
+
+        var body = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = rowCount,
             AutoScroll = true,
             Padding = new Padding(0, 8, 0, 0),
-            FlowDirection = FlowDirection.LeftToRight,
             BackColor = Color.Transparent
         };
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        for (var r = 0; r < rowCount; r++)
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 76f));
 
-        foreach (var f in Fields(entity))
+        for (var i = 0; i < fieldDefs.Count; i++)
         {
+            var f = fieldDefs[i];
             var input = CreateInput(f, rentalServices);
             _inputs[f.Name] = input;
-            body.Controls.Add(Ui.Field(f.Label, input, 282));
+            var isLastOdd = (i == fieldDefs.Count - 1) && (fieldDefs.Count % 2 == 1);
+            var isLeft = (i % 2 == 0);
+            var fieldPanel = Ui.Field(f.Label, input, 300);
+            fieldPanel.Dock = DockStyle.Fill;
+            fieldPanel.Margin = isLastOdd
+                ? new Padding(0, 0, 0, 8)
+                : (isLeft ? new Padding(0, 0, 8, 8) : new Padding(8, 0, 0, 8));
+
+            body.Controls.Add(fieldPanel, isLeft ? 0 : 1, i / 2);
+            if (isLastOdd)
+                body.SetColumnSpan(fieldPanel, 2);
         }
 
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 50,
+            Height = 52,
             FlowDirection = FlowDirection.RightToLeft,
             Padding = new Padding(0, 6, 0, 0),
             BackColor = Color.Transparent
@@ -1024,6 +1051,9 @@ internal sealed class SimpleEditDialog : Form
         card.Controls.Add(body);
         card.Controls.Add(title);
         card.Controls.Add(footer);
+        title.SendToBack();
+        footer.SendToBack();
+        body.BringToFront();
         Controls.Add(card);
 
         if (row != null) Fill(row);
@@ -1220,12 +1250,13 @@ internal sealed class AuditDetailDialog : Form
         var headCard = new CardPanel
         {
             Dock = DockStyle.Top,
-            Height = 160,
+            Height = 180,
             Padding = new Padding(18, 12, 18, 12),
             Margin = new Padding(16, 16, 16, 8),
             CornerRadius = 10,
             AccentStripeColor = Theme.Primary,
-            AccentStripeThickness = 4
+            AccentStripeThickness = 4,
+            AutoScroll = true
         };
 
         var dossier = new DossierFieldList { Dock = DockStyle.Fill };

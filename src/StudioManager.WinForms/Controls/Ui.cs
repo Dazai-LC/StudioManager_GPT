@@ -21,7 +21,7 @@ public sealed class PageHeader : Panel
 
     public PageHeader(string title, string subtitle)
     {
-        Height = 62;
+        Height = 68;
         Dock = DockStyle.Top;
         BackColor = Color.Transparent;
         Padding = new Padding(2, 2, 0, 8);
@@ -33,7 +33,7 @@ public sealed class PageHeader : Panel
         {
             Text = title,
             Dock = DockStyle.Top,
-            Height = 26,
+            Height = 30,
             Font = Theme.Font(13.5f, FontStyle.Bold),
             ForeColor = Theme.Text,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -55,7 +55,8 @@ public sealed class PageHeader : Panel
 
         Controls.Add(copy);
         Controls.Add(Actions);
-        Actions.BringToFront();
+        Actions.SendToBack();
+        copy.BringToFront();
     }
 
     public string HeaderTitle { get => _titleLabel.Text; set => _titleLabel.Text = value; }
@@ -139,11 +140,11 @@ public sealed class StatCard : CardPanel
     {
         _accent = accent;
         _icon = icon;
-        Height = 112;
+        Height = 118;
         CornerRadius = 10;
         AccentStripeColor = accent;
         AccentStripeThickness = 3;
-        Padding = new Padding(16, 14, 16, 12);
+        Padding = new Padding(16, 12, 16, 10);
 
         var layout = new TableLayoutPanel
         {
@@ -157,9 +158,9 @@ public sealed class StatCard : CardPanel
 
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
 
         var iconCanvas = new Panel
         {
@@ -373,7 +374,52 @@ public sealed class SegmentedTabBar : Control
         }
 
         using var font = Theme.Font(8.8f, FontStyle.Bold);
+        using var compactFont = Theme.Font(8.1f, FontStyle.Bold);
         using var badgeFont = Theme.Font(7.6f, FontStyle.Bold);
+
+        var availableTrackWidth = Math.Max(40f, Width - 8f);
+        var gap = 3f;
+        var totalGaps = Math.Max(0, _items.Count - 1) * gap;
+
+        // First pass: measure natural widths and adapt padding/font if track is tight (e.g., 1366x768 @ 150% DPI)
+        var activeFont = font;
+        var horizPad = 24f;
+        var naturalWidths = new float[_items.Count];
+        float totalNatural = 0f;
+
+        for (var i = 0; i < _items.Count; i++)
+        {
+            var item = _items[i];
+            var ts = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPadding);
+            var iw = item.Icon != IconKind.None ? 20f : 0f;
+            var bw = !string.IsNullOrWhiteSpace(item.Badge)
+                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 14f
+                : 0f;
+            naturalWidths[i] = ts.Width + iw + bw + horizPad;
+            totalNatural += naturalWidths[i];
+        }
+
+        if (totalNatural + totalGaps > availableTrackWidth)
+        {
+            activeFont = compactFont;
+            horizPad = 16f;
+            totalNatural = 0f;
+            for (var i = 0; i < _items.Count; i++)
+            {
+                var item = _items[i];
+                var ts = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPadding);
+                var iw = item.Icon != IconKind.None ? 18f : 0f;
+                var bw = !string.IsNullOrWhiteSpace(item.Badge)
+                    ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 12f
+                    : 0f;
+                naturalWidths[i] = ts.Width + iw + bw + horizPad;
+                totalNatural += naturalWidths[i];
+            }
+        }
+
+        var scale = (totalNatural + totalGaps > availableTrackWidth && totalNatural > 1f)
+            ? Math.Max(0.65f, (availableTrackWidth - totalGaps) / totalNatural)
+            : 1f;
 
         float x = 4f;
         var tabHeight = Math.Max(10f, Height - 9f);
@@ -382,13 +428,12 @@ public sealed class SegmentedTabBar : Control
         for (var i = 0; i < _items.Count; i++)
         {
             var item = _items[i];
-            var textSize = TextRenderer.MeasureText(g, item.Label, font, new Size(600, 32), TextFormatFlags.NoPadding);
-            var iconWidth = item.Icon != IconKind.None ? 20f : 0f;
+            var textSize = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPadding);
             var badgeWidth = !string.IsNullOrWhiteSpace(item.Badge)
-                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 14f
+                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 13f
                 : 0f;
 
-            var tabWidth = textSize.Width + iconWidth + badgeWidth + 24f;
+            var tabWidth = Math.Max(54f, naturalWidths[i] * scale);
             var rect = new RectangleF(x, y, tabWidth, tabHeight);
             _tabRects.Add(rect);
 
@@ -411,19 +456,22 @@ public sealed class SegmentedTabBar : Control
             }
 
             var fg = isSelected ? Theme.Primary : (isHovered ? Theme.Text : Theme.TextSecondary);
-            var cursorX = rect.Left + 12f;
+            var sidePad = Math.Max(6f, horizPad * 0.5f * scale);
+            var cursorX = rect.Left + sidePad;
 
             if (item.Icon != IconKind.None)
             {
                 VectorIcons.Draw(g, item.Icon, new RectangleF(cursorX, rect.Top + (rect.Height - 15f) / 2f, 15f, 15f), fg, 1.7f);
-                cursorX += 20f;
+                cursorX += 19f;
             }
 
-            var textRect = new Rectangle((int)cursorX, (int)rect.Top, textSize.Width + 2, (int)rect.Height);
-            TextRenderer.DrawText(g, item.Label, font, textRect, fg, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPadding);
-            cursorX += textSize.Width + 6f;
+            var maxTextW = Math.Max(12, (int)(rect.Right - cursorX - badgeWidth - 4f));
+            var textRect = new Rectangle((int)cursorX, (int)rect.Top, Math.Min(textSize.Width + 2, maxTextW), (int)rect.Height);
+            TextRenderer.DrawText(g, item.Label, activeFont, textRect, fg,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            cursorX += textRect.Width + 4f;
 
-            if (!string.IsNullOrWhiteSpace(item.Badge))
+            if (!string.IsNullOrWhiteSpace(item.Badge) && cursorX + badgeWidth - 6f <= rect.Right)
             {
                 var badgeRect = new RectangleF(cursorX, rect.Top + (rect.Height - 18f) / 2f, badgeWidth - 6f, 18f);
                 using var bPath = Theme.RoundedRectangle(badgeRect, 8f);
@@ -434,7 +482,7 @@ public sealed class SegmentedTabBar : Control
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
 
-            x += tabWidth + 3f;
+            x += tabWidth + gap;
         }
     }
 }
@@ -457,7 +505,9 @@ public sealed class DossierFieldList : Panel
     {
         _rows.Clear();
         _rows.AddRange(rows);
-        Height = Math.Max(40, _rows.Count * 34 + 8);
+        using var valFont = Theme.Font(8.9f, FontStyle.Bold);
+        var rowStep = Math.Max(36, valFont.Height + 16);
+        Height = Math.Max(42, _rows.Count * rowStep + 8);
         Invalidate();
     }
 
@@ -472,25 +522,26 @@ public sealed class DossierFieldList : Panel
         using var valFont = Theme.Font(8.9f, FontStyle.Bold);
         using var linePen = new Pen(Theme.BorderSubtle, 1f);
 
+        var rowH = Math.Max(34, valFont.Height + 14);
+        var rowStep = rowH + 2;
         var y = 4;
         for (var i = 0; i < _rows.Count; i++)
         {
             var row = _rows[i];
-            var rowRect = new Rectangle(0, y, Width, 32);
 
             if (row.Highlight)
             {
-                using var hlPath = Theme.RoundedRectangle(new RectangleF(0, y + 2, Width, 28), 6f);
+                using var hlPath = Theme.RoundedRectangle(new RectangleF(0, y + 2, Width, rowH - 4), 6f);
                 using var hlBrush = new SolidBrush(Theme.PrimaryLight);
                 g.FillPath(hlBrush, hlPath);
             }
             else if (i < _rows.Count - 1)
             {
-                g.DrawLine(linePen, 0, y + 32, Width, y + 32);
+                g.DrawLine(linePen, 0, y + rowH, Width, y + rowH);
             }
 
-            var leftRect = new Rectangle(6, y, (int)(Width * 0.40f), 32);
-            var rightRect = new Rectangle((int)(Width * 0.40f) + 6, y, (int)(Width * 0.60f) - 12, 32);
+            var leftRect = new Rectangle(6, y, (int)(Width * 0.42f), rowH);
+            var rightRect = new Rectangle((int)(Width * 0.42f) + 6, y, (int)(Width * 0.58f) - 12, rowH);
 
             TextRenderer.DrawText(g, row.Label, labelFont, leftRect, Theme.Muted,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
@@ -499,7 +550,7 @@ public sealed class DossierFieldList : Panel
                 row.ValueColor ?? Theme.Text,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
-            y += 34;
+            y += rowStep;
         }
     }
 }
@@ -513,18 +564,18 @@ public static class Ui
     {
         Text = text,
         AutoSize = false,
-        Height = 22,
+        Height = 24,
         Dock = DockStyle.Top,
         Font = Theme.Font(8.2f, FontStyle.Bold),
         ForeColor = Theme.TextSecondary,
-        TextAlign = ContentAlignment.BottomLeft
+        TextAlign = ContentAlignment.MiddleLeft
     };
 
     public static Panel Field(string label, Control input, int width = 260)
     {
-        var p = new Panel { Width = width, Height = 64, Margin = new Padding(0, 0, 14, 8), BackColor = Color.Transparent };
+        var p = new Panel { Width = width, Height = 68, Margin = new Padding(0, 0, 14, 8), BackColor = Color.Transparent };
         input.Dock = DockStyle.Bottom;
-        input.Height = 36;
+        input.Height = 38;
         p.Controls.Add(input);
         p.Controls.Add(FieldLabel(label));
         return p;

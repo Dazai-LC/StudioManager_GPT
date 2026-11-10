@@ -10,43 +10,34 @@ namespace StudioManager.WinForms.Forms;
 
 public sealed class MainForm : Form
 {
-    private const int RailWidth = 84;
+    private const int RailWidth = 112;
 
     private readonly AppFacade _app;
     private DashboardData? _initialDashboardData;
 
     private readonly Panel _content = new()
     {
-        Dock = DockStyle.Fill,
         BackColor = Theme.Background,
         Padding = new Padding(20, 14, 20, 18)
     };
 
-    private readonly Panel _rail = new()
-    {
-        Dock = DockStyle.Left,
-        Width = RailWidth,
-        BackColor = Theme.Sidebar,
-        Padding = new Padding(8, 12, 8, 12)
-    };
-
     private readonly FlowLayoutPanel _railMenu = new()
     {
-        Dock = DockStyle.Fill,
         FlowDirection = FlowDirection.TopDown,
         WrapContents = false,
-        Padding = new Padding(0, 8, 0, 0),
+        Padding = new Padding(0, 4, 0, 0),
         BackColor = Theme.Sidebar
     };
 
     private readonly Label _hubBreadcrumb = new()
     {
         Dock = DockStyle.Top,
-        Height = 18,
+        Height = 20,
         Text = "ATELIER LUMIÈRE  /  BÀN LÀM VIỆC",
         Font = Theme.MonoFont(7.6f, FontStyle.Bold),
         ForeColor = Theme.Primary,
-        TextAlign = ContentAlignment.BottomLeft
+        TextAlign = ContentAlignment.MiddleLeft,
+        AutoEllipsis = true
     };
 
     private readonly Label _hubTitle = new()
@@ -55,7 +46,8 @@ public sealed class MainForm : Form
         Text = "Bàn điều khiển trung tâm",
         Font = Theme.Font(14.5f, FontStyle.Bold),
         ForeColor = Theme.Text,
-        TextAlign = ContentAlignment.MiddleLeft
+        TextAlign = ContentAlignment.MiddleLeft,
+        AutoEllipsis = true
     };
 
     private readonly SegmentedTabBar _subNav = new()
@@ -66,9 +58,8 @@ public sealed class MainForm : Form
 
     private readonly Panel _subNavHost = new()
     {
-        Dock = DockStyle.Top,
-        Height = 48,
-        Padding = new Padding(20, 6, 20, 4),
+        Height = 50,
+        Padding = new Padding(20, 6, 20, 6),
         BackColor = Theme.SurfaceWarm,
         Visible = false
     };
@@ -77,6 +68,9 @@ public sealed class MainForm : Form
     private readonly List<RailNavButton> _railButtons = [];
     private string _activeHubKey = "dashboard";
     private string _activeSubKey = "";
+
+    private ObsidianRailPanel _rail = null!;
+    private WorkspaceHostPanel _workspaceHost = null!;
 
     public MainForm(AppFacade app, DashboardData? initialDashboardData = null)
     {
@@ -94,15 +88,10 @@ public sealed class MainForm : Form
         var topHeader = BuildTopCommandHeader();
         BuildSubNavigationStrip();
 
-        Controls.Add(_content);
-        Controls.Add(_subNavHost);
-        Controls.Add(topHeader);
-        Controls.Add(_rail);
+        _workspaceHost = new WorkspaceHostPanel(topHeader, _subNavHost, _content);
 
-        _rail.BringToFront();
-        topHeader.BringToFront();
-        _subNavHost.BringToFront();
-        _content.SendToBack();
+        Controls.Add(_workspaceHost);
+        Controls.Add(_rail);
 
         KeyDown += OnMainFormKeyDown;
         Shown += (_, _) =>
@@ -111,6 +100,18 @@ public sealed class MainForm : Form
             BringToFront();
         };
         NavigateTo("dashboard");
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        base.OnLayout(levent);
+        int clientW = ClientSize.Width;
+        int clientH = ClientSize.Height;
+        if (clientW <= 0 || clientH <= 0 || _rail == null || _workspaceHost == null) return;
+
+        int railW = RailWidth;
+        _rail.SetBounds(0, 0, railW, clientH);
+        _workspaceHost.SetBounds(railW, 0, Math.Max(0, clientW - railW), clientH);
     }
 
     private void OnMainFormKeyDown(object? sender, KeyEventArgs e)
@@ -142,8 +143,7 @@ public sealed class MainForm : Form
     {
         var brandLogo = new Panel
         {
-            Dock = DockStyle.Top,
-            Height = 58,
+            Height = 64,
             BackColor = Color.Transparent,
             Cursor = Cursors.Hand
         };
@@ -152,8 +152,8 @@ public sealed class MainForm : Form
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             var cx = brandLogo.Width / 2f;
-            var cy = brandLogo.Height / 2f - 4f;
-            var box = new RectangleF(cx - 21, cy - 21, 42, 42);
+            var cy = brandLogo.Height / 2f;
+            var box = new RectangleF(cx - 22, cy - 22, 44, 44);
             using var path = Theme.RoundedRectangle(box, 12f);
             using var fill = new SolidBrush(Theme.SidebarCard);
             using var border = new Pen(Theme.Primary, 1.5f);
@@ -178,15 +178,15 @@ public sealed class MainForm : Form
 
         var footer = new Panel
         {
-            Dock = DockStyle.Bottom,
-            Height = 116,
+            Height = 128,
             BackColor = Color.Transparent
         };
 
         var passBtn = new RailNavButton("password", "Mật khẩu", IconKind.Key)
         {
-            Dock = DockStyle.Top,
-            Height = 52
+            Width = RailWidth - 12,
+            Height = 56,
+            Location = new Point(6, 6)
         };
         passBtn.Click += (_, _) =>
         {
@@ -198,8 +198,9 @@ public sealed class MainForm : Form
 
         var logoutBtn = new RailNavButton("logout", "Thoát", IconKind.LogOut, isDanger: true)
         {
-            Dock = DockStyle.Bottom,
-            Height = 52
+            Width = RailWidth - 12,
+            Height = 56,
+            Location = new Point(6, 66)
         };
         logoutBtn.Click += (_, _) => Close();
         _toolTip.SetToolTip(logoutBtn, "Đăng xuất khỏi phiên làm việc");
@@ -207,18 +208,16 @@ public sealed class MainForm : Form
         footer.Controls.Add(passBtn);
         footer.Controls.Add(logoutBtn);
 
-        _rail.Controls.Add(_railMenu);
-        _rail.Controls.Add(footer);
-        _rail.Controls.Add(brandLogo);
+        _rail = new ObsidianRailPanel(brandLogo, _railMenu, footer);
     }
 
     private void AddRailItem(string key, string shortLabel, IconKind icon, string tooltip)
     {
         var btn = new RailNavButton(key, shortLabel, icon)
         {
-            Width = RailWidth - 16,
-            Height = 58,
-            Margin = new Padding(0, 2, 0, 4)
+            Width = RailWidth - 12,
+            Height = 64,
+            Margin = new Padding(6, 2, 6, 4)
         };
         btn.Click += (_, _) => NavigateTo(key);
         _toolTip.SetToolTip(btn, tooltip);
@@ -230,42 +229,36 @@ public sealed class MainForm : Form
     {
         var header = new TopCommandBarPanel
         {
-            Dock = DockStyle.Top,
             Height = 62,
-            BackColor = Theme.Surface,
-            Padding = new Padding(20, 8, 20, 8)
+            BackColor = Theme.Surface
         };
 
         var leftTitles = new Panel
         {
-            Dock = DockStyle.Fill,
             BackColor = Color.Transparent
         };
-        leftTitles.Controls.Add(_hubTitle);
+        _hubBreadcrumb.Dock = DockStyle.None;
+        _hubTitle.Dock = DockStyle.None;
         leftTitles.Controls.Add(_hubBreadcrumb);
-
-        var rightZone = new FlowLayoutPanel
+        leftTitles.Controls.Add(_hubTitle);
+        leftTitles.Layout += (_, _) =>
         {
-            Dock = DockStyle.Right,
-            Width = 560,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            Padding = new Padding(0, 3, 0, 0),
-            BackColor = Color.Transparent
+            int lw = leftTitles.ClientSize.Width;
+            int lh = leftTitles.ClientSize.Height;
+            if (lw <= 0 || lh <= 0) return;
+            int bcH = Math.Max(19, _hubBreadcrumb.PreferredHeight + 2);
+            _hubBreadcrumb.SetBounds(0, 0, lw, bcH);
+            _hubTitle.SetBounds(0, bcH, lw, Math.Max(26, lh - bcH));
         };
 
         var userPill = BuildUserBadgePill();
         var cmdButton = Theme.OutlineButton("Tìm nhanh lệnh & màn hình (Ctrl+K)", Theme.BorderStrong, IconKind.Command);
-        cmdButton.Height = 38;
-        cmdButton.Width = 256;
-        cmdButton.Margin = new Padding(0, 1, 12, 0);
+        cmdButton.Height = 40;
+        cmdButton.Width = Math.Max(264, cmdButton.RequiredWidth + 6);
+        cmdButton.Margin = Padding.Empty;
         cmdButton.Click += (_, _) => OpenCommandPalette();
 
-        rightZone.Controls.Add(userPill);
-        rightZone.Controls.Add(cmdButton);
-
-        header.Controls.Add(leftTitles);
-        header.Controls.Add(rightZone);
+        header.SetChildren(leftTitles, cmdButton, userPill);
         return header;
     }
 
@@ -280,9 +273,9 @@ public sealed class MainForm : Form
 
         var pill = new Panel
         {
-            Width = 230,
-            Height = 40,
-            Margin = new Padding(0),
+            Width = 236,
+            Height = 42,
+            Margin = Padding.Empty,
             BackColor = Color.Transparent
         };
 
@@ -292,15 +285,16 @@ public sealed class MainForm : Form
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            var bounds = new RectangleF(0.5f, 0.5f, pill.Width - 1, pill.Height - 1);
-            using var path = Theme.RoundedRectangle(bounds, 20f);
+            var bounds = new RectangleF(0.5f, 0.5f, Math.Max(1, pill.Width - 1), Math.Max(1, pill.Height - 1));
+            using var path = Theme.RoundedRectangle(bounds, pill.Height / 2f);
             using var bg = new SolidBrush(Theme.SurfaceWarm);
             using var border = new Pen(Theme.BorderStrong, 1f);
             g.FillPath(bg, path);
             g.DrawPath(border, path);
 
             // Avatar circle on right
-            var avRect = new RectangleF(pill.Width - 36, 4, 32, 32);
+            const float avSize = 32f;
+            var avRect = new RectangleF(pill.Width - avSize - 5f, (pill.Height - avSize) / 2f, avSize, avSize);
             using var avFill = new SolidBrush(roleColor);
             g.FillEllipse(avFill, avRect);
 
@@ -312,13 +306,14 @@ public sealed class MainForm : Form
             // Name & Role
             using var nameFont = Theme.Font(8.8f, FontStyle.Bold);
             using var roleFont = Theme.MonoFont(7.2f, FontStyle.Bold);
-            var nameRect = new Rectangle(10, 3, pill.Width - 52, 18);
-            var roleRect = new Rectangle(10, 20, pill.Width - 52, 16);
+            var halfH = pill.Height / 2;
+            var nameRect = new Rectangle(12, 3, Math.Max(40, pill.Width - 54), Math.Max(16, halfH - 2));
+            var roleRect = new Rectangle(12, halfH, Math.Max(40, pill.Width - 54), Math.Max(14, pill.Height - halfH - 3));
 
             TextRenderer.DrawText(g, fullName, nameFont, nameRect, Theme.Text,
-                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, roleName, roleFont, roleRect, roleColor,
-                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         };
 
         return pill;
@@ -333,6 +328,13 @@ public sealed class MainForm : Form
         };
         _subNav.SegmentSelected += (_, seg) => OpenSubView(_activeHubKey, seg.Key);
         _subNavHost.Controls.Add(_subNav);
+        _subNavHost.VisibleChanged += (_, _) =>
+        {
+            if (_workspaceHost != null && _workspaceHost.SubNavVisible != _subNavHost.Visible)
+            {
+                _workspaceHost.SubNavVisible = _subNavHost.Visible;
+            }
+        };
     }
 
     public void NavigateTo(string hubKey, string? subKey = null)
@@ -346,16 +348,16 @@ public sealed class MainForm : Form
             switch (hubKey)
             {
                 case "dashboard":
-                    _subNavHost.Visible = false;
                     _subNav.Visible = false;
+                    _workspaceHost.SubNavVisible = false;
                     _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 01";
                     _hubTitle.Text = "Bàn điều khiển trung tâm";
                     MountPage(CreateDashboard());
                     break;
 
                 case "bookings":
-                    _subNavHost.Visible = false;
                     _subNav.Visible = false;
+                    _workspaceHost.SubNavVisible = false;
                     _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 02";
                     _hubTitle.Text = "Điều phối Lịch chụp & Tiến độ Hậu kỳ";
                     MountPage(new BookingsPage(_app));
@@ -380,14 +382,14 @@ public sealed class MainForm : Form
                     if (!IsAdmin) targetCatalogKey = "KhachHang";
                     _subNav.SetItems(catalogTabs, targetCatalogKey);
                     _subNav.Visible = true;
-                    _subNavHost.Visible = true;
+                    _workspaceHost.SubNavVisible = true;
                     OpenSubView("catalog", targetCatalogKey);
                     break;
 
                 case "reports":
                     if (!IsAdmin) return;
-                    _subNavHost.Visible = false;
                     _subNav.Visible = false;
+                    _workspaceHost.SubNavVisible = false;
                     _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 04";
                     _hubTitle.Text = "Phân tích Doanh thu & Hiệu suất Kinh doanh";
                     MountPage(new ReportsPage(_app));
@@ -404,10 +406,11 @@ public sealed class MainForm : Form
                     var targetSysKey = subKey ?? (_activeSubKey is "TaiKhoan" or "NhatKy" or "SaoLuu" ? _activeSubKey : "TaiKhoan");
                     _subNav.SetItems(sysTabs, targetSysKey);
                     _subNav.Visible = true;
-                    _subNavHost.Visible = true;
+                    _workspaceHost.SubNavVisible = true;
                     OpenSubView("system", targetSysKey);
                     break;
             }
+            _workspaceHost.PerformLayout();
         }
         catch (Exception ex)
         {
@@ -567,21 +570,74 @@ internal sealed class RailNavButton : Control
             : (_isDanger && _isHovered ? Theme.Primitives.Crimson200 : (_isHovered ? Color.White : Theme.SidebarMuted));
 
         var iconColor = _isActive ? Theme.Primary : fg;
-        var iconY = 9f;
-        VectorIcons.Draw(g, _icon, new RectangleF((Width - 20f) / 2f, iconY, 20f, 20f), iconColor, _isActive ? 2.0f : 1.75f);
+        var iconY = 8f;
+        VectorIcons.Draw(g, _icon, new RectangleF((Width - 22f) / 2f, iconY, 22f, 22f), iconColor, _isActive ? 2.0f : 1.75f);
 
-        using var font = Theme.Font(7.4f, _isActive ? FontStyle.Bold : FontStyle.Regular);
-        var textRect = new Rectangle(2, 31, Width - 4, 20);
-        TextRenderer.DrawText(g, _label, font, textRect, fg,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        const TextFormatFlags textFlags = TextFormatFlags.HorizontalCenter |
+                                          TextFormatFlags.VerticalCenter |
+                                          TextFormatFlags.SingleLine |
+                                          TextFormatFlags.NoPadding;
+
+        var textRect = new Rectangle(2, 34, Width - 4, 26);
+        float fontSize = _isActive ? 7.6f : 7.3f;
+        using (var testFont = Theme.Font(fontSize, _isActive ? FontStyle.Bold : FontStyle.Regular))
+        {
+            var sz = TextRenderer.MeasureText(g, _label, testFont, Size.Empty, textFlags);
+            if (sz.Width > textRect.Width)
+            {
+                float ratio = (float)(textRect.Width - 2) / sz.Width;
+                fontSize = Math.Max(5.8f, fontSize * ratio);
+            }
+        }
+
+        using var font = Theme.Font(fontSize, _isActive ? FontStyle.Bold : FontStyle.Regular);
+        TextRenderer.DrawText(g, _label, font, textRect, fg, textFlags);
     }
 }
 
 internal sealed class TopCommandBarPanel : Panel
 {
+    private Control? _leftTitles;
+    private ModernButton? _cmdButton;
+    private Control? _userPill;
+
     public TopCommandBarPanel()
     {
-        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+
+    public void SetChildren(Control leftTitles, ModernButton cmdButton, Control userPill)
+    {
+        _leftTitles = leftTitles;
+        _cmdButton = cmdButton;
+        _userPill = userPill;
+        Controls.Add(userPill);
+        Controls.Add(cmdButton);
+        Controls.Add(leftTitles);
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        int w = ClientSize.Width;
+        int h = ClientSize.Height;
+        if (w <= 0 || h <= 0 || _leftTitles == null || _cmdButton == null || _userPill == null) return;
+
+        int pillW = 236;
+        int pillH = 42;
+        int pillX = Math.Max(20, w - 20 - pillW);
+        int pillY = Math.Max(4, (h - pillH) / 2);
+        _userPill.SetBounds(pillX, pillY, pillW, pillH);
+
+        int cmdW = Math.Clamp(_cmdButton.RequiredWidth + 8, 240, Math.Max(240, Math.Min(330, pillX - 240)));
+        int cmdH = 40;
+        int cmdX = Math.Max(20, pillX - 12 - cmdW);
+        int cmdY = Math.Max(4, (h - cmdH) / 2);
+        _cmdButton.SetBounds(cmdX, cmdY, cmdW, cmdH);
+
+        int leftW = Math.Max(100, cmdX - 36);
+        int leftPadV = 8;
+        _leftTitles.SetBounds(20, leftPadV, leftW, Math.Max(40, h - leftPadV * 2));
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -589,6 +645,98 @@ internal sealed class TopCommandBarPanel : Panel
         base.OnPaint(e);
         using var pen = new Pen(Theme.Border, 1f);
         e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+    }
+}
+
+internal sealed class WorkspaceHostPanel : Panel
+{
+    public const int HeaderHeight = 72;
+    public const int SubNavHeight = 50;
+
+    private readonly Control _header;
+    private readonly Control _subNav;
+    private readonly Control _content;
+    private bool _subNavVisible;
+
+    public bool SubNavVisible
+    {
+        get => _subNavVisible;
+        set
+        {
+            if (_subNavVisible != value)
+            {
+                _subNavVisible = value;
+                _subNav.Visible = value;
+                PerformLayout();
+                Invalidate();
+            }
+        }
+    }
+
+    public WorkspaceHostPanel(Control header, Control subNav, Control content)
+    {
+        _header = header;
+        _subNav = subNav;
+        _content = content;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        BackColor = Theme.Background;
+
+        Controls.Add(_header);
+        Controls.Add(_subNav);
+        Controls.Add(_content);
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        int w = ClientSize.Width;
+        int h = ClientSize.Height;
+        if (w <= 0 || h <= 0) return;
+
+        _header.Visible = true;
+        _header.SetBounds(0, 0, w, HeaderHeight);
+
+        int subH = _subNavVisible ? SubNavHeight : 0;
+        _subNav.Visible = _subNavVisible;
+        _subNav.SetBounds(0, HeaderHeight, w, subH);
+
+        int contentY = HeaderHeight + subH;
+        _content.SetBounds(0, contentY, w, Math.Max(0, h - contentY));
+    }
+}
+
+internal sealed class ObsidianRailPanel : Panel
+{
+    private readonly Control _brandLogo;
+    private readonly Control _menu;
+    private readonly Control _footer;
+
+    public ObsidianRailPanel(Control brandLogo, Control menu, Control footer)
+    {
+        _brandLogo = brandLogo;
+        _menu = menu;
+        _footer = footer;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        BackColor = Theme.Sidebar;
+
+        Controls.Add(_brandLogo);
+        Controls.Add(_menu);
+        Controls.Add(_footer);
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        int w = ClientSize.Width;
+        int h = ClientSize.Height;
+        if (w <= 0 || h <= 0) return;
+
+        int logoH = 64;
+        int footerH = 128;
+
+        _brandLogo.SetBounds(0, 0, w, logoH);
+        _footer.SetBounds(0, Math.Max(logoH, h - footerH), w, footerH);
+        int menuY = logoH;
+        int menuH = Math.Max(0, h - logoH - footerH);
+        _menu.SetBounds(0, menuY, w, menuH);
     }
 }
 
