@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.Domain;
@@ -9,58 +10,69 @@ namespace StudioManager.WinForms.Forms;
 public sealed class ApplicationInitializationForm : Form
 {
     private readonly AppFacade _app;
+
     private readonly Label _headline = new()
     {
         Dock = DockStyle.Fill,
-        Text = "Đang khởi tạo workspace...",
-        Font = Theme.Font(15, FontStyle.Bold),
+        Text = "Đang hiệu chuẩn không gian làm việc...",
+        Font = Theme.Font(15.5f, FontStyle.Bold),
         ForeColor = Theme.Text,
-        TextAlign = ContentAlignment.MiddleCenter
+        TextAlign = ContentAlignment.MiddleLeft
     };
+
     private readonly Label _detail = new()
     {
         Dock = DockStyle.Fill,
-        Text = "StudioManager đang chuẩn bị dữ liệu và thiết lập quyền truy cập",
-        Font = Theme.Font(9.5f),
+        Text = "Đang đồng bộ danh mục phòng chụp, hồ sơ nhân sự và trạng thái lịch chụp",
+        Font = Theme.Font(9.2f),
         ForeColor = Theme.Muted,
-        TextAlign = ContentAlignment.TopCenter
+        TextAlign = ContentAlignment.TopLeft
     };
-    private readonly Label[] _steps = new Label[5];
-    private readonly MilestoneProgressBar _progress = new()
+
+    private readonly CalibrationStepperControl _stepper = new()
     {
         Dock = DockStyle.Fill,
-        Margin = new Padding(0, 10, 0, 10)
+        Margin = new Padding(0, 8, 0, 8)
     };
-    private readonly SpinnerControl _spinner = new() { Dock = DockStyle.Fill };
-    private readonly ModernButton _retry = Theme.Button("↻  Thử lại");
-    private readonly ModernButton _logout = Theme.Button("Quay lại đăng nhập", Theme.Secondary);
+
+    private readonly ApertureSpinnerControl _spinner = new()
+    {
+        Width = 64,
+        Height = 64,
+        Dock = DockStyle.Left
+    };
+
+    private readonly ModernButton _retry = Theme.Button("Thử lại kết nối", Theme.Primary, IconKind.Refresh);
+    private readonly ModernButton _logout = Theme.OutlineButton("Quay lại đăng nhập", Theme.BorderStrong, IconKind.LogOut);
+
     private readonly FlowLayoutPanel _actions = new()
     {
         Dock = DockStyle.Fill,
-        FlowDirection = FlowDirection.LeftToRight,
+        FlowDirection = FlowDirection.RightToLeft,
         WrapContents = false,
-        Visible = false
+        Visible = false,
+        BackColor = Color.Transparent
     };
+
     private CancellationTokenSource? _initializationCts;
     public DashboardData? DashboardData { get; private set; }
+    public Exception? LastError { get; private set; }
+    public string? LastErrorMessage { get; private set; }
 
     public ApplicationInitializationForm(AppFacade app)
     {
         _app = app;
-        Text = "Khởi tạo hệ thống • StudioManager";
+        Text = "Hiệu chuẩn hệ thống • StudioManager";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(620, 580);
-        MinimumSize = new Size(560, 540);
+        ClientSize = new Size(720, 420);
+        MinimumSize = new Size(680, 400);
         MaximizeBox = false;
         MinimizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         BackColor = Theme.Background;
         Font = Theme.Font();
 
-        Controls.Add(BuildCard());
-        _retry.Width = 126;
-        _logout.Width = 174;
-        _actions.ClientSizeChanged += (_, _) => CenterActions();
+        Controls.Add(BuildConsoleCard());
 
         Shown += async (_, _) => await InitializeAsync();
         FormClosing += (_, _) => _initializationCts?.Cancel();
@@ -68,68 +80,70 @@ public sealed class ApplicationInitializationForm : Form
         _logout.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
     }
 
-    private Control BuildCard()
+    private Control BuildConsoleCard()
     {
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(54, 36, 54, 32),
-            Margin = new Padding(16),
+            Padding = new Padding(36, 28, 36, 24),
+            Margin = new Padding(18),
             BackColor = Theme.Surface,
-            CornerRadius = 14
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 12,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
         };
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 11,
+            RowCount = 4,
             BackColor = Theme.Surface
         };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));  // Top Header Row (Aperture Spinner + Headline)
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // Horizontal 5-Node Stepper
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));  // Telemetry Status Strip
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));  // Action Row
 
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56)); // Logo
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36)); // Headline
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Detail
-        for (var i = 0; i < 5; i++)
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); // 5 Steps
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36)); // Progress
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Spinner
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46)); // Actions
+        var topHeader = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+        var textCol = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16, 4, 0, 0), BackColor = Color.Transparent };
+        textCol.Controls.Add(_detail);
+        textCol.Controls.Add(_headline);
+        _headline.Dock = DockStyle.Top;
+        _headline.Height = 32;
 
-        var brand = new Label
+        topHeader.Controls.Add(textCol);
+        topHeader.Controls.Add(_spinner);
+
+        var telemetryStrip = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Text = "◈",
-            Font = Theme.Font(32, FontStyle.Bold),
-            ForeColor = Theme.Primary,
-            TextAlign = ContentAlignment.MiddleCenter
+            BackColor = Theme.SurfaceWarm,
+            BorderColor = Theme.Border,
+            CornerRadius = 8,
+            Padding = new Padding(14, 8, 14, 8),
+            Margin = new Padding(0, 4, 0, 4)
         };
-
-        layout.Controls.Add(brand, 0, 0);
-        layout.Controls.Add(_headline, 0, 1);
-        layout.Controls.Add(_detail, 0, 2);
-
-        var names = new[]
+        var sessionUser = _app.Session?.HoTen ?? "Chưa xác định";
+        var sessionRole = _app.Session?.VaiTro == VaiTro.QuanTriVien ? "Quản trị viên (Toàn quyền)" : "Nhân viên vận hành";
+        var sessionLabel = new Label
         {
-            "Xác thực thông tin tài khoản",
-            "Tải hồ sơ & phiên làm việc",
-            "Kiểm tra phân quyền hệ thống",
-            "Đồng bộ dữ liệu hoạt động studio",
-            "Không gian làm việc đã sẵn sàng"
+            Dock = DockStyle.Fill,
+            Text = $"Phiên làm việc: {sessionUser}   •   Phân quyền: {sessionRole}",
+            Font = Theme.Font(8.8f, FontStyle.Bold),
+            ForeColor = Theme.TextSecondary,
+            TextAlign = ContentAlignment.MiddleLeft
         };
-
-        for (var i = 0; i < names.Length; i++)
-        {
-            _steps[i] = StepLabel(names[i]);
-            layout.Controls.Add(_steps[i], 0, i + 3);
-        }
-
-        layout.Controls.Add(_progress, 0, 8);
-        layout.Controls.Add(_spinner, 0, 9);
+        telemetryStrip.Controls.Add(sessionLabel);
 
         _actions.Controls.Add(_retry);
         _actions.Controls.Add(_logout);
-        layout.Controls.Add(_actions, 0, 10);
+
+        layout.Controls.Add(topHeader, 0, 0);
+        layout.Controls.Add(_stepper, 0, 1);
+        layout.Controls.Add(telemetryStrip, 0, 2);
+        layout.Controls.Add(_actions, 0, 3);
 
         card.Controls.Add(layout);
         return card;
@@ -143,18 +157,21 @@ public sealed class ApplicationInitializationForm : Form
         var ct = _initializationCts.Token;
 
         DashboardData = null;
+        LastError = null;
+        LastErrorMessage = null;
         _actions.Visible = false;
         _spinner.Running = true;
-        _headline.Text = "Đang khởi tạo workspace...";
-        _detail.Text = "StudioManager đang chuẩn bị không gian làm việc của bạn";
-        ResetSteps();
+        _headline.Text = "Đang hiệu chuẩn không gian làm việc...";
+        _detail.ForeColor = Theme.Muted;
+        _detail.Text = "StudioManager đang chuẩn bị dữ liệu và kiểm tra phân quyền truy cập";
+        _stepper.Reset();
 
         try
         {
-            CompleteStep(0, 20); // Authentication completed before this form is shown.
+            _stepper.SetStepState(0, StepNodeState.Completed);
             if (_app.Session is null) throw new InvalidOperationException("Phiên đăng nhập không còn hợp lệ.");
 
-            CompleteStep(1, 40);
+            _stepper.SetStepState(1, StepNodeState.Completed);
             _ = _app.Session.VaiTro switch
             {
                 VaiTro.QuanTriVien => true,
@@ -162,17 +179,16 @@ public sealed class ApplicationInitializationForm : Form
                 _ => throw new UnauthorizedAccessException("Vai trò tài khoản không hợp lệ.")
             };
 
-            CompleteStep(2, 55);
-            SetActiveStep(3, "Đang tải dữ liệu vận hành studio...");
+            _stepper.SetStepState(2, StepNodeState.Completed);
+            _stepper.SetStepState(3, StepNodeState.Active);
+            _detail.Text = "Đang nạp dữ liệu lịch chụp, doanh thu và chỉ số vận hành studio...";
 
             DashboardData = await _app.Dashboard.LoadAsync(ct);
 
-            CompleteStep(3, 85);
-            SetActiveStep(4, "Đang chuẩn bị bảng điều khiển...");
-
-            CompleteStep(4, 100);
-            _headline.Text = "Không gian làm việc sẵn sàng";
-            _detail.Text = "Đang mở bảng điều khiển...";
+            _stepper.SetStepState(3, StepNodeState.Completed);
+            _stepper.SetStepState(4, StepNodeState.Completed);
+            _headline.Text = "Không gian làm việc đã sẵn sàng";
+            _detail.Text = "Đang mở bàn điều khiển trung tâm...";
             _spinner.Running = false;
 
             DialogResult = DialogResult.OK;
@@ -181,92 +197,71 @@ public sealed class ApplicationInitializationForm : Form
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            LastError = ex;
+            Ui.LogError("ApplicationInitializationForm.InitializeAsync", ex);
+            LastErrorMessage = FriendlyError(ex);
             _spinner.Running = false;
-            _headline.Text = "Không thể khởi tạo workspace";
-            _detail.Text = FriendlyError(ex);
-            MarkCurrentFailed();
+            _headline.Text = "Không thể khởi tạo không gian làm việc";
+            _detail.ForeColor = Theme.Danger;
+            _detail.Text = LastErrorMessage;
+            _stepper.MarkActiveFailed();
             _actions.Visible = true;
         }
     }
 
-    private void ResetSteps()
-    {
-        for (var i = 0; i < _steps.Length; i++)
-        {
-            _steps[i].Text = "○   " + StepName(i);
-            _steps[i].ForeColor = Theme.Muted;
-        }
-        _progress.Value = 0;
-    }
-
-    private void CompleteStep(int index, int progress)
-    {
-        _steps[index].Text = "✓   " + StepName(index);
-        _steps[index].ForeColor = Theme.Success;
-        _progress.Value = progress;
-    }
-
-    private void SetActiveStep(int index, string detail)
-    {
-        _steps[index].Text = "◌   " + StepName(index);
-        _steps[index].ForeColor = Theme.Primary;
-        _detail.Text = detail;
-    }
-
-    private void MarkCurrentFailed()
-    {
-        var current = Array.FindIndex(_steps, x => x.Text.StartsWith("◌", StringComparison.Ordinal));
-        if (current >= 0)
-        {
-            _steps[current].Text = "⚠   " + StepName(current);
-            _steps[current].ForeColor = Theme.Danger;
-        }
-    }
-
-    private static string StepName(int index) => new[]
-    {
-        "Xác thực thông tin tài khoản",
-        "Tải hồ sơ & phiên làm việc",
-        "Kiểm tra phân quyền hệ thống",
-        "Đồng bộ dữ liệu hoạt động studio",
-        "Không gian làm việc đã sẵn sàng"
-    }[index];
-
-    private static Label StepLabel(string text) => new()
-    {
-        Dock = DockStyle.Fill,
-        Text = "○   " + text,
-        Font = Theme.Font(9.5f),
-        ForeColor = Theme.Muted,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Padding = new Padding(20, 0, 0, 0)
-    };
-
     private static string FriendlyError(Exception ex) =>
-        ex.Message.Contains("SQL", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase)
-            ? "Không thể kết nối cơ sở dữ liệu SQL Server. Vui lòng kiểm tra dịch vụ và thử lại."
-            : ex.Message;
-
-    private void CenterActions()
-    {
-        var contentWidth = _retry.Width + _logout.Width + _retry.Margin.Horizontal + _logout.Margin.Horizontal;
-        _actions.Padding = new Padding(Math.Max(0, (_actions.ClientSize.Width - contentWidth) / 2), 0, 0, 0);
-    }
+        Ui.IsDatabaseException(ex)
+            ? $"Không thể kết nối cơ sở dữ liệu SQL Server ({ex.GetType().Name}): {ex.Message}"
+            : $"Lỗi khởi tạo dữ liệu ({ex.GetType().Name}): {ex.Message}";
 }
 
-internal sealed class MilestoneProgressBar : Control
+internal enum StepNodeState
 {
-    private int _value;
-    public int Value
+    Pending,
+    Active,
+    Completed,
+    Failed
+}
+
+internal sealed class CalibrationStepperControl : Control
+{
+    private static readonly (string Code, string Title, string Subtitle)[] Steps =
+    [
+        ("01", "Xác thực", "Kiểm tra thông tin"),
+        ("02", "Phiên làm việc", "Nạp hồ sơ nhân sự"),
+        ("03", "Phân quyền", "Áp dụng vai trò"),
+        ("04", "Đồng bộ SQL", "Tải lịch & doanh thu"),
+        ("05", "Sẵn sàng", "Mở bàn làm việc")
+    ];
+
+    private readonly StepNodeState[] _states = new StepNodeState[5];
+
+    public CalibrationStepperControl()
     {
-        get => _value;
-        set { _value = Math.Clamp(value, 0, 100); Invalidate(); }
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        BackColor = Theme.Surface;
     }
 
-    public MilestoneProgressBar()
+    public void Reset()
     {
-        DoubleBuffered = true;
-        Height = 14;
+        for (var i = 0; i < _states.Length; i++) _states[i] = StepNodeState.Pending;
+        Invalidate();
+    }
+
+    public void SetStepState(int index, StepNodeState state)
+    {
+        if (index < 0 || index >= _states.Length) return;
+        _states[index] = state;
+        Invalidate();
+    }
+
+    public void MarkActiveFailed()
+    {
+        var active = Array.FindIndex(_states, x => x == StepNodeState.Active);
+        if (active >= 0) _states[active] = StepNodeState.Failed;
+        else _states[0] = StepNodeState.Failed;
+        Invalidate();
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -274,26 +269,77 @@ internal sealed class MilestoneProgressBar : Control
         base.OnPaint(e);
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-        var track = new Rectangle(0, Math.Max(0, Height / 2 - 4), Math.Max(1, Width - 1), 8);
-        using var trackPath = Theme.RoundedRectangle(new RectangleF(track.X, track.Y, track.Width, track.Height), 4);
-        using var trackBrush = new SolidBrush(Color.FromArgb(226, 232, 240));
-        g.FillPath(trackBrush, trackPath);
+        var count = Steps.Length;
+        var slotW = Width / (float)count;
+        var nodeY = Math.Max(38f, Height / 2f - 22f);
+        const float nodeR = 18f;
 
-        if (_value <= 0) return;
+        // Draw connecting tracks first
+        for (var i = 0; i < count - 1; i++)
+        {
+            var x1 = slotW * i + slotW / 2f + nodeR;
+            var x2 = slotW * (i + 1) + slotW / 2f - nodeR;
+            var done = _states[i] == StepNodeState.Completed;
+            using var trackPen = new Pen(done ? Theme.Success : Theme.Primitives.Alabaster200, 3f);
+            g.DrawLine(trackPen, x1, nodeY, x2, nodeY);
+        }
 
-        var fillWidth = Math.Max(8, track.Width * _value / 100);
-        var fillRect = new Rectangle(0, track.Y, fillWidth, track.Height);
-        using var fillPath = Theme.RoundedRectangle(new RectangleF(fillRect.X, fillRect.Y, fillRect.Width, fillRect.Height), 4);
-        using var fillBrush = new LinearGradientBrush(fillRect, Theme.Primary, Theme.Cyan, 0f);
-        g.FillPath(fillBrush, fillPath);
+        using var codeFont = Theme.MonoFont(8.5f, FontStyle.Bold);
+        using var titleFont = Theme.Font(9.0f, FontStyle.Bold);
+        using var subFont = Theme.Font(7.8f);
+
+        for (var i = 0; i < count; i++)
+        {
+            var cx = slotW * i + slotW / 2f;
+            var state = _states[i];
+            var (fill, border, fg) = state switch
+            {
+                StepNodeState.Completed => (Theme.SuccessLight, Theme.Success, Theme.Success),
+                StepNodeState.Active => (Theme.PrimaryLight, Theme.Primary, Theme.Primary),
+                StepNodeState.Failed => (Theme.DangerLight, Theme.Danger, Theme.Danger),
+                _ => (Theme.Primitives.Alabaster100, Theme.BorderStrong, Theme.Muted)
+            };
+
+            var circle = new RectangleF(cx - nodeR, nodeY - nodeR, nodeR * 2, nodeR * 2);
+            using (var fillBrush = new SolidBrush(fill))
+            using (var borderPen = new Pen(border, state == StepNodeState.Active ? 2.2f : 1.5f))
+            {
+                g.FillEllipse(fillBrush, circle);
+                g.DrawEllipse(borderPen, circle);
+            }
+
+            if (state == StepNodeState.Completed)
+            {
+                VectorIcons.Draw(g, IconKind.Check, new RectangleF(cx - 8, nodeY - 8, 16, 16), fg, 2.0f);
+            }
+            else if (state == StepNodeState.Failed)
+            {
+                VectorIcons.Draw(g, IconKind.AlertTriangle, new RectangleF(cx - 8, nodeY - 8, 16, 16), fg, 1.9f);
+            }
+            else
+            {
+                var codeSize = g.MeasureString(Steps[i].Code, codeFont);
+                using var fgBrush = new SolidBrush(fg);
+                g.DrawString(Steps[i].Code, codeFont, fgBrush, cx - codeSize.Width / 2f, nodeY - codeSize.Height / 2f);
+            }
+
+            var tSize = g.MeasureString(Steps[i].Title, titleFont);
+            using var titleBrush = new SolidBrush(state == StepNodeState.Pending ? Theme.Muted : Theme.Text);
+            g.DrawString(Steps[i].Title, titleFont, titleBrush, cx - tSize.Width / 2f, nodeY + nodeR + 8f);
+
+            var sSize = g.MeasureString(Steps[i].Subtitle, subFont);
+            using var subBrush = new SolidBrush(Theme.Muted);
+            g.DrawString(Steps[i].Subtitle, subFont, subBrush, cx - sSize.Width / 2f, nodeY + nodeR + 26f);
+        }
     }
 }
 
-internal sealed class SpinnerControl : Control
+internal sealed class ApertureSpinnerControl : Control
 {
-    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 60 };
-    private int _angle;
+    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 45 };
+    private float _angle;
     private bool _running;
 
     public bool Running
@@ -308,10 +354,16 @@ internal sealed class SpinnerControl : Control
         }
     }
 
-    public SpinnerControl()
+    public ApertureSpinnerControl()
     {
-        DoubleBuffered = true;
-        _timer.Tick += (_, _) => { _angle = (_angle + 30) % 360; Invalidate(); };
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        BackColor = Theme.Surface;
+        _timer.Tick += (_, _) =>
+        {
+            _angle = (_angle + 12f) % 360f;
+            Invalidate();
+        };
     }
 
     protected override void Dispose(bool disposing)
@@ -323,20 +375,22 @@ internal sealed class SpinnerControl : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (!_running) return;
-
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        const int size = 20;
-        var x = (Width - size) / 2;
-        var y = (Height - size) / 2;
+        var cx = Width / 2f;
+        var cy = Height / 2f;
+        var r = Math.Min(Width, Height) * 0.40f;
 
-        using var pen = new Pen(Theme.Primary, 2.5f)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round
-        };
-        g.DrawArc(pen, x, y, size, size, _angle, 250);
+        using var bgFill = new SolidBrush(Theme.PrimaryLight);
+        g.FillEllipse(bgFill, cx - r - 4, cy - r - 4, (r + 4) * 2, (r + 4) * 2);
+
+        var state = g.Save();
+        g.TranslateTransform(cx, cy);
+        if (_running) g.RotateTransform(_angle);
+        g.TranslateTransform(-cx, -cy);
+
+        VectorIcons.Draw(g, IconKind.Aperture, new RectangleF(cx - r, cy - r, r * 2, r * 2), Theme.Primary, 2.0f);
+        g.Restore(state);
     }
 }

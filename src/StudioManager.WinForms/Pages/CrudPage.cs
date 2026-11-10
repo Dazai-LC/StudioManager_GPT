@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.WinForms.Controls;
@@ -12,6 +13,61 @@ public sealed class CrudPage : UserControl
     private readonly bool _readOnly;
     private readonly DataGridView _grid = Theme.Grid();
     private readonly SearchInput _search = Ui.SearchBox();
+
+    private readonly Label _countBadge = new()
+    {
+        Dock = DockStyle.Right,
+        Width = 130,
+        Font = Theme.MonoFont(8.2f, FontStyle.Bold),
+        ForeColor = Theme.Primary,
+        TextAlign = ContentAlignment.MiddleRight,
+        Text = "0 bản ghi"
+    };
+
+    // Live Right-Hand Dossier Inspector Controls
+    private readonly Label _dossierTitle = new()
+    {
+        Dock = DockStyle.Fill,
+        Text = "Chưa chọn bản ghi",
+        Font = Theme.Font(12.5f, FontStyle.Bold),
+        ForeColor = Theme.Text,
+        TextAlign = ContentAlignment.MiddleLeft,
+        AutoEllipsis = true
+    };
+    private readonly Label _dossierSubtitle = new()
+    {
+        Dock = DockStyle.Bottom,
+        Height = 20,
+        Text = "Chọn một dòng ở bảng bên trái để xem hồ sơ chi tiết",
+        Font = Theme.Font(8.6f),
+        ForeColor = Theme.Muted,
+        TextAlign = ContentAlignment.MiddleLeft,
+        AutoEllipsis = true
+    };
+    private readonly DossierFieldList _dossierFields = new() { Dock = DockStyle.Top, Height = 240 };
+
+    // Audit Diff Live Boxes (only visible when _entity == "NhatKy")
+    private readonly RichTextBox _auditOldBox = new()
+    {
+        Dock = DockStyle.Fill,
+        ReadOnly = true,
+        BorderStyle = BorderStyle.None,
+        BackColor = Theme.Primitives.Alabaster50,
+        ForeColor = Theme.TextSecondary,
+        Font = Theme.MonoFont(8.6f),
+        WordWrap = true
+    };
+    private readonly RichTextBox _auditNewBox = new()
+    {
+        Dock = DockStyle.Fill,
+        ReadOnly = true,
+        BorderStyle = BorderStyle.None,
+        BackColor = Theme.Primitives.Alabaster50,
+        ForeColor = Theme.Text,
+        Font = Theme.MonoFont(8.6f),
+        WordWrap = true
+    };
+
     private ModernButton? _detailsButton, _historyButton, _editButton, _stopButton;
 
     public CrudPage(AppFacade app, string title, string entity, bool readOnly = false)
@@ -21,66 +77,73 @@ public sealed class CrudPage : UserControl
         _readOnly = readOnly;
         BackColor = Theme.Background;
 
-        var header = new PageHeader(title, SubtitleFor(entity));
-        if (!readOnly)
-        {
-            var addText = entity == "KhachHang" ? "+ Thêm khách hàng" : "+ Thêm mới";
-            var add = Theme.Button(addText);
-            add.Width = 160;
-            add.Click += async (_, _) => await EditAsync(null);
-            header.Actions.Controls.Add(add);
-        }
+        var toolbar = BuildCommandToolbar();
+        var splitWorkbench = BuildMasterDetailDirectory();
 
-        var toolbar = BuildSearchBar();
-        var card = Ui.DataHost(_grid);
-        var actions = BuildSelectionActions();
-        var guard = BuildGuardNote();
-
-        Controls.Add(card);
-        Controls.Add(actions);
-        if (guard is not null) Controls.Add(guard);
+        Controls.Add(splitWorkbench);
         Controls.Add(toolbar);
-        Controls.Add(header);
 
-        _search.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) await LoadAsync(); };
-        _grid.CellFormatting += GridCellFormatting;
-        _grid.SelectionChanged += (_, _) => UpdateActionState();
+        _search.KeyDown += async (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                await LoadAsync();
+            }
+        };
+
+        ConfigureGridPainting();
+        _grid.SelectionChanged += (_, _) => UpdateInspectorAndActionState();
         _grid.CellDoubleClick += (_, _) => ShowDetails();
         Load += async (_, _) => await LoadAsync();
     }
 
-    private Control BuildSearchBar()
+    private Control BuildCommandToolbar()
     {
-        var card = Ui.SearchToolbarCard();
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 60,
+            Padding = new Padding(12, 10, 12, 10),
+            Margin = new Padding(0, 0, 0, 10),
+            CornerRadius = 10,
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong
+        };
+
+        var colCount = _readOnly ? 4 : 5;
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = colCount,
             RowCount = 1,
             BackColor = Theme.Surface
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
+        if (!_readOnly)
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168));
 
         _search.Dock = DockStyle.Fill;
         _search.Margin = Padding.Empty;
         _search.PlaceholderText = _entity == "NhatKy"
-            ? "Tìm theo hành động, tài khoản hoặc đối tượng..."
-            : "Tìm theo mã, tên hoặc thông tin liên quan...";
+            ? "Tìm theo hành động, tài khoản, mã đối tượng hoặc lý do..."
+            : $"Tìm kiếm nhanh trong {EntityDisplayName(_entity).ToLowerInvariant()}...";
 
-        var find = Theme.Button("Tìm kiếm");
+        var find = Theme.OutlineButton("Tìm kiếm", Theme.BorderStrong, IconKind.Search);
         find.Dock = DockStyle.Fill;
         find.Margin = new Padding(8, 0, 0, 0);
         find.Click += async (_, _) => await LoadAsync();
 
-        var refresh = Theme.Button("Làm mới", Theme.Secondary);
+        var refresh = Theme.OutlineButton("Làm mới", Theme.BorderStrong, IconKind.Refresh);
         refresh.Dock = DockStyle.Fill;
         refresh.Margin = new Padding(8, 0, 0, 0);
         refresh.Click += async (_, _) => { _search.Clear(); await LoadAsync(); };
 
-        var export = Theme.Button("Xuất Excel", Theme.Excel);
+        var export = Theme.Button("Xuất Excel", Theme.Excel, IconKind.Download);
         export.Dock = DockStyle.Fill;
         export.Margin = new Padding(8, 0, 0, 0);
         export.Click += (_, _) => Ui.ExportGrid(_grid, this, _entity);
@@ -90,41 +153,217 @@ public sealed class CrudPage : UserControl
         row.Controls.Add(refresh, 2, 0);
         row.Controls.Add(export, 3, 0);
 
+        if (!_readOnly)
+        {
+            var addText = _entity == "KhachHang" ? "Thêm khách hàng" : $"Thêm {EntityDisplayName(_entity).ToLowerInvariant()}";
+            var add = Theme.Button(addText, Theme.Primary, IconKind.Plus);
+            add.Dock = DockStyle.Fill;
+            add.Margin = new Padding(8, 0, 0, 0);
+            add.Click += async (_, _) => await EditAsync(null);
+            row.Controls.Add(add, 4, 0);
+        }
+
         card.Controls.Add(row);
         return card;
     }
 
-    private Control BuildSelectionActions()
+    private Control BuildMasterDetailDirectory()
     {
-        var group = Ui.ActionButtonGroup();
+        var split = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(0, 6, 0, 0),
+            BackColor = Color.Transparent
+        };
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64f));
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36f));
+        split.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+        // Left Directory Table Card
+        var leftCard = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 10, 0),
+            Padding = new Padding(14, 10, 14, 12),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 10
+        };
+
+        var leftHead = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 0, 0, 6)
+        };
+        leftHead.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = $"Danh sách {EntityDisplayName(_entity)}",
+            Font = Theme.Font(10.0f, FontStyle.Bold),
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+        leftHead.Controls.Add(_countBadge);
+        _countBadge.BringToFront();
+
+        _grid.Margin = Padding.Empty;
+        leftCard.Controls.Add(_grid);
+        leftCard.Controls.Add(leftHead);
+
+        // Right Dossier / Audit Diff Inspector Card
+        var rightInspector = BuildRightDossierInspector();
+
+        split.Controls.Add(leftCard, 0, 0);
+        split.Controls.Add(rightInspector, 1, 0);
+        return split;
+    }
+
+    private Control BuildRightDossierInspector()
+    {
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(4, 0, 0, 0),
+            Padding = new Padding(18, 16, 18, 14),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 10,
+            AccentStripeColor = _entity == "NhatKy" ? Theme.Primitives.Espresso900 : Theme.Primary,
+            AccentStripeThickness = 4
+        };
+
+        var head = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 52,
+            BackColor = Color.Transparent
+        };
+        var overline = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 14,
+            Text = _entity == "NhatKy" ? "TRUY VẾT DỮ LIỆU TRƯỚC & SAU THAO TÁC" : $"HỒ SƠ CHI TIẾT  •  {EntityDisplayName(_entity).ToUpperInvariant()}",
+            Font = Theme.MonoFont(7.4f, FontStyle.Bold),
+            ForeColor = Theme.Primary
+        };
+        head.Controls.Add(_dossierTitle);
+        head.Controls.Add(_dossierSubtitle);
+        head.Controls.Add(overline);
+
+        var body = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 6, 0, 6)
+        };
+
+        if (_entity == "NhatKy")
+        {
+            var diffSplit = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                BackColor = Color.Transparent,
+                Padding = new Padding(0, 8, 0, 0)
+            };
+            diffSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+            diffSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+
+            diffSplit.Controls.Add(CreateDiffBox("GIÁ TRỊ CŨ (TRƯỚC KHI SỬA)", _auditOldBox, Theme.Warning), 0, 0);
+            diffSplit.Controls.Add(CreateDiffBox("GIÁ TRỊ MỚI (SAU KHI SỬA)", _auditNewBox, Theme.Success), 0, 1);
+
+            body.Controls.Add(diffSplit);
+            _dossierFields.Height = 144;
+            body.Controls.Add(_dossierFields);
+        }
+        else
+        {
+            body.Controls.Add(_dossierFields);
+        }
+
+        // Guard Note if applicable
+        var guard = BuildGuardNote();
+        var actionBar = BuildInspectorActionButtons();
+
+        card.Controls.Add(body);
+        card.Controls.Add(head);
+        if (guard is not null) card.Controls.Add(guard);
+        card.Controls.Add(actionBar);
+        return card;
+    }
+
+    private static Control CreateDiffBox(string label, RichTextBox rtb, Color accent)
+    {
+        var box = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 6),
+            Padding = new Padding(10, 6, 10, 8),
+            BackColor = Theme.Primitives.Alabaster50,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 8,
+            AccentStripeColor = accent,
+            AccentStripeLeft = true,
+            AccentStripeThickness = 3
+        };
+        var title = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 18,
+            Text = label,
+            Font = Theme.MonoFont(7.5f, FontStyle.Bold),
+            ForeColor = accent
+        };
+        box.Controls.Add(rtb);
+        box.Controls.Add(title);
+        return box;
+    }
+
+    private Control BuildInspectorActionButtons()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 8, 0, 0),
+            BackColor = Color.Transparent
+        };
 
         if (!_readOnly)
         {
-            _stopButton = Theme.Button(_entity == "KhachHang" ? "Xóa" : "Ngừng dùng", Theme.Danger);
-            _stopButton.Width = 114;
-            _stopButton.Click += async (_, _) => await DeactivateAsync();
-            group.Controls.Add(_stopButton);
-
-            _editButton = Theme.Button("Chỉnh sửa", Theme.Primary);
-            _editButton.Width = 110;
+            _editButton = Theme.Button("Chỉnh sửa", Theme.Primary, IconKind.Edit);
             _editButton.Click += async (_, _) => await EditAsync(SelectedId());
-            group.Controls.Add(_editButton);
+            panel.Controls.Add(_editButton);
         }
 
         if (_entity is "KhachHang" or "NhanVien" or "PhongChup")
         {
-            _historyButton = Theme.Button("Lịch sử", Theme.Secondary);
-            _historyButton.Width = 100;
+            _historyButton = Theme.OutlineButton("Lịch sử chụp", Theme.BorderStrong, IconKind.History);
             _historyButton.Click += async (_, _) => await ShowHistoryAsync();
-            group.Controls.Add(_historyButton);
+            panel.Controls.Add(_historyButton);
         }
 
-        _detailsButton = Theme.Button("Xem chi tiết", Theme.Secondary);
-        _detailsButton.Width = 120;
+        _detailsButton = Theme.OutlineButton(_entity == "NhatKy" ? "Phóng to Diff" : "Bản in hồ sơ", Theme.BorderStrong, IconKind.Eye);
         _detailsButton.Click += (_, _) => ShowDetails();
-        group.Controls.Add(_detailsButton);
+        panel.Controls.Add(_detailsButton);
 
-        return Ui.SelectionActionBar("Chọn một bản ghi để xem chi tiết hoặc thực hiện thao tác quản lý.", group);
+        if (!_readOnly)
+        {
+            _stopButton = Theme.Button(_entity == "KhachHang" ? "Xóa hồ sơ" : "Ngừng dùng", Theme.Danger, IconKind.Trash);
+            _stopButton.Click += async (_, _) => await DeactivateAsync();
+            panel.Controls.Add(_stopButton);
+        }
+
+        return panel;
     }
 
     private Control? BuildGuardNote()
@@ -134,20 +373,23 @@ public sealed class CrudPage : UserControl
         var panel = new CardPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 44,
-            Padding = new Padding(14, 8, 14, 8),
-            Margin = new Padding(0, 0, 0, 8),
+            Height = 46,
+            Padding = new Padding(12, 6, 12, 6),
+            Margin = new Padding(0, 4, 0, 4),
             CornerRadius = 8,
-            BackColor = Color.FromArgb(245, 243, 255),
-            BorderColor = Color.FromArgb(221, 214, 254)
+            BackColor = Theme.PrimaryLight,
+            BorderColor = Theme.PrimaryLightBorder,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeLeft = true,
+            AccentStripeThickness = 3
         };
 
         panel.Controls.Add(new Label
         {
             Dock = DockStyle.Fill,
-            Text = "ℹ   Khách hàng đã phát sinh lịch chụp không thể xóa khỏi hệ thống. Chọn “Xem chi tiết” hoặc “Lịch sử” để kiểm tra.",
-            ForeColor = Theme.Purple,
-            Font = Theme.Font(8.8f),
+            Text = "Quy tắc bảo toàn: Khách hàng đã phát sinh lịch chụp được bảo vệ khỏi thao tác xóa.",
+            ForeColor = Theme.Primitives.Terracotta800,
+            Font = Theme.Font(8.2f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true,
             BackColor = Color.Transparent
@@ -156,25 +398,79 @@ public sealed class CrudPage : UserControl
         return panel;
     }
 
-    private static string SubtitleFor(string entity) => entity switch
+    private static string EntityDisplayName(string e) => e switch
     {
-        "KhachHang" => "Hồ sơ thông tin liên hệ, khách hàng thân thiết và lịch sử đặt lịch.",
-        "NhanVien" => "Quản lý danh sách nhân sự, chức vụ nghiệp vụ và trạng thái làm việc.",
-        "GoiChup" => "Bảng giá danh mục các gói chụp ảnh cung cấp cho khách hàng.",
-        "DichVu" => "Dịch vụ phát sinh bổ sung, cho thuê và đơn giá áp dụng.",
-        "PhongChup" => "Danh mục các phòng chụp, bối cảnh và tình trạng sẵn sàng.",
-        "TaiNguyen" => "Quản lý thiết bị máy ảnh, ống kính, đèn và trang phục đạo cụ.",
-        "NhatKy" => "Theo dõi lịch sử thao tác, sửa đổi và truy cập hệ thống bảo mật.",
-        _ => "Quản lý, tìm kiếm và theo dõi dữ liệu nghiệp vụ tập trung."
+        "KhachHang" => "Khách hàng",
+        "NhanVien" => "Nhân sự",
+        "GoiChup" => "Gói chụp",
+        "DichVu" => "Dịch vụ bổ sung",
+        "PhongChup" => "Phòng chụp",
+        "TaiNguyen" => "Tài nguyên",
+        "NhatKy" => "Nhật ký kiểm toán",
+        _ => e
     };
 
     private long? SelectedId() => _grid.CurrentRow?.Cells["Id"].Value is object v ? Convert.ToInt64(v) : null;
 
-    private void UpdateActionState()
+    private void UpdateInspectorAndActionState()
     {
-        var enabled = SelectedId() is not null;
+        var row = _grid.CurrentRow;
+        var enabled = row is not null && SelectedId() is not null;
         foreach (var button in new[] { _detailsButton, _historyButton, _editButton, _stopButton })
             if (button is not null) button.Enabled = enabled;
+
+        if (!enabled || row is null)
+        {
+            _dossierTitle.Text = "Chưa chọn bản ghi";
+            _dossierSubtitle.Text = "Chọn một dòng ở bảng bên trái để xem chi tiết";
+            _dossierFields.SetRows([("Trạng thái", "Chưa có mục nào được chọn", Theme.Muted, false)]);
+            _auditOldBox.Text = "";
+            _auditNewBox.Text = "";
+            return;
+        }
+
+        var visibleCols = _grid.Columns.Cast<DataGridViewColumn>()
+            .Where(c => c.Visible)
+            .OrderBy(c => c.DisplayIndex)
+            .ToList();
+
+        var primaryText = visibleCols.Count > 1
+            ? $"{row.Cells[visibleCols[0].Index].FormattedValue}  •  {row.Cells[visibleCols[1].Index].FormattedValue}"
+            : visibleCols.FirstOrDefault() is { } c0 ? row.Cells[c0.Index].FormattedValue?.ToString() ?? "" : "";
+
+        _dossierTitle.Text = primaryText;
+        _dossierSubtitle.Text = $"Mã định danh hệ thống: #{SelectedId()}";
+
+        var fieldRows = new List<(string Label, string Value, Color? ValueColor, bool Highlight)>();
+        foreach (var col in visibleCols)
+        {
+            var val = row.Cells[col.Index].FormattedValue?.ToString() ?? "—";
+            Color? valColor = null;
+            var highlight = false;
+            if (col.HeaderText.Contains("Trạng thái", StringComparison.OrdinalIgnoreCase))
+            {
+                valColor = Theme.GetStatusColors(val).Text;
+                highlight = true;
+            }
+            else if (col.HeaderText.Contains("Giá", StringComparison.OrdinalIgnoreCase))
+            {
+                valColor = Theme.Primary;
+                highlight = true;
+            }
+            fieldRows.Add((col.HeaderText, val, valColor, highlight));
+        }
+
+        _dossierFields.SetRows(fieldRows);
+
+        if (_entity == "NhatKy")
+        {
+            _auditOldBox.Text = _grid.Columns.Contains("Giá trị cũ")
+                ? (row.Cells["Giá trị cũ"].FormattedValue?.ToString() ?? "(Trống)")
+                : "(Trống)";
+            _auditNewBox.Text = _grid.Columns.Contains("Giá trị mới")
+                ? (row.Cells["Giá trị mới"].FormattedValue?.ToString() ?? "(Trống)")
+                : "(Trống)";
+        }
     }
 
     private async Task LoadAsync()
@@ -182,11 +478,20 @@ public sealed class CrudPage : UserControl
         try
         {
             var rows = await _app.Administration.QueryGridAsync(_entity, string.IsNullOrWhiteSpace(_search.Text) ? null : _search.Text.Trim(), _app.Session!);
+            _countBadge.Text = $"{rows.Count} bản ghi";
+
             var table = new BindingList<RowView>(rows.Select(x => new RowView(x)).ToList());
             _grid.DataSource = table;
             if (_grid.Columns.Contains("Data")) _grid.Columns["Data"].Visible = false;
             BuildColumns(rows);
-            UpdateActionState();
+
+            if (_grid.Rows.Count > 0)
+            {
+                _grid.Rows[0].Selected = true;
+                var firstCol = _grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => c.Visible);
+                if (firstCol is not null) _grid.CurrentCell = _grid.Rows[0].Cells[firstCol.Index];
+            }
+            UpdateInspectorAndActionState();
         }
         catch (Exception ex)
         {
@@ -215,7 +520,6 @@ public sealed class CrudPage : UserControl
             if (_grid.Columns.Contains("Giá trị mới")) _grid.Columns["Giá trị mới"].Visible = false;
         }
 
-        // Format currency columns
         foreach (var col in new[] { "Giá", "Đơn giá", "Tổng tiền", "Thực thu" })
         {
             if (_grid.Columns.Contains(col))
@@ -226,18 +530,41 @@ public sealed class CrudPage : UserControl
         }
     }
 
-    private void GridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    private void ConfigureGridPainting()
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.CellStyle is null) return;
-        var colName = _grid.Columns[e.ColumnIndex].Name;
-
-        if (colName == "Trạng thái" && e.Value is string status)
+        _grid.CellPainting += (_, e) =>
         {
-            var colors = Theme.GetStatusColors(status);
-            e.CellStyle.ForeColor = colors.Text;
-            e.CellStyle.SelectionForeColor = colors.Text;
-            e.CellStyle.Font = Theme.Font(8.8f, FontStyle.Bold);
-        }
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            var colName = _grid.Columns[e.ColumnIndex].Name;
+            if (colName != "Trạng thái") return;
+
+            e.PaintBackground(e.ClipBounds, true);
+            var status = e.FormattedValue?.ToString() ?? "";
+            if (!string.IsNullOrEmpty(status) && e.Graphics is { } g)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var (fg, bg, border) = Theme.GetStatusColors(status);
+                using var font = Theme.Font(7.9f, FontStyle.Bold);
+                var sz = TextRenderer.MeasureText(g, status, font);
+                var pillW = Math.Min(e.CellBounds.Width - 10, sz.Width + 16);
+                var pillH = 23;
+                var rect = new RectangleF(
+                    e.CellBounds.Left + 6,
+                    e.CellBounds.Top + (e.CellBounds.Height - pillH) / 2f,
+                    pillW,
+                    pillH);
+
+                using var path = Theme.RoundedRectangle(rect, 11f);
+                using var fill = new SolidBrush(bg);
+                using var pen = new Pen(border, 1f);
+                g.FillPath(fill, path);
+                g.DrawPath(pen, path);
+
+                TextRenderer.DrawText(g, status, font, Rectangle.Round(rect), fg,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
+            e.Handled = true;
+        };
     }
 
     private async Task EditAsync(long? id)
@@ -246,7 +573,7 @@ public sealed class CrudPage : UserControl
         IReadOnlyList<LookupItem>? rentalServices = null;
         if (_entity == "TaiNguyen") rentalServices = await _app.Administration.GetLookupsAsync("DichVu", id is null);
 
-        using var dialog = new SimpleEditDialog(_entity, id, _grid.CurrentRow, rentalServices);
+        using var dialog = new SimpleEditDialog(_entity, id, id is null ? null : _grid.CurrentRow, rentalServices);
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
         var result = await _app.Administration.SaveAsync(_entity, id, dialog.Values, _app.Session!);
@@ -315,7 +642,8 @@ public sealed class CrudPage : UserControl
             .OrderBy(x => x.DisplayIndex)
             .Select(x => $"{x.HeaderText}: {_grid.CurrentRow.Cells[x.Index].FormattedValue}");
 
-        MessageBox.Show(string.Join(Environment.NewLine + Environment.NewLine, lines), "Chi tiết dữ liệu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(string.Join(Environment.NewLine + Environment.NewLine, lines),
+            $"Hồ sơ {EntityDisplayName(_entity)}", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private sealed class RowView(IDictionary<string, object?> data)
@@ -326,27 +654,45 @@ public sealed class CrudPage : UserControl
 
 internal sealed class SimpleEditDialog : Form
 {
-    private readonly string _entity;
     private readonly Dictionary<string, Control> _inputs = new();
     public IReadOnlyDictionary<string, object?> Values => _inputs.ToDictionary(x => x.Key, x => Read(x.Value));
 
     public SimpleEditDialog(string entity, long? id, DataGridViewRow? row, IReadOnlyList<LookupItem>? rentalServices = null)
     {
-        _entity = entity;
         Text = (id is null ? "Thêm mới " : "Cập nhật ") + EntityDisplayName(entity) + " • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(640, 530);
+        ClientSize = new Size(660, 520);
         BackColor = Theme.Background;
         Font = Theme.Font();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
+        Padding = new Padding(16);
+
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(22, 18, 22, 16),
+            BackColor = Theme.Surface,
+            CornerRadius = 12,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
+        };
+
+        var title = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 34,
+            Text = (id is null ? "Khởi tạo hồ sơ " : "Hiệu chỉnh hồ sơ ") + EntityDisplayName(entity),
+            Font = Theme.Font(12.5f, FontStyle.Bold),
+            ForeColor = Theme.Text
+        };
 
         var body = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
-            Padding = new Padding(26),
+            Padding = new Padding(0, 8, 0, 0),
             FlowDirection = FlowDirection.LeftToRight,
             BackColor = Color.Transparent
         };
@@ -355,19 +701,19 @@ internal sealed class SimpleEditDialog : Form
         {
             var input = CreateInput(f, rentalServices);
             _inputs[f.Name] = input;
-            body.Controls.Add(Ui.Field(f.Label, input, 274));
+            body.Controls.Add(Ui.Field(f.Label, input, 282));
         }
 
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 64,
+            Height = 50,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(16, 10, 16, 10),
-            BackColor = Theme.Surface
+            Padding = new Padding(0, 6, 0, 0),
+            BackColor = Color.Transparent
         };
 
-        var save = Theme.Button("Lưu dữ liệu");
+        var save = Theme.Button("Lưu thông tin", Theme.Primary, IconKind.Check);
         save.Click += (_, _) =>
         {
             if (ValidateFields())
@@ -377,14 +723,16 @@ internal sealed class SimpleEditDialog : Form
             }
         };
 
-        var cancel = Theme.Button("Hủy bỏ", Theme.Secondary);
+        var cancel = Theme.OutlineButton("Hủy bỏ", Theme.BorderStrong, IconKind.Close);
         cancel.Click += (_, _) => Close();
 
         footer.Controls.Add(save);
         footer.Controls.Add(cancel);
 
-        Controls.Add(body);
-        Controls.Add(footer);
+        card.Controls.Add(body);
+        card.Controls.Add(title);
+        card.Controls.Add(footer);
+        Controls.Add(card);
 
         if (row != null) Fill(row);
         AcceptButton = save;
@@ -393,7 +741,7 @@ internal sealed class SimpleEditDialog : Form
     private static string EntityDisplayName(string e) => e switch
     {
         "KhachHang" => "Khách hàng",
-        "NhanVien" => "Nhân viên",
+        "NhanVien" => "Nhân sự",
         "GoiChup" => "Gói chụp",
         "DichVu" => "Dịch vụ bổ sung",
         "PhongChup" => "Phòng chụp",
@@ -403,12 +751,12 @@ internal sealed class SimpleEditDialog : Form
 
     private static IEnumerable<FieldDef> Fields(string e) => e switch
     {
-        "KhachHang" => [new("HoTen", "Họ và tên *"), new("SoDienThoai", "Số điện thoại *"), new("Email", "Địa chỉ Email"), new("DiaChi", "Địa chỉ liên hệ"), new("GhiChu", "Ghi chú khách hàng")],
-        "NhanVien" => [new("HoTen", "Họ và tên *"), new("SoDienThoai", "Số điện thoại *"), new("ChucVu", "Chức vụ nghiệp vụ", ["TIEP_NHAN", "NHIEP_ANH_GIA", "KHAC"]), new("TrangThai", "Trạng thái công việc", ["DANG_LAM", "NGUNG_LAM"]), new("GhiChu", "Ghi chú nhân viên")],
-        "GoiChup" => [new("TenGoiChup", "Tên gói chụp *"), new("GiaGoi", "Giá gói (VNĐ) *", null, true), new("ThoiLuongPhut", "Thời lượng (Phút) *", null, true), new("MoTa", "Mô tả gói"), new("TrangThai", "Trạng thái", ["DANG_AP_DUNG", "NGUNG_AP_DUNG"])],
-        "DichVu" => [new("TenDichVu", "Tên dịch vụ *"), new("DonViTinh", "Đơn vị tính *"), new("DonGia", "Đơn giá (VNĐ) *", null, true), new("MoTa", "Mô tả dịch vụ"), new("TrangThai", "Trạng thái", ["DANG_CUNG_CAP", "NGUNG_CUNG_CAP"])],
-        "PhongChup" => [new("TenPhong", "Tên phòng chụp *"), new("MoTa", "Mô tả bối cảnh"), new("TrangThai", "Trạng thái", ["HOAT_DONG", "NGUNG_SU_DUNG"])],
-        "TaiNguyen" => [new("TenTaiNguyen", "Tên tài nguyên *"), new("LoaiTaiNguyen", "Loại", ["THIET_BI", "TRANG_PHUC"]), new("TongSoLuong", "Tổng số lượng *", null, true), new("DichVuThueId", "Dịch vụ thuê liên kết"), new("GhiChu", "Ghi chú"), new("TrangThai", "Trạng thái", ["HOAT_DONG", "NGUNG_SU_DUNG"])],
+        "KhachHang" => [new("HoTen", "HỌ VÀ TÊN *"), new("SoDienThoai", "SỐ ĐIỆN THOẠI *"), new("Email", "ĐỊA CHỈ EMAIL"), new("DiaChi", "ĐỊA CHỈ LIÊN HỆ"), new("GhiChu", "GHI CHÚ KHÁCH HÀNG")],
+        "NhanVien" => [new("HoTen", "HỌ VÀ TÊN *"), new("SoDienThoai", "SỐ ĐIỆN THOẠI *"), new("ChucVu", "CHỨC VỤ NGHIỆP VỤ", ["TIEP_NHAN", "NHIEP_ANH_GIA", "KHAC"]), new("TrangThai", "TRẠNG THÁI CÔNG VIỆC", ["DANG_LAM", "NGUNG_LAM"]), new("GhiChu", "GHI CHÚ NHÂN SỰ")],
+        "GoiChup" => [new("TenGoiChup", "TÊN GÓI CHỤP *"), new("GiaGoi", "GIÁ GÓI (VNĐ) *", null, true), new("ThoiLuongPhut", "THỜI LƯỢNG (PHÚT) *", null, true), new("MoTa", "MÔ TẢ GÓI"), new("TrangThai", "TRẠNG THÁI", ["DANG_AP_DUNG", "NGUNG_AP_DUNG"])],
+        "DichVu" => [new("TenDichVu", "TÊN DỊCH VỤ *"), new("DonViTinh", "ĐƠN VỊ TÍNH *"), new("DonGia", "ĐƠN GIÁ (VNĐ) *", null, true), new("MoTa", "MÔ TẢ DỊCH VỤ"), new("TrangThai", "TRẠNG THÁI", ["DANG_CUNG_CAP", "NGUNG_CUNG_CAP"])],
+        "PhongChup" => [new("TenPhong", "TÊN PHÒNG CHỤP *"), new("MoTa", "MÔ TẢ BỐI CẢNH"), new("TrangThai", "TRẠNG THÁI", ["HOAT_DONG", "NGUNG_SU_DUNG"])],
+        "TaiNguyen" => [new("TenTaiNguyen", "TÊN TÀI NGUYÊN *"), new("LoaiTaiNguyen", "PHÂN LOẠI", ["THIET_BI", "TRANG_PHUC"]), new("TongSoLuong", "TỔNG SỐ LƯỢNG *", null, true), new("DichVuThueId", "DỊCH VỤ THUÊ LIÊN KẾT"), new("GhiChu", "GHI CHÚ"), new("TrangThai", "TRẠNG THÁI", ["HOAT_DONG", "NGUNG_SU_DUNG"])],
         _ => []
     };
 
@@ -443,7 +791,9 @@ internal sealed class SimpleEditDialog : Form
         if (grid is null) return;
         foreach (var p in _inputs)
         {
-            var col = grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => Normalize(c.HeaderText).Contains(Normalize(LabelFor(p.Key))) || Normalize(c.Name).Contains(Normalize(LabelFor(p.Key))));
+            var col = grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c =>
+                Normalize(c.HeaderText).Contains(Normalize(LabelFor(p.Key))) ||
+                Normalize(c.Name).Contains(Normalize(LabelFor(p.Key))));
             if (col is null) continue;
             var value = row.Cells[col.Index].Value;
             if (p.Key == "DichVuThueId" && p.Value is ComboBox rental && long.TryParse(value?.ToString(), out var rentalId))
@@ -531,20 +881,23 @@ internal sealed class BookingHistoryDialog : Form
         grid.DataSource = table;
         if (grid.Columns.Contains("Id")) grid.Columns["Id"].Visible = false;
 
-        var empty = new CardPanel
+        var banner = new CardPanel
         {
             Dock = DockStyle.Top,
             Height = 48,
             Padding = new Padding(14, 10, 14, 10),
             Margin = new Padding(16, 16, 16, 8),
-            CornerRadius = 8
+            CornerRadius = 8,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeLeft = true,
+            AccentStripeThickness = 4
         };
-        empty.Controls.Add(new Label
+        banner.Controls.Add(new Label
         {
             Dock = DockStyle.Fill,
-            Text = rows.Count == 0 ? "Chưa có lịch chụp liên quan." : $"Tìm thấy {rows.Count} lịch chụp liên quan.",
+            Text = rows.Count == 0 ? "Chưa có lịch chụp nào phát sinh với hồ sơ này." : $"Tìm thấy {rows.Count} lịch chụp liên quan trong hồ sơ.",
             TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Theme.TextSecondary,
+            ForeColor = Theme.Text,
             Font = Theme.Font(9.2f, FontStyle.Bold)
         });
 
@@ -553,7 +906,7 @@ internal sealed class BookingHistoryDialog : Form
         layout.Controls.Add(host);
 
         Controls.Add(layout);
-        Controls.Add(empty);
+        Controls.Add(banner);
     }
 }
 
@@ -561,10 +914,10 @@ internal sealed class AuditDetailDialog : Form
 {
     public AuditDetailDialog(DataGridViewRow row)
     {
-        Text = "Chi tiết nhật ký kiểm toán hệ thống • StudioManager";
+        Text = "So sánh dữ liệu kiểm toán chi tiết • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(940, 640);
-        MinimumSize = new Size(800, 520);
+        ClientSize = new Size(960, 640);
+        MinimumSize = new Size(820, 520);
         BackColor = Theme.Background;
         Font = Theme.Font();
 
@@ -575,32 +928,22 @@ internal sealed class AuditDetailDialog : Form
         var headCard = new CardPanel
         {
             Dock = DockStyle.Top,
-            Height = 180,
-            Padding = new Padding(16),
+            Height = 160,
+            Padding = new Padding(18, 12, 18, 12),
             Margin = new Padding(16, 16, 16, 8),
-            CornerRadius = 10
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
         };
 
-        var head = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 3,
-            Padding = Padding.Empty,
-            BackColor = Color.Transparent
-        };
-        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        for (var i = 0; i < 3; i++) head.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / 3));
-
-        Add(head, 0, 0, "THỜI ĐIỂM", Read("Thời điểm"));
-        Add(head, 1, 0, "TÀI KHOẢN", Read("Tài khoản"));
-        Add(head, 0, 1, "HÀNH ĐỘNG", Read("Hành động"));
-        Add(head, 1, 1, "ĐỐI TƯỢNG", $"{Read("Đối tượng")} • {Read("Mã đối tượng")}");
-        Add(head, 0, 2, "LÝ DO THAO TÁC", Read("Lý do"));
-        Add(head, 1, 2, "MÃ NHẬT KÝ (ID)", Read("Id"));
-
-        headCard.Controls.Add(head);
+        var dossier = new DossierFieldList { Dock = DockStyle.Fill };
+        dossier.SetRows([
+            ("Mã nhật ký & Thời điểm", $"#{Read("Id")}  •  {Read("Thời điểm")}", Theme.Primary, true),
+            ("Tài khoản thực hiện", Read("Tài khoản"), null, false),
+            ("Hành động & Đối tượng", $"{Read("Hành động")}  →  {Read("Đối tượng")} ({Read("Mã đối tượng")})", null, false),
+            ("Lý do ghi nhận", Read("Lý do"), null, false)
+        ]);
+        headCard.Controls.Add(dossier);
 
         var valuesCard = new CardPanel
         {
@@ -622,8 +965,8 @@ internal sealed class AuditDetailDialog : Form
         values.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         values.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        values.Controls.Add(ValueBox("GIÁ TRỊ CŨ (TRƯỚC THAO TÁC)", Read("Giá trị cũ")), 0, 0);
-        values.Controls.Add(ValueBox("GIÁ TRỊ MỚI (SAU THAO TÁC)", Read("Giá trị mới")), 1, 0);
+        values.Controls.Add(ValueBox("GIÁ TRỊ CŨ (TRƯỚC THAO TÁC)", Read("Giá trị cũ"), Theme.Warning), 0, 0);
+        values.Controls.Add(ValueBox("GIÁ TRỊ MỚI (SAU THAO TÁC)", Read("Giá trị mới"), Theme.Success), 1, 0);
 
         valuesCard.Controls.Add(values);
 
@@ -631,76 +974,45 @@ internal sealed class AuditDetailDialog : Form
         Controls.Add(headCard);
     }
 
-    private static void Add(TableLayoutPanel table, int column, int row, string label, string value)
+    private static Control ValueBox(string title, string value, Color accent)
     {
-        var field = new TableLayoutPanel
+        var box = new CardPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(0, 0, 10, 4),
-            BackColor = Color.Transparent
+            Margin = new Padding(4),
+            Padding = new Padding(12),
+            BackColor = Theme.Primitives.Alabaster50,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 8,
+            AccentStripeColor = accent,
+            AccentStripeThickness = 3
         };
-        field.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
-        field.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        field.Controls.Add(new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = label,
-            ForeColor = Theme.Muted,
-            Font = Theme.Font(7.8f, FontStyle.Bold),
-            TextAlign = ContentAlignment.BottomLeft
-        }, 0, 0);
-
-        field.Controls.Add(new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = value,
-            AutoEllipsis = true,
-            ForeColor = Theme.Text,
-            Font = Theme.Font(9.5f),
-            TextAlign = ContentAlignment.TopLeft
-        }, 0, 1);
-
-        table.Controls.Add(field, column, row);
-    }
-
-    private static Control ValueBox(string title, string value)
-    {
-        var box = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(0, 0, 8, 0),
-            BackColor = Color.Transparent
-        };
-        box.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-        box.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-        box.Controls.Add(new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = title,
-            ForeColor = Theme.Secondary,
-            Font = Theme.Font(8.5f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 0);
-
-        box.Controls.Add(new RichTextBox
+        var rtb = new RichTextBox
         {
             Dock = DockStyle.Fill,
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
-            BackColor = Color.FromArgb(248, 250, 252),
+            BackColor = Theme.Primitives.Alabaster50,
             ForeColor = Theme.Text,
-            Font = new Font("Consolas", 9.2f),
-            Text = value,
+            Font = Theme.MonoFont(9.4f),
+            Text = string.IsNullOrWhiteSpace(value) ? "(Trống)" : value,
             WordWrap = true,
             ScrollBars = RichTextBoxScrollBars.Vertical
-        }, 0, 1);
+        };
 
+        var lbl = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 24,
+            Text = title,
+            ForeColor = accent,
+            Font = Theme.MonoFont(8.2f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        box.Controls.Add(rtb);
+        box.Controls.Add(lbl);
         return box;
     }
 }

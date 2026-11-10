@@ -7,139 +7,208 @@ public sealed class BackupPage : UserControl
 {
     private readonly AppFacade _app;
     private readonly DataGridView _history = Theme.Grid();
+    private readonly Label _historyCount = new()
+    {
+        Dock = DockStyle.Right,
+        Width = 140,
+        Font = Theme.MonoFont(8.2f, FontStyle.Bold),
+        ForeColor = Theme.Primary,
+        TextAlign = ContentAlignment.MiddleRight,
+        Text = "0 bản ghi"
+    };
 
     public BackupPage(AppFacade app)
     {
         _app = app;
         BackColor = Theme.Background;
 
-        var header = new PageHeader("Sao lưu & Phục hồi", "Bảo vệ an toàn dữ liệu studio bằng các bản sao lưu cơ sở dữ liệu SQL Server.");
-
-        var operationsPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 220,
-            ColumnCount = 2,
-            RowCount = 1,
-            Padding = new Padding(0, 0, 0, 14),
-            BackColor = Color.Transparent
-        };
-        operationsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        operationsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-
-        operationsPanel.Controls.Add(BuildBackupCard(), 0, 0);
-        operationsPanel.Controls.Add(BuildRestoreCard(), 1, 0);
-
-        var historyCard = new CardPanel
+        var vaultSplit = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(18, 14, 18, 14),
-            CornerRadius = 12
-        };
-
-        var historyTitle = new Label
-        {
-            Text = "Nhật ký các lần sao lưu & phục hồi gần nhất",
-            Dock = DockStyle.Top,
-            Height = 36,
-            Font = Theme.Font(11, FontStyle.Bold),
-            ForeColor = Theme.Text,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(0, 4, 0, 0),
             BackColor = Color.Transparent
         };
+        vaultSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42f));
+        vaultSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58f));
+        vaultSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-        historyCard.Controls.Add(Ui.DataHost(_history));
-        historyCard.Controls.Add(historyTitle);
+        vaultSplit.Controls.Add(BuildLeftVaultChambers(), 0, 0);
+        vaultSplit.Controls.Add(BuildRightHistoryConsole(), 1, 0);
 
-        Controls.Add(historyCard);
-        Controls.Add(operationsPanel);
-        Controls.Add(header);
-
+        Controls.Add(vaultSplit);
         Load += async (_, _) => await LoadHistoryAsync();
     }
 
-    private Control BuildBackupCard()
+    private Control BuildLeftVaultChambers()
+    {
+        var stack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0, 0, 10, 0),
+            BackColor = Color.Transparent
+        };
+        stack.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+        stack.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+
+        stack.Controls.Add(BuildBackupVaultCard(), 0, 0);
+        stack.Controls.Add(BuildProtectedRestoreChamber(), 0, 1);
+        return stack;
+    }
+
+    private Control BuildBackupVaultCard()
     {
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(22),
-            Margin = new Padding(0, 0, 8, 0),
+            Padding = new Padding(22, 18, 22, 18),
+            Margin = new Padding(0, 0, 0, 8),
             CornerRadius = 12,
-            BorderColor = Theme.Border
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            AccentStripeColor = Theme.Success,
+            AccentStripeThickness = 4
+        };
+
+        var overline = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 18,
+            Text = "CHAMBER 01  •  ACTIVE SNAPSHOT VAULT",
+            Font = Theme.MonoFont(7.6f, FontStyle.Bold),
+            ForeColor = Theme.Success
         };
 
         var title = new Label
         {
             Dock = DockStyle.Top,
-            Height = 28,
-            Text = "💾   Tạo bản sao lưu dữ liệu (Backup)",
-            Font = Theme.Font(11, FontStyle.Bold),
-            ForeColor = Theme.Text,
-            BackColor = Color.Transparent
+            Height = 30,
+            Text = "Khởi tạo Bản sao lưu An toàn (.bak)",
+            Font = Theme.Font(12.5f, FontStyle.Bold),
+            ForeColor = Theme.Text
         };
 
         var desc = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 60,
-            Text = "Xuất toàn bộ cơ sở dữ liệu studio (lịch hẹn, tài chính, khách hàng) thành tệp .bak an toàn trên máy chủ SQL Server.",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 6, 0, 6),
+            Text = "Đóng gói toàn bộ cơ sở dữ liệu SQL Server hiện hành (bao gồm lịch chụp, hồ sơ khách hàng, giao dịch tài chính và nhật ký kiểm toán) thành tệp .bak chuẩn.\n\n• Không làm gián đoạn phiên làm việc hiện tại.\n• Tự động ghi nhận vào nhật ký sao lưu hệ thống.",
             Font = Theme.Font(9.0f),
-            ForeColor = Theme.Muted,
-            BackColor = Color.Transparent
+            ForeColor = Theme.TextSecondary
         };
 
-        var backupBtn = Theme.Button("Tạo bản sao lưu ngay", Theme.Primary);
+        var backupBtn = Theme.Button("Tạo bản sao lưu SQL ngay", Theme.Success, IconKind.Database);
         backupBtn.Dock = DockStyle.Bottom;
         backupBtn.Height = 42;
         backupBtn.Click += async (_, _) => await BackupAsync();
 
-        card.Controls.Add(backupBtn);
         card.Controls.Add(desc);
         card.Controls.Add(title);
+        card.Controls.Add(overline);
+        card.Controls.Add(backupBtn);
         return card;
     }
 
-    private Control BuildRestoreCard()
+    private Control BuildProtectedRestoreChamber()
     {
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(22),
-            Margin = new Padding(8, 0, 0, 0),
+            Padding = new Padding(22, 18, 22, 18),
+            Margin = new Padding(0, 8, 0, 0),
             CornerRadius = 12,
-            BackColor = Color.FromArgb(255, 251, 251),
-            BorderColor = Color.FromArgb(254, 202, 202)
+            BackColor = Theme.DangerLight,
+            BorderColor = Theme.DangerBorder,
+            AccentStripeColor = Theme.Danger,
+            AccentStripeThickness = 4
+        };
+
+        var overline = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 18,
+            Text = "CHAMBER 02  •  PROTECTED RECOVERY PROTOCOL (2-STEP)",
+            Font = Theme.MonoFont(7.6f, FontStyle.Bold),
+            ForeColor = Theme.Danger
         };
 
         var title = new Label
         {
             Dock = DockStyle.Top,
-            Height = 28,
-            Text = "⚠   Phục hồi dữ liệu (Restore)",
-            Font = Theme.Font(11, FontStyle.Bold),
-            ForeColor = Theme.Danger,
-            BackColor = Color.Transparent
+            Height = 30,
+            Text = "Phục hồi Cơ sở dữ liệu từ Bản sao lưu",
+            Font = Theme.Font(12.5f, FontStyle.Bold),
+            ForeColor = Theme.Primitives.Crimson700
         };
 
         var desc = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 60,
-            Text = "Cảnh báo: Thao tác phục hồi sẽ ghi đè toàn bộ dữ liệu hiện tại, ngắt tất cả các kết nối đang mở và yêu cầu khởi động lại ứng dụng.",
-            Font = Theme.Font(9.0f),
-            ForeColor = Theme.Danger,
-            BackColor = Color.Transparent
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 6, 0, 6),
+            Text = "CẢNH BÁO AN TOÀN DỮ LIỆU:\nThao tác phục hồi sẽ ngắt toàn bộ kết nối hiện hành, ghi đè dữ liệu hiện tại bằng tệp .bak được chọn và tự động khởi động lại ứng dụng.\n\n• Yêu cầu xác nhận 2 bước độc lập trước khi thực thi.\n• Hãy tạo bản sao lưu mới nhất trước khi phục hồi.",
+            Font = Theme.Font(8.9f, FontStyle.Bold),
+            ForeColor = Theme.Danger
         };
 
-        var restoreBtn = Theme.Button("Phục hồi dữ liệu từ file .bak", Theme.Danger);
+        var restoreBtn = Theme.Button("Chọn tệp .bak & Phục hồi dữ liệu", Theme.Danger, IconKind.AlertTriangle);
         restoreBtn.Dock = DockStyle.Bottom;
         restoreBtn.Height = 42;
         restoreBtn.Click += async (_, _) => await RestoreAsync();
 
-        card.Controls.Add(restoreBtn);
         card.Controls.Add(desc);
         card.Controls.Add(title);
+        card.Controls.Add(overline);
+        card.Controls.Add(restoreBtn);
         return card;
+    }
+
+    private Control BuildRightHistoryConsole()
+    {
+        var historyCard = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(6, 0, 0, 0),
+            Padding = new Padding(18, 14, 18, 14),
+            CornerRadius = 12,
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            AccentStripeColor = Theme.Primitives.Espresso900,
+            AccentStripeThickness = 4
+        };
+
+        var topBar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 42,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 0, 0, 6)
+        };
+
+        var refreshBtn = Theme.OutlineButton("Làm mới nhật ký", Theme.BorderStrong, IconKind.Refresh);
+        refreshBtn.Dock = DockStyle.Right;
+        refreshBtn.Height = 34;
+        refreshBtn.Click += async (_, _) => await LoadHistoryAsync();
+
+        var historyTitle = new Label
+        {
+            Text = "Sổ cái Nhật ký Sao lưu & Phục hồi Gần nhất",
+            Dock = DockStyle.Fill,
+            Font = Theme.Font(10.8f, FontStyle.Bold),
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        topBar.Controls.Add(historyTitle);
+        topBar.Controls.Add(_historyCount);
+        topBar.Controls.Add(refreshBtn);
+
+        _history.Margin = Padding.Empty;
+        historyCard.Controls.Add(Ui.DataHost(_history));
+        historyCard.Controls.Add(topBar);
+        return historyCard;
     }
 
     private async Task BackupAsync()
@@ -196,6 +265,7 @@ public sealed class BackupPage : UserControl
         try
         {
             var rows = await _app.BackupRestore.GetHistoryAsync(_app.Session!);
+            _historyCount.Text = $"{rows.Count} lần thực thi";
             var table = new System.Data.DataTable();
             if (rows.Count > 0)
             {

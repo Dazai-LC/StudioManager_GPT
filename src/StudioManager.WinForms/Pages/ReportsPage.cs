@@ -1,3 +1,6 @@
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
+using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.WinForms.Controls;
 
@@ -10,148 +13,218 @@ public sealed class ReportsPage : UserControl
     {
         Format = DateTimePickerFormat.Short,
         Value = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1),
-        Font = Theme.Font(9.5f)
+        Font = Theme.Font(9.2f)
     };
     private readonly DateTimePicker _to = new()
     {
         Format = DateTimePickerFormat.Short,
         Value = DateTime.Today,
-        Font = Theme.Font(9.5f)
+        Font = Theme.Font(9.2f)
     };
 
-    private readonly StatCard _revenue = new("DOANH THU DỊCH VỤ", Theme.Primary, "↗");
-    private readonly StatCard _cash = new("THỰC THU", Theme.Success, "₫");
-    private readonly StatCard _debt = new("CÔNG NỢ HIỆN TẠI", Theme.Warning, "⚠");
-    private readonly StatCard _count = new("TỔNG LỊCH CHỤP", Theme.Cyan, "📅");
-
+    private readonly SegmentedTabBar _presetTabs = new() { Width = 360, Height = 38 };
+    private readonly FinancialProportionBanner _proportionBanner = new() { Dock = DockStyle.Fill };
+    private readonly PackageHorizontalBarChart _packageChart = new() { Dock = DockStyle.Fill };
     private readonly DataGridView _grid = Theme.Grid();
-    private readonly Label _summary = new()
-    {
-        Dock = DockStyle.Fill,
-        AutoEllipsis = true,
-        ForeColor = Theme.TextSecondary,
-        Font = Theme.Font(9.0f, FontStyle.Bold),
-        TextAlign = ContentAlignment.MiddleLeft,
-        BackColor = Color.Transparent
-    };
+    private readonly DossierFieldList _ledgerBreakdown = new() { Dock = DockStyle.Bottom, Height = 148 };
 
     public ReportsPage(AppFacade app)
     {
         _app = app;
         BackColor = Theme.Background;
 
-        var header = new PageHeader("Báo cáo & Phân tích", "Tổng hợp số liệu kinh doanh, doanh thu thực thu và công suất khai thác dịch vụ.");
-        var run = Theme.Button("Xem báo cáo");
-        run.Width = 130;
-        run.Click += async (_, _) => await LoadAsync();
-
-        var export = Theme.Button("Xuất Excel", Theme.Excel);
-        export.Width = 130;
-        export.Click += (_, _) => Ui.ExportGrid(_grid, this, "bao-cao-goi-chup");
-
-        header.Actions.Controls.Add(run);
-        header.Actions.Controls.Add(export);
-
-        var filtersCard = BuildFilterToolbar();
-
-        var cards = new TableLayoutPanel
+        var topBar = BuildTopFilterConsole();
+        var bannerHost = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 136,
-            ColumnCount = 4,
-            RowCount = 1,
+            Height = 128,
             Padding = new Padding(0, 0, 0, 10),
             BackColor = Color.Transparent
         };
-        for (var i = 0; i < 4; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        cards.Controls.Add(_revenue, 0, 0);
-        cards.Controls.Add(_cash, 1, 0);
-        cards.Controls.Add(_debt, 2, 0);
-        cards.Controls.Add(_count, 3, 0);
-        foreach (Control c in cards.Controls) c.Dock = DockStyle.Fill;
+        bannerHost.Controls.Add(_proportionBanner);
 
-        var summaryCard = new CardPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 46,
-            Padding = new Padding(16, 8, 16, 8),
-            Margin = new Padding(0, 0, 0, 10),
-            CornerRadius = 8,
-            BorderColor = Theme.Border
-        };
-        summaryCard.Controls.Add(_summary);
+        var splitAnalytics = BuildBottomAnalyticalSplit();
 
-        var dataCard = new CardPanel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(18, 14, 18, 14),
-            CornerRadius = 12
-        };
-
-        var titleLabel = new Label
-        {
-            Text = "Phân bổ số lượt chụp theo gói dịch vụ",
-            Dock = DockStyle.Top,
-            Height = 36,
-            Font = Theme.Font(11, FontStyle.Bold),
-            ForeColor = Theme.Text,
-            BackColor = Color.Transparent
-        };
-
-        dataCard.Controls.Add(Ui.DataHost(_grid));
-        dataCard.Controls.Add(titleLabel);
-
-        Controls.Add(dataCard);
-        Controls.Add(summaryCard);
-        Controls.Add(cards);
-        Controls.Add(filtersCard);
-        Controls.Add(header);
+        Controls.Add(splitAnalytics);
+        Controls.Add(bannerHost);
+        Controls.Add(topBar);
 
         Load += async (_, _) => await LoadAsync();
     }
 
-    private Control BuildFilterToolbar()
+    private Control BuildTopFilterConsole()
     {
         var card = new CardPanel
         {
             Dock = DockStyle.Top,
-            Height = 72,
-            Padding = new Padding(16, 12, 16, 12),
+            Height = 68,
+            Padding = new Padding(14, 8, 14, 8),
             Margin = new Padding(0, 0, 0, 10),
-            CornerRadius = 10
+            CornerRadius = 10,
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong
         };
 
-        var flow = new FlowLayoutPanel
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 5,
+            RowCount = 1,
+            BackColor = Theme.Surface
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 368));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 136));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20));
+
+        _presetTabs.SetItems([
+            new("month", "Tháng này", IconKind.Calendar),
+            new("quarter", "Quý này"),
+            new("year", "Năm nay"),
+            new("all", "Toàn thời gian")
+        ], "month");
+
+        _presetTabs.SegmentSelected += async (_, seg) =>
+        {
+            var today = DateTime.Today;
+            switch (seg.Key)
+            {
+                case "month":
+                    _from.Value = new DateTime(today.Year, today.Month, 1);
+                    _to.Value = today;
+                    break;
+                case "quarter":
+                    var qMonth = ((today.Month - 1) / 3) * 3 + 1;
+                    _from.Value = new DateTime(today.Year, qMonth, 1);
+                    _to.Value = today;
+                    break;
+                case "year":
+                    _from.Value = new DateTime(today.Year, 1, 1);
+                    _to.Value = today;
+                    break;
+                case "all":
+                    _from.Value = new DateTime(today.Year - 3, 1, 1);
+                    _to.Value = today.AddMonths(3);
+                    break;
+            }
+            await LoadAsync();
+        };
+
+        var presetHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 7, 0, 0) };
+        presetHost.Controls.Add(_presetTabs);
+
+        var dateRangeFlow = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             WrapContents = false,
+            Padding = new Padding(8, 2, 0, 0),
             BackColor = Color.Transparent
         };
+        dateRangeFlow.Controls.Add(CompactDateSlot("TỪ NGÀY", _from));
+        dateRangeFlow.Controls.Add(CompactDateSlot("ĐẾN NGÀY", _to));
 
-        flow.Controls.Add(Ui.Field("TỪ NGÀY", _from, 180));
-        flow.Controls.Add(Ui.Field("ĐẾN NGÀY", _to, 180));
+        var runBtn = Theme.Button("Phân tích", Theme.Primary, IconKind.ChartBar);
+        runBtn.Dock = DockStyle.Fill;
+        runBtn.Margin = new Padding(6, 7, 0, 7);
+        runBtn.Click += async (_, _) => await LoadAsync();
 
-        var thisMonth = Theme.OutlineButton("Tháng này");
-        thisMonth.Click += async (_, _) =>
-        {
-            _from.Value = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-            _to.Value = DateTime.Today;
-            await LoadAsync();
-        };
+        var exportBtn = Theme.Button("Xuất Excel", Theme.Excel, IconKind.Download);
+        exportBtn.Dock = DockStyle.Fill;
+        exportBtn.Margin = new Padding(8, 7, 0, 7);
+        exportBtn.Click += (_, _) => Ui.ExportGrid(_grid, this, "bao-cao-goi-chup");
 
-        var thisYear = Theme.OutlineButton("Năm nay");
-        thisYear.Click += async (_, _) =>
-        {
-            _from.Value = new DateTime(DateTime.Today.Year, 1, 1);
-            _to.Value = DateTime.Today;
-            await LoadAsync();
-        };
+        row.Controls.Add(presetHost, 0, 0);
+        row.Controls.Add(dateRangeFlow, 1, 0);
+        row.Controls.Add(runBtn, 2, 0);
+        row.Controls.Add(exportBtn, 3, 0);
 
-        flow.Controls.Add(Ui.ToolbarButton(thisMonth));
-        flow.Controls.Add(Ui.ToolbarButton(thisYear));
-
-        card.Controls.Add(flow);
+        card.Controls.Add(row);
         return card;
+    }
+
+    private static Control CompactDateSlot(string label, DateTimePicker picker)
+    {
+        var panel = new Panel { Width = 148, Height = 46, Margin = new Padding(0, 0, 10, 0), BackColor = Color.Transparent };
+        var lbl = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 16,
+            Text = label,
+            Font = Theme.MonoFont(7.4f, FontStyle.Bold),
+            ForeColor = Theme.Muted
+        };
+        picker.Dock = DockStyle.Bottom;
+        panel.Controls.Add(picker);
+        panel.Controls.Add(lbl);
+        return panel;
+    }
+
+    private Control BuildBottomAnalyticalSplit()
+    {
+        var split = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent
+        };
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
+        split.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+        // Left: Custom GDI+ Ranked Horizontal Bar Chart
+        var leftCard = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 8, 0),
+            Padding = new Padding(18, 14, 18, 14),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
+        };
+        var leftTitle = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            Text = "Xếp hạng Tỷ trọng Khai thác theo Gói chụp",
+            Font = Theme.Font(10.5f, FontStyle.Bold),
+            ForeColor = Theme.Text
+        };
+        leftCard.Controls.Add(_packageChart);
+        leftCard.Controls.Add(leftTitle);
+
+        // Right: Package Breakdown Table + Financial Ledger Summary
+        var rightCard = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8, 0, 0, 0),
+            Padding = new Padding(18, 14, 18, 14),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Primitives.Espresso900,
+            AccentStripeThickness = 4
+        };
+        var rightTitle = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            Text = "Bảng số liệu Gói chụp & Đối soát Sổ cái",
+            Font = Theme.Font(10.5f, FontStyle.Bold),
+            ForeColor = Theme.Text
+        };
+
+        _grid.Margin = Padding.Empty;
+        rightCard.Controls.Add(_grid);
+        rightCard.Controls.Add(_ledgerBreakdown);
+        rightCard.Controls.Add(rightTitle);
+
+        split.Controls.Add(leftCard, 0, 0);
+        split.Controls.Add(rightCard, 1, 0);
+        return split;
     }
 
     private async Task LoadAsync()
@@ -166,17 +239,22 @@ public sealed class ReportsPage : UserControl
             }
 
             var r = result.Data;
-            _revenue.Value = $"{r.DoanhThu:N0} đ";
-            _cash.Value = $"{r.ThucThu:N0} đ";
-            _debt.Value = $"{r.CongNo:N0} đ";
-            _count.Value = r.TongLich.ToString();
+            _proportionBanner.SetReport(r);
+            _packageChart.Data = r.ByPackage;
 
-            _summary.Text = $"📊  Tổng thu: {r.TongThu:N0} đ   •   Tổng hoàn: {r.TongHoan:N0} đ   •   Hoàn thành: {r.HoanThanh} lịch   •   Đã hủy: {r.DaHuy} lịch";
+            _ledgerBreakdown.SetRows([
+                ("Tổng thu tiền mặt / chuyển khoản", $"{r.TongThu:N0} đ", Theme.Success, false),
+                ("Tổng chi hoàn tiền khách hàng", $"{r.TongHoan:N0} đ", r.TongHoan > 0 ? Theme.Warning : Theme.Muted, false),
+                ("Thực thu ròng trong kỳ", $"{r.ThucThu:N0} đ", Theme.Primary, true),
+                ("Tiến độ hoàn thành / Đã hủy", $"{r.HoanThanh} hoàn thành  •  {r.DaHuy} đã hủy / {r.TongLich} tổng lịch", null, false)
+            ]);
 
+            var totalCount = Math.Max(1m, r.ByPackage.Sum(x => x.Value));
             _grid.DataSource = r.ByPackage.Select(x => new
             {
                 Gói_chụp = x.Name,
-                Số_lần = (int)x.Value
+                Số_lần = (int)x.Value,
+                Tỷ_trọng = $"{(x.Value * 100m / totalCount):0.#}%"
             }).ToList();
 
             if (_grid.Columns.Contains("Gói_chụp")) _grid.Columns["Gói_chụp"].HeaderText = "Tên gói chụp";
@@ -185,10 +263,103 @@ public sealed class ReportsPage : UserControl
                 _grid.Columns["Số_lần"].HeaderText = "Số lượt phục vụ";
                 _grid.Columns["Số_lần"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
             }
+            if (_grid.Columns.Contains("Tỷ_trọng"))
+            {
+                _grid.Columns["Tỷ_trọng"].HeaderText = "Tỷ trọng";
+                _grid.Columns["Tỷ_trọng"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            }
         }
         catch (Exception ex)
         {
             Ui.Error(this, ex.Message);
+        }
+    }
+}
+
+/// <summary>
+/// Custom GDI+ Financial Equation & Stacked Proportion Banner for ReportsPage.
+/// </summary>
+internal sealed class FinancialProportionBanner : CardPanel
+{
+    private ReportData? _data;
+
+    public FinancialProportionBanner()
+    {
+        CornerRadius = 10;
+        BackColor = Theme.Surface;
+        BorderColor = Theme.BorderStrong;
+        AccentStripeColor = Theme.Primary;
+        AccentStripeThickness = 3;
+        Padding = new Padding(16, 12, 16, 12);
+    }
+
+    public void SetReport(ReportData data)
+    {
+        _data = data;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        var d = _data;
+        var rev = d?.DoanhThu ?? 0m;
+        var cash = d?.ThucThu ?? 0m;
+        var debt = d?.CongNo ?? 0m;
+        var count = d?.TongLich ?? 0;
+        var done = d?.HoanThanh ?? 0;
+
+        var tiles = new (string Label, string Value, string Sub, Color Accent, IconKind Icon)[]
+        {
+            ("TỔNG GIÁ TRỊ DỊCH VỤ", $"{rev:N0} đ", "Doanh thu hợp đồng", Theme.Primary, IconKind.ChartBar),
+            ("THỰC THU RÒNG (NET CASH)", $"{cash:N0} đ", $"Đã trừ hoàn {d?.TongHoan ?? 0:N0} đ", Theme.Success, IconKind.Wallet),
+            ("CÔNG NỢ CÒN PHẢI THU", $"{debt:N0} đ", "Cần đối soát thu hồi", Theme.Danger, IconKind.AlertTriangle),
+            ("TỔNG QUY MÔ LỊCH CHỤP", $"{count} lịch", $"{done} lịch đã hoàn thành", Theme.Cyan, IconKind.Calendar)
+        };
+
+        var slotW = (Width - 32f) / 4f;
+        using var divPen = new Pen(Theme.Border, 1f);
+        using var lblFont = Theme.MonoFont(7.5f, FontStyle.Bold);
+        using var valFont = Theme.Font(15.0f, FontStyle.Bold);
+        using var subFont = Theme.Font(8.0f, FontStyle.Bold);
+
+        for (var i = 0; i < tiles.Length; i++)
+        {
+            var t = tiles[i];
+            var x = 16f + i * slotW;
+            if (i > 0) g.DrawLine(divPen, x, 14, x, 74);
+
+            VectorIcons.Draw(g, t.Icon, new RectangleF(x + 10, 16, 20, 20), t.Accent, 1.85f);
+
+            var tx = (int)(x + 38);
+            var tw = Math.Max(40, (int)slotW - 46);
+            TextRenderer.DrawText(g, t.Label, lblFont, new Rectangle(tx, 12, tw, 16), Theme.Muted, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(g, t.Value, valFont, new Rectangle(tx, 28, tw, 26), Theme.Text, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(g, t.Sub, subFont, new Rectangle(tx, 54, tw, 18), t.Accent, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        }
+
+        // Bottom Stacked Financial Proportion Bar (Cash vs Debt)
+        var barY = Height - 22f;
+        var barW = Math.Max(60f, Width - 32f);
+        var trackRect = new RectangleF(16f, barY, barW, 8f);
+        using (var tPath = Theme.RoundedRectangle(trackRect, 4f))
+        using (var tFill = new SolidBrush(Theme.Primitives.Alabaster200))
+        {
+            g.FillPath(tFill, tPath);
+        }
+
+        var denom = Math.Max(1m, cash + debt);
+        var cashRatio = (float)Math.Clamp(cash / denom, 0m, 1m);
+        if (cash > 0)
+        {
+            var cw = Math.Max(8f, barW * cashRatio);
+            using var cPath = Theme.RoundedRectangle(new RectangleF(16f, barY, cw, 8f), 4f);
+            using var cBrush = new SolidBrush(Theme.Success);
+            g.FillPath(cBrush, cPath);
         }
     }
 }

@@ -13,7 +13,15 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         System.Windows.Forms.Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        System.Windows.Forms.Application.ThreadException += (_, e) => MessageBox.Show("Đã xảy ra lỗi: " + e.Exception.Message, "Studio Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        System.Windows.Forms.Application.ThreadException += (_, e) =>
+        {
+            Controls.Ui.LogError("Application.ThreadException", e.Exception);
+            MessageBox.Show(
+                Controls.Ui.FormatRuntimeError("Runtime", e.Exception),
+                "StudioManager — Atelier Lumière",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        };
         var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) ?? new();
         var facade = new AppFacade(new SqlStudioRepository(settings.ConnectionString), new Pbkdf2PasswordHasher(), new SystemClock());
         System.Windows.Forms.Application.Run(new LoginForm(facade));

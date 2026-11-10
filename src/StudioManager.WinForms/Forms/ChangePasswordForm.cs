@@ -8,30 +8,47 @@ public sealed class ChangePasswordForm : Form
 {
     private readonly AppFacade _app;
     private readonly UserSession _session;
+
     private readonly TextBox _password = new()
     {
-        PlaceholderText = "Nhập mật khẩu mới",
+        PlaceholderText = "Nhập mật khẩu mới (tối thiểu 8 ký tự)",
         UseSystemPasswordChar = true,
-        Font = Theme.Font(10),
+        Font = Theme.Font(10.0f),
         BorderStyle = BorderStyle.None,
-        BackColor = Color.White,
+        BackColor = Theme.Primitives.Alabaster50,
         ForeColor = Theme.Text
     };
+
     private readonly TextBox _confirmation = new()
     {
-        PlaceholderText = "Nhập lại mật khẩu mới",
+        PlaceholderText = "Nhập lại mật khẩu mới để xác nhận",
         UseSystemPasswordChar = true,
-        Font = Theme.Font(10),
+        Font = Theme.Font(10.0f),
         BorderStyle = BorderStyle.None,
-        BackColor = Color.White,
+        BackColor = Theme.Primitives.Alabaster50,
         ForeColor = Theme.Text
     };
-    private readonly ModernButton _save = Theme.Button("Cập nhật mật khẩu");
+
+    private readonly ModernButton _save = Theme.Button("Xác nhận đổi mật khẩu", Theme.Primary, IconKind.Key);
+
+    private readonly CardPanel _errorPanel = new()
+    {
+        Dock = DockStyle.Fill,
+        BackColor = Theme.DangerLight,
+        BorderColor = Theme.DangerBorder,
+        AccentStripeColor = Theme.Danger,
+        AccentStripeLeft = true,
+        AccentStripeThickness = 4,
+        CornerRadius = 8,
+        Padding = new Padding(12, 4, 10, 4),
+        Visible = false
+    };
+
     private readonly Label _error = new()
     {
         Dock = DockStyle.Fill,
         ForeColor = Theme.Danger,
-        Font = Theme.Font(8.5f),
+        Font = Theme.Font(8.6f, FontStyle.Bold),
         TextAlign = ContentAlignment.MiddleLeft,
         AutoEllipsis = true,
         Visible = false
@@ -41,10 +58,10 @@ public sealed class ChangePasswordForm : Form
     {
         _app = app;
         _session = session;
-        Text = "Đổi mật khẩu bảo mật • StudioManager";
+        Text = "Thiết lập mật khẩu bảo mật • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(500, 490);
-        MinimumSize = new Size(460, 460);
+        ClientSize = new Size(520, 500);
+        MinimumSize = new Size(480, 480);
         MaximizeBox = false;
         MinimizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -54,66 +71,91 @@ public sealed class ChangePasswordForm : Form
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(36, 28, 36, 24),
+            Padding = new Padding(34, 26, 34, 22),
             Margin = new Padding(16),
             BackColor = Theme.Surface,
-            CornerRadius = 12
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 12,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
         };
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 8,
+            RowCount = 7,
             ColumnCount = 1,
             BackColor = Theme.Surface
         };
 
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46)); // Title
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // Subtitle
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); // Password
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); // Confirm
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); // Notice
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32)); // Error
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46)); // Button
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58)); // 0: Header Badge + Title
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); // 1: Intro
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78)); // 2: Password
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78)); // 3: Confirm
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 4: Policy Card
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); // 5: Error Banner
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 6: Save Button
 
+        var headerPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+        headerPanel.Paint += (_, e) =>
+        {
+            var g = e.Graphics;
+            var box = new RectangleF(0, 6, 40, 40);
+            using var path = Theme.RoundedRectangle(box, 10f);
+            using var fill = new SolidBrush(Theme.PrimaryLight);
+            g.FillPath(fill, path);
+            VectorIcons.Draw(g, IconKind.Key, new RectangleF(10, 16, 20, 20), Theme.Primary, 1.9f);
+        };
         var titleLabel = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "🔒   Đổi mật khẩu",
+            Padding = new Padding(52, 0, 0, 0),
+            Text = "Thiết lập mật khẩu bảo mật",
             ForeColor = Theme.Text,
-            Font = Theme.Font(18, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleCenter
+            Font = Theme.Font(15.5f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft
         };
+        headerPanel.Controls.Add(titleLabel);
 
         var introLabel = new Label
         {
             Dock = DockStyle.Fill,
-            Text = $"Xin chào {_session.HoTen}.\nĐây là lần đăng nhập đầu tiên hoặc mật khẩu đã được quản trị viên đặt lại.",
+            Text = $"Xin chào {_session.HoTen}. Vui lòng thiết lập mật khẩu cá nhân mới để bảo vệ tài khoản làm việc của bạn.",
             ForeColor = Theme.Muted,
             Font = Theme.Font(9.0f),
-            TextAlign = ContentAlignment.TopCenter
+            TextAlign = ContentAlignment.TopLeft
         };
 
-        var ruleLabel = new Label
+        var policyCard = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Text = "• Tối thiểu 8 ký tự, bao gồm chữ hoa, chữ thường và chữ số.",
-            ForeColor = Theme.Muted,
-            Font = Theme.Font(8.3f),
-            TextAlign = ContentAlignment.MiddleLeft
+            BackColor = Theme.SurfaceWarm,
+            BorderColor = Theme.Border,
+            CornerRadius = 8,
+            Padding = new Padding(12, 6, 12, 6),
+            Margin = new Padding(0, 2, 0, 4)
         };
+        policyCard.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Yêu cầu bảo mật: Tối thiểu 8 ký tự, bao gồm chữ cái viết hoa, chữ thường và chữ số.",
+            ForeColor = Theme.TextSecondary,
+            Font = Theme.Font(8.3f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+
+        _errorPanel.Controls.Add(_error);
 
         _save.Dock = DockStyle.Fill;
-        _save.Margin = new Padding(0, 2, 0, 2);
+        _save.Margin = new Padding(0, 4, 0, 0);
         _save.Click += async (_, _) => await SaveAsync();
 
-        layout.Controls.Add(titleLabel, 0, 0);
+        layout.Controls.Add(headerPanel, 0, 0);
         layout.Controls.Add(introLabel, 0, 1);
         layout.Controls.Add(PasswordField("MẬT KHẨU MỚI", _password), 0, 2);
-        layout.Controls.Add(PasswordField("XÁC NHẬN MẬT KHẨU", _confirmation), 0, 3);
-        layout.Controls.Add(ruleLabel, 0, 4);
-        layout.Controls.Add(_error, 0, 5);
+        layout.Controls.Add(PasswordField("XÁC NHẬN MẬT KHẨU MỚI", _confirmation), 0, 3);
+        layout.Controls.Add(policyCard, 0, 4);
+        layout.Controls.Add(_errorPanel, 0, 5);
         layout.Controls.Add(_save, 0, 6);
 
         card.Controls.Add(layout);
@@ -121,37 +163,42 @@ public sealed class ChangePasswordForm : Form
         AcceptButton = _save;
     }
 
+    private void ShowError(string msg)
+    {
+        _error.Text = msg;
+        _error.Visible = true;
+        _errorPanel.Visible = true;
+    }
+
     private async Task SaveAsync()
     {
         _error.Visible = false;
-        _error.Text = "";
+        _errorPanel.Visible = false;
         _save.Enabled = false;
-        _save.Text = "Đang cập nhật...";
+        _save.Text = "Đang lưu mật khẩu...";
 
         try
         {
             var result = await _app.Auth.ChangePasswordAsync(_session.TaiKhoanId, _password.Text, _confirmation.Text);
             if (!result.Success)
             {
-                _error.Text = "⚠  " + result.Message;
-                _error.Visible = true;
+                ShowError(result.Message);
                 return;
             }
 
-            MessageBox.Show(this, "Mật khẩu đã được đổi thành công. Bạn có thể tiếp tục sử dụng hệ thống.",
+            MessageBox.Show(this, "Mật khẩu đã được cập nhật thành công.",
                 "StudioManager", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK;
             Close();
         }
         catch (Exception ex)
         {
-            _error.Text = "⚠  Không thể đổi mật khẩu: " + ex.Message;
-            _error.Visible = true;
+            ShowError("Không thể đổi mật khẩu: " + ex.Message);
         }
         finally
         {
             _save.Enabled = true;
-            _save.Text = "Cập nhật mật khẩu";
+            _save.Text = "Xác nhận đổi mật khẩu";
         }
     }
 
@@ -165,38 +212,43 @@ public sealed class ChangePasswordForm : Form
             Height = 22,
             Text = label,
             ForeColor = Theme.TextSecondary,
-            Font = Theme.Font(8.2f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft
+            Font = Theme.Font(8.0f, FontStyle.Bold),
+            TextAlign = ContentAlignment.BottomLeft
         };
 
         var border = new ModernInputContainer
         {
             Dock = DockStyle.Bottom,
             Height = 44,
-            BackColor = Color.White,
-            Padding = new Padding(12, 11, 8, 10)
+            BackColor = Theme.Primitives.Alabaster50,
+            Padding = new Padding(40, 11, 42, 10),
+            LeadingIcon = IconKind.Lock
         };
 
-        var reveal = new Label
+        var revealBtn = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 44,
-            Text = "Hiện",
-            ForeColor = Theme.Primary,
-            Font = Theme.Font(8.5f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleCenter,
+            Width = 34,
             Cursor = Cursors.Hand,
             BackColor = Color.Transparent
         };
-        reveal.Click += (_, _) =>
+        revealBtn.Paint += (_, e) =>
+        {
+            var k = input.UseSystemPasswordChar ? IconKind.Eye : IconKind.EyeOff;
+            VectorIcons.Draw(e.Graphics, k, new RectangleF(8, (revealBtn.Height - 16) / 2f, 16, 16), Theme.Primary, 1.75f);
+        };
+        revealBtn.Click += (_, _) =>
         {
             input.UseSystemPasswordChar = !input.UseSystemPasswordChar;
-            reveal.Text = input.UseSystemPasswordChar ? "Hiện" : "Ẩn";
+            revealBtn.Invalidate();
+            input.Focus();
         };
 
         input.Dock = DockStyle.Fill;
+        input.GotFocus += (_, _) => border.Invalidate();
+        input.LostFocus += (_, _) => border.Invalidate();
         border.Controls.Add(input);
-        border.Controls.Add(reveal);
+        border.Controls.Add(revealBtn);
 
         panel.Controls.Add(border);
         panel.Controls.Add(caption);

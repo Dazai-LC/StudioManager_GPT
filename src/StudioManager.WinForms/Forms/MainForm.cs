@@ -1,5 +1,7 @@
-using StudioManager.Application.Services;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using StudioManager.Application;
+using StudioManager.Application.Services;
 using StudioManager.Domain;
 using StudioManager.WinForms.Controls;
 using StudioManager.WinForms.Pages;
@@ -8,8 +10,7 @@ namespace StudioManager.WinForms.Forms;
 
 public sealed class MainForm : Form
 {
-    private const int ExpandedWidth = 270;
-    private const int CollapsedWidth = 72;
+    private const int RailWidth = 84;
 
     private readonly AppFacade _app;
     private DashboardData? _initialDashboardData;
@@ -18,328 +19,476 @@ public sealed class MainForm : Form
     {
         Dock = DockStyle.Fill,
         BackColor = Theme.Background,
-        Padding = new Padding(24, 18, 24, 20)
+        Padding = new Padding(20, 14, 20, 18)
     };
 
-    private readonly Panel _sidebar = new()
+    private readonly Panel _rail = new()
     {
         Dock = DockStyle.Left,
-        Width = ExpandedWidth,
+        Width = RailWidth,
         BackColor = Theme.Sidebar,
-        Padding = new Padding(10, 16, 10, 14)
+        Padding = new Padding(8, 12, 8, 12)
     };
 
-    private readonly FlowLayoutPanel _menu = new()
+    private readonly FlowLayoutPanel _railMenu = new()
     {
         Dock = DockStyle.Fill,
         FlowDirection = FlowDirection.TopDown,
         WrapContents = false,
-        AutoScroll = true,
-        Padding = new Padding(0, 6, 0, 0),
+        Padding = new Padding(0, 8, 0, 0),
         BackColor = Theme.Sidebar
     };
 
-    private readonly Label _logo = new()
-    {
-        Text = "   ◈   StudioManager\n        STUDIO OPERATIONS",
-        Dock = DockStyle.Top,
-        Height = 72,
-        ForeColor = Color.White,
-        TextAlign = ContentAlignment.MiddleLeft,
-        BackColor = Color.Transparent
-    };
-
-    private readonly ModernButton _logout = Theme.Button("Đăng xuất", Color.FromArgb(30, 41, 59));
-    private readonly Label _pageTitle = new()
-    {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.BottomLeft,
-        Font = Theme.Font(16, FontStyle.Bold),
-        ForeColor = Theme.Text,
-        Padding = new Padding(0, 0, 0, 2)
-    };
-    private readonly Label _breadcrumb = new()
+    private readonly Label _hubBreadcrumb = new()
     {
         Dock = DockStyle.Top,
-        Height = 22,
-        Text = "StudioManager",
-        Font = Theme.Font(8.5f),
-        ForeColor = Theme.Muted,
+        Height = 18,
+        Text = "ATELIER LUMIÈRE  /  BÀN LÀM VIỆC",
+        Font = Theme.MonoFont(7.6f, FontStyle.Bold),
+        ForeColor = Theme.Primary,
         TextAlign = ContentAlignment.BottomLeft
     };
 
+    private readonly Label _hubTitle = new()
+    {
+        Dock = DockStyle.Fill,
+        Text = "Bàn điều khiển trung tâm",
+        Font = Theme.Font(14.5f, FontStyle.Bold),
+        ForeColor = Theme.Text,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
+
+    private readonly SegmentedTabBar _subNav = new()
+    {
+        Dock = DockStyle.Fill,
+        Visible = false
+    };
+
+    private readonly Panel _subNavHost = new()
+    {
+        Dock = DockStyle.Top,
+        Height = 48,
+        Padding = new Padding(20, 6, 20, 4),
+        BackColor = Theme.SurfaceWarm,
+        Visible = false
+    };
+
     private readonly ToolTip _toolTip = new();
-    private readonly List<Label> _sectionLabels = [];
-    private Button? _activeButton;
-    private bool _collapsed;
+    private readonly List<RailNavButton> _railButtons = [];
+    private string _activeHubKey = "dashboard";
+    private string _activeSubKey = "";
 
     public MainForm(AppFacade app, DashboardData? initialDashboardData = null)
     {
         _app = app;
         _initialDashboardData = initialDashboardData;
-        Text = "StudioManager • Hệ thống Quản trị Studio";
+        Text = "StudioManager — Atelier Lumière Command Suite";
         WindowState = FormWindowState.Maximized;
-        MinimumSize = new Size(1180, 720);
+        MinimumSize = new Size(1220, 740);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Theme.Background;
         Font = Theme.Font();
+        KeyPreview = true;
 
-        BuildSidebar();
-        var top = BuildTopbar();
+        BuildObsidianRail();
+        var topHeader = BuildTopCommandHeader();
+        BuildSubNavigationStrip();
 
         Controls.Add(_content);
-        Controls.Add(top);
-        Controls.Add(_sidebar);
+        Controls.Add(_subNavHost);
+        Controls.Add(topHeader);
+        Controls.Add(_rail);
 
-        Shown += (_, _) => FitSidebarMenu();
-        ShowPage("Tổng quan", CreateDashboard(), _menu.Controls.OfType<Button>().FirstOrDefault());
+        KeyDown += OnMainFormKeyDown;
+        Shown += (_, _) =>
+        {
+            Activate();
+            BringToFront();
+        };
+        NavigateTo("dashboard");
     }
 
-    private void BuildSidebar()
+    private void OnMainFormKeyDown(object? sender, KeyEventArgs e)
     {
-        _logo.Font = Theme.Font(11.5f, FontStyle.Bold);
-
-        AddSection("Khám phá");
-        AddMenu("⌂", "Tổng quan", CreateDashboard);
-
-        AddSection("Vận hành");
-        AddMenu("◷", "Lịch chụp", () => new BookingsPage(_app));
-        AddMenu("♙", "Khách hàng", () => new CrudPage(_app, "Khách hàng", "KhachHang"));
-
-        if (_app.Session!.VaiTro == VaiTro.QuanTriVien)
+        if (e.Control && e.KeyCode == Keys.K)
         {
-            AddSection("Quản lý danh mục");
-            AddMenu("♟", "Nhân viên", () => new CrudPage(_app, "Nhân viên", "NhanVien"));
-            AddMenu("▦", "Gói chụp", () => new CrudPage(_app, "Gói chụp", "GoiChup"));
-            AddMenu("◇", "Dịch vụ", () => new CrudPage(_app, "Dịch vụ bổ sung", "DichVu"));
-            AddMenu("▣", "Phòng chụp", () => new CrudPage(_app, "Phòng chụp", "PhongChup"));
-            AddMenu("▤", "Tài nguyên", () => new CrudPage(_app, "Tài nguyên", "TaiNguyen"));
-
-            AddSection("Phân tích & Báo cáo");
-            AddMenu("◫", "Báo cáo", () => new ReportsPage(_app));
-
-            AddSection("Quản trị hệ thống");
-            AddMenu("◎", "Tài khoản", () => new AccountsPage(_app));
-            AddMenu("≡", "Nhật ký", () => new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true));
-            AddMenu("⚙", "Sao lưu", () => new BackupPage(_app));
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            OpenCommandPalette();
+            return;
         }
 
-        _menu.SizeChanged += (_, _) => FitSidebarMenu();
-
-        _sidebar.Controls.Add(_menu);
-        _sidebar.Controls.Add(BuildSidebarFooter());
-        _sidebar.Controls.Add(_logo);
+        if (e.Alt)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.D1: NavigateTo("dashboard"); e.Handled = true; break;
+                case Keys.D2: NavigateTo("bookings"); e.Handled = true; break;
+                case Keys.D3: NavigateTo("catalog"); e.Handled = true; break;
+                case Keys.D4 when IsAdmin: NavigateTo("reports"); e.Handled = true; break;
+                case Keys.D5 when IsAdmin: NavigateTo("system"); e.Handled = true; break;
+            }
+        }
     }
 
-    private Control BuildSidebarFooter()
+    private bool IsAdmin => _app.Session?.VaiTro == VaiTro.QuanTriVien;
+
+    private void BuildObsidianRail()
     {
+        var brandLogo = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 58,
+            BackColor = Color.Transparent,
+            Cursor = Cursors.Hand
+        };
+        brandLogo.Paint += (_, e) =>
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var cx = brandLogo.Width / 2f;
+            var cy = brandLogo.Height / 2f - 4f;
+            var box = new RectangleF(cx - 21, cy - 21, 42, 42);
+            using var path = Theme.RoundedRectangle(box, 12f);
+            using var fill = new SolidBrush(Theme.SidebarCard);
+            using var border = new Pen(Theme.Primary, 1.5f);
+            g.FillPath(fill, path);
+            g.DrawPath(border, path);
+            VectorIcons.Draw(g, IconKind.Aperture, new RectangleF(cx - 12, cy - 12, 24, 24), Theme.Primary, 1.9f);
+        };
+        brandLogo.Click += (_, _) => NavigateTo("dashboard");
+        _toolTip.SetToolTip(brandLogo, "StudioManager — Atelier Lumière (Alt+1)");
+
+        AddRailItem("dashboard", "Bàn điều khiển", IconKind.Dashboard, "Bàn điều khiển trung tâm (Alt+1)");
+        AddRailItem("bookings", "Lịch chụp", IconKind.Calendar, "Điều phối Lịch chụp & Phòng máy (Alt+2)");
+        AddRailItem("catalog", "Danh mục", IconKind.Layers, IsAdmin
+            ? "Khách hàng, Nhân sự, Gói chụp, Dịch vụ, Phòng & Thiết bị (Alt+3)"
+            : "Hồ sơ Khách hàng (Alt+3)");
+
+        if (IsAdmin)
+        {
+            AddRailItem("reports", "Phân tích", IconKind.ChartBar, "Báo cáo Doanh thu & Hiệu suất Gói chụp (Alt+4)");
+            AddRailItem("system", "Hệ thống", IconKind.Shield, "Tài khoản, Nhật ký Kiểm toán & Sao lưu (Alt+5)");
+        }
+
         var footer = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 54,
-            Padding = new Padding(0, 8, 0, 0),
-            BackColor = Theme.Sidebar
+            Height = 116,
+            BackColor = Color.Transparent
         };
 
-        _logout.Dock = DockStyle.Bottom;
-        _logout.Height = 40;
-        _logout.Width = 228;
-        _logout.Tag = "⇥|Đăng xuất";
-        _logout.Font = Theme.Font(9.2f, FontStyle.Bold);
-        _logout.Click += (_, _) => Close();
-
-        footer.Controls.Add(_logout);
-        return footer;
-    }
-
-    private Control BuildTopbar()
-    {
-        var top = new TopbarPanel
+        var passBtn = new RailNavButton("password", "Mật khẩu", IconKind.Key)
         {
             Dock = DockStyle.Top,
-            Height = 70,
+            Height = 52
+        };
+        passBtn.Click += (_, _) =>
+        {
+            if (_app.Session is null) return;
+            using var dlg = new ChangePasswordForm(_app, _app.Session);
+            dlg.ShowDialog(this);
+        };
+        _toolTip.SetToolTip(passBtn, "Đổi mật khẩu tài khoản hiện tại");
+
+        var logoutBtn = new RailNavButton("logout", "Thoát", IconKind.LogOut, isDanger: true)
+        {
+            Dock = DockStyle.Bottom,
+            Height = 52
+        };
+        logoutBtn.Click += (_, _) => Close();
+        _toolTip.SetToolTip(logoutBtn, "Đăng xuất khỏi phiên làm việc");
+
+        footer.Controls.Add(passBtn);
+        footer.Controls.Add(logoutBtn);
+
+        _rail.Controls.Add(_railMenu);
+        _rail.Controls.Add(footer);
+        _rail.Controls.Add(brandLogo);
+    }
+
+    private void AddRailItem(string key, string shortLabel, IconKind icon, string tooltip)
+    {
+        var btn = new RailNavButton(key, shortLabel, icon)
+        {
+            Width = RailWidth - 16,
+            Height = 58,
+            Margin = new Padding(0, 2, 0, 4)
+        };
+        btn.Click += (_, _) => NavigateTo(key);
+        _toolTip.SetToolTip(btn, tooltip);
+        _railButtons.Add(btn);
+        _railMenu.Controls.Add(btn);
+    }
+
+    private Control BuildTopCommandHeader()
+    {
+        var header = new TopCommandBarPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 62,
             BackColor = Theme.Surface,
-            Padding = new Padding(12, 10, 24, 10)
+            Padding = new Padding(20, 8, 20, 8)
         };
 
-        var toggle = new Button
+        var leftTitles = new Panel
         {
-            Text = "☰",
-            Dock = DockStyle.Left,
-            Width = 46,
-            Height = 46,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.Transparent,
-            ForeColor = Theme.TextSecondary,
-            Font = Theme.Font(14),
-            Cursor = Cursors.Hand
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent
         };
-        toggle.FlatAppearance.BorderSize = 0;
-        toggle.FlatAppearance.MouseOverBackColor = Color.FromArgb(241, 245, 249);
-        toggle.Click += (_, _) => ToggleSidebar();
+        leftTitles.Controls.Add(_hubTitle);
+        leftTitles.Controls.Add(_hubBreadcrumb);
 
-        var userPanel = new Panel
+        var rightZone = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
-            Width = 340,
-            Padding = new Padding(8, 4, 0, 4),
+            Width = 560,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Padding = new Padding(0, 3, 0, 0),
             BackColor = Color.Transparent
         };
 
-        var avatar = new Label
-        {
-            Text = Initials(_app.Session!.HoTen),
-            Dock = DockStyle.Right,
-            Width = 42,
-            Height = 42,
-            BackColor = Theme.PrimaryLight,
-            ForeColor = Theme.Primary,
-            Font = Theme.Font(9.5f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleCenter
-        };
-        avatar.Resize += (_, _) => Theme.Round(avatar, 21);
+        var userPill = BuildUserBadgePill();
+        var cmdButton = Theme.OutlineButton("Tìm nhanh lệnh & màn hình (Ctrl+K)", Theme.BorderStrong, IconKind.Command);
+        cmdButton.Height = 38;
+        cmdButton.Width = 256;
+        cmdButton.Margin = new Padding(0, 1, 12, 0);
+        cmdButton.Click += (_, _) => OpenCommandPalette();
 
-        var isRoleAdmin = _app.Session.VaiTro == VaiTro.QuanTriVien;
-        var roleText = isRoleAdmin ? "Quản trị viên" : "Nhân viên";
+        rightZone.Controls.Add(userPill);
+        rightZone.Controls.Add(cmdButton);
 
-        var user = new Label
-        {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleRight,
-            Font = Theme.Font(9.2f),
-            ForeColor = Theme.TextSecondary,
-            Text = $"{_app.Session.HoTen}\n{roleText}",
-            Padding = new Padding(0, 0, 12, 0)
-        };
-
-        var pageStack = new Panel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(14, 0, 0, 0),
-            BackColor = Color.Transparent
-        };
-        pageStack.Controls.Add(_pageTitle);
-        pageStack.Controls.Add(_breadcrumb);
-
-        userPanel.Controls.Add(user);
-        userPanel.Controls.Add(avatar);
-
-        top.Controls.Add(pageStack);
-        top.Controls.Add(userPanel);
-        top.Controls.Add(toggle);
-
-        return top;
+        header.Controls.Add(leftTitles);
+        header.Controls.Add(rightZone);
+        return header;
     }
 
-    private void AddMenu(string icon, string title, Func<Control> page)
+    private Control BuildUserBadgePill()
     {
-        var b = new Button
+        var session = _app.Session;
+        var fullName = session?.HoTen ?? "Nhân sự Studio";
+        var isAdminRole = session?.VaiTro == VaiTro.QuanTriVien;
+        var roleName = isAdminRole ? "QUẢN TRỊ VIÊN" : "NHÂN VIÊN";
+        var roleColor = isAdminRole ? Theme.Primary : Theme.Primitives.Teal600;
+        var initials = Initials(fullName);
+
+        var pill = new Panel
         {
-            Text = $"  {icon}    {title}",
-            Tag = $"{icon}|{title}",
-            Width = 240,
+            Width = 230,
             Height = 40,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Theme.Sidebar,
-            ForeColor = Theme.SidebarText,
-            Font = Theme.Font(9.5f),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(12, 0, 0, 0),
-            Cursor = Cursors.Hand,
-            Margin = new Padding(0, 1, 0, 1),
-            UseCompatibleTextRendering = true,
-            UseVisualStyleBackColor = false
+            Margin = new Padding(0),
+            BackColor = Color.Transparent
         };
-        b.FlatAppearance.BorderSize = 0;
-        b.FlatAppearance.MouseOverBackColor = Theme.SidebarHover;
-        b.Click += (_, _) => ShowPage(title, page(), b);
-        _toolTip.SetToolTip(b, title);
-        _menu.Controls.Add(b);
-    }
 
-    private void AddSection(string title)
-    {
-        var section = Ui.SectionLabel(title);
-        _sectionLabels.Add(section);
-        _menu.Controls.Add(section);
-    }
-
-    private void ToggleSidebar()
-    {
-        _collapsed = !_collapsed;
-        _sidebar.SuspendLayout();
-        _sidebar.Width = _collapsed ? CollapsedWidth : ExpandedWidth;
-        _logo.Text = _collapsed ? "◈" : "   ◈   StudioManager\n        STUDIO OPERATIONS";
-        _logo.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
-
-        foreach (var section in _sectionLabels)
-            section.Visible = !_collapsed;
-
-        foreach (var b in _menu.Controls.OfType<Button>())
+        pill.Paint += (_, e) =>
         {
-            var parts = (b.Tag?.ToString() ?? "|").Split('|');
-            b.Text = _collapsed ? parts[0] : $"  {parts[0]}    {parts.ElementAtOrDefault(1)}";
-            b.Width = _collapsed ? 50 : 240;
-            b.Padding = _collapsed ? Padding.Empty : new Padding(12, 0, 0, 0);
-            b.TextAlign = _collapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
-        }
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-        _logout.Text = _collapsed ? "⇥" : "⇥  Đăng xuất";
-        _logout.Width = _collapsed ? 50 : 240;
+            var bounds = new RectangleF(0.5f, 0.5f, pill.Width - 1, pill.Height - 1);
+            using var path = Theme.RoundedRectangle(bounds, 20f);
+            using var bg = new SolidBrush(Theme.SurfaceWarm);
+            using var border = new Pen(Theme.BorderStrong, 1f);
+            g.FillPath(bg, path);
+            g.DrawPath(border, path);
 
-        _sidebar.ResumeLayout(true);
-        FitSidebarMenu();
+            // Avatar circle on right
+            var avRect = new RectangleF(pill.Width - 36, 4, 32, 32);
+            using var avFill = new SolidBrush(roleColor);
+            g.FillEllipse(avFill, avRect);
+
+            using var avFont = Theme.Font(8.8f, FontStyle.Bold);
+            using var whiteBrush = new SolidBrush(Color.White);
+            var avSz = g.MeasureString(initials, avFont);
+            g.DrawString(initials, avFont, whiteBrush, avRect.Left + (avRect.Width - avSz.Width) / 2f, avRect.Top + (avRect.Height - avSz.Height) / 2f);
+
+            // Name & Role
+            using var nameFont = Theme.Font(8.8f, FontStyle.Bold);
+            using var roleFont = Theme.MonoFont(7.2f, FontStyle.Bold);
+            var nameRect = new Rectangle(10, 3, pill.Width - 52, 18);
+            var roleRect = new Rectangle(10, 20, pill.Width - 52, 16);
+
+            TextRenderer.DrawText(g, fullName, nameFont, nameRect, Theme.Text,
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(g, roleName, roleFont, roleRect, roleColor,
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        };
+
+        return pill;
     }
 
-    private void FitSidebarMenu()
+    private void BuildSubNavigationStrip()
     {
-        var width = Math.Max(48, _menu.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2);
-        foreach (var button in _menu.Controls.OfType<Button>())
-            button.Width = width;
-        foreach (var section in _sectionLabels)
-            section.Width = width;
-
-        _menu.AutoScrollMinSize = Size.Empty;
-        _menu.HorizontalScroll.Enabled = false;
-        _menu.HorizontalScroll.Visible = false;
-        if (_menu.HorizontalScroll.Value != 0) _menu.HorizontalScroll.Value = 0;
+        _subNavHost.Paint += (_, e) =>
+        {
+            using var pen = new Pen(Theme.Border, 1f);
+            e.Graphics.DrawLine(pen, 0, _subNavHost.Height - 1, _subNavHost.Width, _subNavHost.Height - 1);
+        };
+        _subNav.SegmentSelected += (_, seg) => OpenSubView(_activeHubKey, seg.Key);
+        _subNavHost.Controls.Add(_subNav);
     }
 
-    private void ShowPage(string title, Control page, Button? sender)
+    public void NavigateTo(string hubKey, string? subKey = null)
     {
-        if (_activeButton is not null)
+        try
         {
-            _activeButton.BackColor = Theme.Sidebar;
-            _activeButton.ForeColor = Theme.SidebarText;
-        }
+            _activeHubKey = hubKey;
+            foreach (var btn in _railButtons)
+                btn.IsActive = string.Equals(btn.Key, hubKey, StringComparison.OrdinalIgnoreCase);
 
-        _activeButton = sender;
-        if (_activeButton is not null)
+            switch (hubKey)
+            {
+                case "dashboard":
+                    _subNavHost.Visible = false;
+                    _subNav.Visible = false;
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 01";
+                    _hubTitle.Text = "Bàn điều khiển trung tâm";
+                    MountPage(CreateDashboard());
+                    break;
+
+                case "bookings":
+                    _subNavHost.Visible = false;
+                    _subNav.Visible = false;
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 02";
+                    _hubTitle.Text = "Điều phối Lịch chụp & Tiến độ Hậu kỳ";
+                    MountPage(new BookingsPage(_app));
+                    break;
+
+                case "catalog":
+                    var catalogTabs = new List<SegmentedTabBar.SegmentItem>
+                    {
+                        new("KhachHang", "Khách hàng", IconKind.Users)
+                    };
+                    if (IsAdmin)
+                    {
+                        catalogTabs.AddRange([
+                            new("NhanVien", "Nhân sự & Nhiếp ảnh gia", IconKind.UserCheck),
+                            new("GoiChup", "Gói chụp Studio", IconKind.Camera),
+                            new("DichVu", "Dịch vụ bổ sung", IconKind.Sparkles),
+                            new("PhongChup", "Phòng chụp", IconKind.Home),
+                            new("TaiNguyen", "Thiết bị & Tài nguyên", IconKind.Layers)
+                        ]);
+                    }
+                    var targetCatalogKey = subKey ?? (_activeSubKey is "KhachHang" or "NhanVien" or "GoiChup" or "DichVu" or "PhongChup" or "TaiNguyen" ? _activeSubKey : "KhachHang");
+                    if (!IsAdmin) targetCatalogKey = "KhachHang";
+                    _subNav.SetItems(catalogTabs, targetCatalogKey);
+                    _subNav.Visible = true;
+                    _subNavHost.Visible = true;
+                    OpenSubView("catalog", targetCatalogKey);
+                    break;
+
+                case "reports":
+                    if (!IsAdmin) return;
+                    _subNavHost.Visible = false;
+                    _subNav.Visible = false;
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 04";
+                    _hubTitle.Text = "Phân tích Doanh thu & Hiệu suất Kinh doanh";
+                    MountPage(new ReportsPage(_app));
+                    break;
+
+                case "system":
+                    if (!IsAdmin) return;
+                    var sysTabs = new List<SegmentedTabBar.SegmentItem>
+                    {
+                        new("TaiKhoan", "Tài khoản & Phân quyền", IconKind.Shield),
+                        new("NhatKy", "Nhật ký Kiểm toán", IconKind.History),
+                        new("SaoLuu", "Kho Sao lưu & Phục hồi SQL", IconKind.Database)
+                    };
+                    var targetSysKey = subKey ?? (_activeSubKey is "TaiKhoan" or "NhatKy" or "SaoLuu" ? _activeSubKey : "TaiKhoan");
+                    _subNav.SetItems(sysTabs, targetSysKey);
+                    _subNav.Visible = true;
+                    _subNavHost.Visible = true;
+                    OpenSubView("system", targetSysKey);
+                    break;
+            }
+        }
+        catch (Exception ex)
         {
-            _activeButton.BackColor = Theme.SidebarActive;
-            _activeButton.ForeColor = Color.White;
+            Ui.LogError($"MainForm.NavigateTo({hubKey}, {subKey})", ex);
+            if (!IsHandleCreated)
+            {
+                throw;
+            }
+            Ui.Error(this, Ui.FormatRuntimeError($"Điều hướng phân hệ '{hubKey}'", ex));
         }
+    }
 
-        _pageTitle.Text = title;
-        _breadcrumb.Text = "StudioManager   /   " + title;
+    private void OpenSubView(string hubKey, string subKey)
+    {
+        _activeSubKey = subKey;
+        if (hubKey == "catalog")
+        {
+            var (title, entity) = subKey switch
+            {
+                "NhanVien" => ("Hồ sơ Nhân sự & Nhiếp ảnh gia", "NhanVien"),
+                "GoiChup" => ("Danh mục Gói chụp Studio", "GoiChup"),
+                "DichVu" => ("Danh mục Dịch vụ bổ sung", "DichVu"),
+                "PhongChup" => ("Không gian Phòng chụp", "PhongChup"),
+                "TaiNguyen" => ("Thiết bị, Đạo cụ & Tài nguyên", "TaiNguyen"),
+                _ => ("Hồ sơ Khách hàng", "KhachHang")
+            };
+            _hubBreadcrumb.Text = $"ATELIER LUMIÈRE  //  DANH MỤC VẬN HÀNH  /  {title.ToUpperInvariant()}";
+            _hubTitle.Text = title;
+            MountPage(new CrudPage(_app, title, entity));
+        }
+        else if (hubKey == "system")
+        {
+            switch (subKey)
+            {
+                case "NhatKy":
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  TRUNG TÂM HỆ THỐNG  /  NHẬT KÝ KIỂM TOÁN";
+                    _hubTitle.Text = "Nhật ký Kiểm toán & Truy vết Dữ liệu";
+                    MountPage(new CrudPage(_app, "Nhật ký hệ thống", "NhatKy", true));
+                    break;
+                case "SaoLuu":
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  TRUNG TÂM HỆ THỐNG  /  KHO SAO LƯU SQL";
+                    _hubTitle.Text = "Kho Sao lưu & Phục hồi Cơ sở dữ liệu";
+                    MountPage(new BackupPage(_app));
+                    break;
+                default:
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  TRUNG TÂM HỆ THỐNG  /  TÀI KHOẢN & PHÂN QUYỀN";
+                    _hubTitle.Text = "Quản lý Tài khoản & Bảo mật Truy cập";
+                    MountPage(new AccountsPage(_app));
+                    break;
+            }
+        }
+    }
+
+    private void MountPage(Control page)
+    {
+        _content.SuspendLayout();
         _content.Controls.Clear();
         page.Dock = DockStyle.Fill;
         _content.Controls.Add(page);
+        _content.ResumeLayout(true);
     }
 
     private DashboardPage CreateDashboard()
     {
         var page = new DashboardPage(_app, _initialDashboardData);
         _initialDashboardData = null;
-        page.ViewBookingsRequested += (_, _) => OpenMenu("Lịch chụp");
+        page.ViewBookingsRequested += (_, _) => NavigateTo("bookings");
         return page;
     }
 
-    private void OpenMenu(string title)
+    private void OpenCommandPalette()
     {
-        var button = _menu.Controls.OfType<Button>()
-            .FirstOrDefault(x => (x.Tag?.ToString() ?? "").EndsWith("|" + title, StringComparison.Ordinal));
-        button?.PerformClick();
+        using var palette = new QuickCommandPaletteDialog(IsAdmin);
+        if (palette.ShowDialog(this) == DialogResult.OK && palette.SelectedCommand is { } cmd)
+        {
+            if (cmd.HubKey == "action:password")
+            {
+                if (_app.Session is not null)
+                {
+                    using var dlg = new ChangePasswordForm(_app, _app.Session);
+                    dlg.ShowDialog(this);
+                }
+                return;
+            }
+            NavigateTo(cmd.HubKey, cmd.SubKey);
+        }
     }
 
     private static string Initials(string name)
@@ -349,9 +498,83 @@ public sealed class MainForm : Form
     }
 }
 
-internal sealed class TopbarPanel : Panel
+internal sealed class RailNavButton : Control
 {
-    public TopbarPanel()
+    public string Key { get; }
+    private readonly string _label;
+    private readonly IconKind _icon;
+    private readonly bool _isDanger;
+    private bool _isActive;
+    private bool _isHovered;
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set { _isActive = value; Invalidate(); }
+    }
+
+    public RailNavButton(string key, string label, IconKind icon, bool isDanger = false)
+    {
+        Key = key;
+        _label = label;
+        _icon = icon;
+        _isDanger = isDanger;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        Cursor = Cursors.Hand;
+        BackColor = Theme.Sidebar;
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); _isHovered = true; Invalidate(); }
+    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); _isHovered = false; Invalidate(); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        var box = new RectangleF(2, 2, Width - 4, Height - 4);
+        if (_isActive || _isHovered)
+        {
+            using var path = Theme.RoundedRectangle(box, 10f);
+            var fillCol = _isActive
+                ? Theme.SidebarActiveBg
+                : (_isDanger ? Color.FromArgb(55, Theme.Danger) : Theme.SidebarHover);
+            using var fill = new SolidBrush(fillCol);
+            g.FillPath(fill, path);
+
+            if (_isActive)
+            {
+                using var border = new Pen(Color.FromArgb(120, Theme.Primary), 1f);
+                g.DrawPath(border, path);
+
+                // Left active indicator pill
+                using var barBrush = new SolidBrush(Theme.Primary);
+                using var barPath = Theme.RoundedRectangle(new RectangleF(0, Height * 0.22f, 3.5f, Height * 0.56f), 2f);
+                g.FillPath(barBrush, barPath);
+            }
+        }
+
+        var fg = _isActive
+            ? Theme.Primitives.Terracotta200
+            : (_isDanger && _isHovered ? Theme.Primitives.Crimson200 : (_isHovered ? Color.White : Theme.SidebarMuted));
+
+        var iconColor = _isActive ? Theme.Primary : fg;
+        var iconY = 9f;
+        VectorIcons.Draw(g, _icon, new RectangleF((Width - 20f) / 2f, iconY, 20f, 20f), iconColor, _isActive ? 2.0f : 1.75f);
+
+        using var font = Theme.Font(7.4f, _isActive ? FontStyle.Bold : FontStyle.Regular);
+        var textRect = new Rectangle(2, 31, Width - 4, 20);
+        TextRenderer.DrawText(g, _label, font, textRect, fg,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+    }
+}
+
+internal sealed class TopCommandBarPanel : Panel
+{
+    public TopCommandBarPanel()
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
     }
@@ -359,9 +582,186 @@ internal sealed class TopbarPanel : Panel
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        var g = e.Graphics;
-        // Subtle 1px bottom border
         using var pen = new Pen(Theme.Border, 1f);
-        g.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+        e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+    }
+}
+
+internal sealed class QuickCommandPaletteDialog : Form
+{
+    public sealed record CommandEntry(string Title, string Category, string HubKey, string? SubKey, IconKind Icon);
+
+    private readonly List<CommandEntry> _all = [];
+    private List<CommandEntry> _filtered = [];
+    private readonly SearchInput _search = new("Gõ tên màn hình, danh mục hoặc chức năng cần mở...") { Dock = DockStyle.Top, Height = 42 };
+    private readonly ListBox _list = new()
+    {
+        Dock = DockStyle.Fill,
+        BorderStyle = BorderStyle.None,
+        DrawMode = DrawMode.OwnerDrawFixed,
+        ItemHeight = 46,
+        BackColor = Theme.Surface,
+        Font = Theme.Font(9.5f)
+    };
+
+    public CommandEntry? SelectedCommand { get; private set; }
+
+    public QuickCommandPaletteDialog(bool isAdmin)
+    {
+        Text = "Bảng điều hướng nhanh (Command Palette)";
+        StartPosition = FormStartPosition.CenterParent;
+        ClientSize = new Size(580, 440);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        BackColor = Theme.Background;
+        Font = Theme.Font();
+        KeyPreview = true;
+
+        _all.Add(new("Bàn điều khiển trung tâm (Dashboard)", "Bàn làm việc", "dashboard", null, IconKind.Dashboard));
+        _all.Add(new("Điều phối Lịch chụp & Phòng máy", "Vận hành", "bookings", null, IconKind.Calendar));
+        _all.Add(new("Hồ sơ Khách hàng", "Khách & Danh mục", "catalog", "KhachHang", IconKind.Users));
+
+        if (isAdmin)
+        {
+            _all.Add(new("Hồ sơ Nhân sự & Nhiếp ảnh gia", "Khách & Danh mục", "catalog", "NhanVien", IconKind.UserCheck));
+            _all.Add(new("Danh mục Gói chụp Studio", "Khách & Danh mục", "catalog", "GoiChup", IconKind.Camera));
+            _all.Add(new("Danh mục Dịch vụ bổ sung", "Khách & Danh mục", "catalog", "DichVu", IconKind.Sparkles));
+            _all.Add(new("Danh mục Phòng chụp", "Khách & Danh mục", "catalog", "PhongChup", IconKind.Home));
+            _all.Add(new("Thiết bị, Đạo cụ & Tài nguyên", "Khách & Danh mục", "catalog", "TaiNguyen", IconKind.Layers));
+            _all.Add(new("Báo cáo Doanh thu & Hiệu suất", "Phân tích", "reports", null, IconKind.ChartBar));
+            _all.Add(new("Tài khoản & Phân quyền truy cập", "Hệ thống", "system", "TaiKhoan", IconKind.Shield));
+            _all.Add(new("Nhật ký Kiểm toán hệ thống", "Hệ thống", "system", "NhatKy", IconKind.History));
+            _all.Add(new("Kho Sao lưu & Phục hồi SQL Server", "Hệ thống", "system", "SaoLuu", IconKind.Database));
+        }
+        _all.Add(new("Đổi mật khẩu bảo mật cá nhân", "Tài khoản", "action:password", null, IconKind.Key));
+
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(12),
+            Padding = new Padding(16),
+            BackColor = Theme.Surface,
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 3
+        };
+
+        var hint = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 24,
+            Text = "Sử dụng phím ↑↓ để di chuyển  •  Enter để mở  •  Esc để đóng",
+            Font = Theme.Font(8.0f),
+            ForeColor = Theme.Muted,
+            TextAlign = ContentAlignment.BottomLeft
+        };
+
+        var spacer = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Color.Transparent };
+
+        _list.DrawItem += DrawCommandItem;
+        _list.DoubleClick += (_, _) => ConfirmSelection();
+        _search.TextChanged += (_, _) => FilterCommands();
+        _search.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Down && _list.Items.Count > 0)
+            {
+                _list.SelectedIndex = Math.Min(_list.Items.Count - 1, _list.SelectedIndex + 1);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Up && _list.Items.Count > 0)
+            {
+                _list.SelectedIndex = Math.Max(0, _list.SelectedIndex - 1);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Enter)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                ConfirmSelection();
+            }
+        };
+
+        KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                DialogResult = DialogResult.Cancel;
+                Close();
+            }
+            else if (e.KeyCode == Keys.Enter)
+            {
+                ConfirmSelection();
+            }
+        };
+
+        card.Controls.Add(_list);
+        card.Controls.Add(spacer);
+        card.Controls.Add(_search);
+        card.Controls.Add(hint);
+        Controls.Add(card);
+
+        FilterCommands();
+        Shown += (_, _) => _search.Focus();
+    }
+
+    private void FilterCommands()
+    {
+        var q = _search.Text.Trim();
+        _filtered = string.IsNullOrWhiteSpace(q)
+            ? _all.ToList()
+            : _all.Where(x => x.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                              x.Category.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        _list.BeginUpdate();
+        _list.Items.Clear();
+        foreach (var item in _filtered) _list.Items.Add(item.Title);
+        if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+        _list.EndUpdate();
+    }
+
+    private void ConfirmSelection()
+    {
+        if (_list.SelectedIndex >= 0 && _list.SelectedIndex < _filtered.Count)
+        {
+            SelectedCommand = _filtered[_list.SelectedIndex];
+            DialogResult = DialogResult.OK;
+            Close();
+        }
+    }
+
+    private void DrawCommandItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0 || e.Index >= _filtered.Count) return;
+        var item = _filtered[e.Index];
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        using var bg = new SolidBrush(selected ? Theme.PrimaryLight : Theme.Surface);
+        g.FillRectangle(bg, e.Bounds);
+
+        if (selected)
+        {
+            using var bar = new SolidBrush(Theme.Primary);
+            g.FillRectangle(bar, e.Bounds.Left, e.Bounds.Top + 6, 3, e.Bounds.Height - 12);
+        }
+
+        VectorIcons.Draw(g, item.Icon, new RectangleF(e.Bounds.Left + 14, e.Bounds.Top + 14, 18, 18),
+            selected ? Theme.Primary : Theme.TextSecondary, 1.8f);
+
+        using var titleFont = Theme.Font(9.4f, selected ? FontStyle.Bold : FontStyle.Regular);
+        using var catFont = Theme.MonoFont(7.8f, FontStyle.Bold);
+
+        TextRenderer.DrawText(g, item.Title, titleFont,
+            new Rectangle(e.Bounds.Left + 44, e.Bounds.Top, e.Bounds.Width - 160, e.Bounds.Height),
+            selected ? Theme.Primitives.Terracotta800 : Theme.Text,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        TextRenderer.DrawText(g, item.Category.ToUpperInvariant(), catFont,
+            new Rectangle(e.Bounds.Right - 140, e.Bounds.Top, 128, e.Bounds.Height),
+            selected ? Theme.Primary : Theme.Muted,
+            TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
     }
 }

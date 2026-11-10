@@ -8,8 +8,28 @@ public sealed class AccountsPage : UserControl
 {
     private readonly AppFacade _app;
     private readonly DataGridView _grid = Theme.Grid();
-    private readonly SearchInput _search = Ui.SearchBox();
-    private readonly ModernButton _lockButton = Theme.Button("Khóa tài khoản", Theme.Danger);
+    private readonly SearchInput _search = Ui.SearchBox("Tìm theo tên đăng nhập hoặc họ tên nhân sự...");
+
+    private readonly Label _inspTitle = new()
+    {
+        Dock = DockStyle.Fill,
+        Text = "Chưa chọn tài khoản",
+        Font = Theme.Font(12.5f, FontStyle.Bold),
+        ForeColor = Theme.Text,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
+    private readonly Label _inspSubtitle = new()
+    {
+        Dock = DockStyle.Bottom,
+        Height = 20,
+        Text = "Chọn một tài khoản bên trái để quản lý quyền & mật khẩu",
+        Font = Theme.Font(8.6f),
+        ForeColor = Theme.Muted,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
+    private readonly DossierFieldList _dossierFields = new() { Dock = DockStyle.Top, Height = 190 };
+
+    private readonly ModernButton _lockButton = Theme.Button("Khóa tài khoản", Theme.Danger, IconKind.Lock);
     private ModernButton? _resetButton, _detailButton;
 
     public AccountsPage(AppFacade app)
@@ -17,92 +37,207 @@ public sealed class AccountsPage : UserControl
         _app = app;
         BackColor = Theme.Background;
 
-        var header = new PageHeader("Tài khoản người dùng", "Quản lý tài khoản đăng nhập, phân quyền, khóa và đặt lại mật khẩu.");
-        var add = Theme.Button("+ Tạo tài khoản");
-        add.Width = 150;
-        add.Click += async (_, _) => await CreateAsync();
-        header.Actions.Controls.Add(add);
+        var bar = BuildCommandToolbar();
+        var workbench = BuildMasterDetailWorkbench();
 
-        var bar = BuildSearchBar();
-        var card = Ui.DataHost(_grid);
-        var actions = BuildSelectionActions();
-
-        Controls.Add(card);
-        Controls.Add(actions);
+        Controls.Add(workbench);
         Controls.Add(bar);
-        Controls.Add(header);
 
-        _grid.CellFormatting += GridCellFormatting;
+        _search.KeyDown += async (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                await LoadAsync();
+            }
+        };
+
+        ConfigureGridPainting();
         _grid.CellDoubleClick += (_, _) => ShowDetails();
-        _grid.SelectionChanged += (_, _) => UpdateLockButton();
+        _grid.SelectionChanged += (_, _) => UpdateInspectorAndActions();
 
-        UpdateLockButton();
+        UpdateInspectorAndActions();
         Load += async (_, _) => await LoadAsync();
     }
 
-    private Control BuildSearchBar()
+    private Control BuildCommandToolbar()
     {
-        var card = Ui.SearchToolbarCard();
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 60,
+            Padding = new Padding(12, 10, 12, 10),
+            Margin = new Padding(0, 0, 0, 10),
+            CornerRadius = 10,
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong
+        };
+
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = 5,
             RowCount = 1,
             BackColor = Theme.Surface
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
 
         _search.Dock = DockStyle.Fill;
         _search.Margin = Padding.Empty;
-        _search.PlaceholderText = "Tìm theo tên đăng nhập hoặc họ tên nhân viên...";
 
-        var find = Theme.Button("Tìm kiếm");
+        var find = Theme.OutlineButton("Tìm kiếm", Theme.BorderStrong, IconKind.Search);
         find.Dock = DockStyle.Fill;
         find.Margin = new Padding(8, 0, 0, 0);
         find.Click += async (_, _) => await LoadAsync();
 
-        var refresh = Theme.Button("Làm mới", Theme.Secondary);
+        var refresh = Theme.OutlineButton("Làm mới", Theme.BorderStrong, IconKind.Refresh);
         refresh.Dock = DockStyle.Fill;
         refresh.Margin = new Padding(8, 0, 0, 0);
         refresh.Click += async (_, _) => { _search.Clear(); await LoadAsync(); };
 
-        var export = Theme.Button("Xuất Excel", Theme.Excel);
+        var export = Theme.Button("Xuất Excel", Theme.Excel, IconKind.Download);
         export.Dock = DockStyle.Fill;
         export.Margin = new Padding(8, 0, 0, 0);
         export.Click += (_, _) => Ui.ExportGrid(_grid, this, "tai-khoan");
+
+        var create = Theme.Button("Tạo tài khoản", Theme.Primary, IconKind.Plus);
+        create.Dock = DockStyle.Fill;
+        create.Margin = new Padding(8, 0, 0, 0);
+        create.Click += async (_, _) => await CreateAsync();
 
         row.Controls.Add(_search, 0, 0);
         row.Controls.Add(find, 1, 0);
         row.Controls.Add(refresh, 2, 0);
         row.Controls.Add(export, 3, 0);
+        row.Controls.Add(create, 4, 0);
 
         card.Controls.Add(row);
         return card;
     }
 
-    private Control BuildSelectionActions()
+    private Control BuildMasterDetailWorkbench()
     {
-        var group = Ui.ActionButtonGroup();
+        var split = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(0, 6, 0, 0),
+            BackColor = Color.Transparent
+        };
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64f));
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36f));
+        split.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-        _lockButton.Width = 144;
-        _lockButton.Click += async (_, _) => await LockAsync();
+        var leftCard = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 10, 0),
+            Padding = new Padding(1),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 10
+        };
+        _grid.Margin = Padding.Empty;
+        leftCard.Controls.Add(_grid);
 
-        _resetButton = Theme.Button("Đặt lại mật khẩu", Theme.Warning);
-        _resetButton.Width = 155;
+        var rightCard = BuildRightSecurityInspector();
+
+        split.Controls.Add(leftCard, 0, 0);
+        split.Controls.Add(rightCard, 1, 0);
+        return split;
+    }
+
+    private Control BuildRightSecurityInspector()
+    {
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(4, 0, 0, 0),
+            Padding = new Padding(18, 16, 18, 14),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
+        };
+
+        var head = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 52,
+            BackColor = Color.Transparent
+        };
+        var overline = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 14,
+            Text = "HỒ SƠ BẢO MẬT & KIỂM SOÁT TRUY CẬP",
+            Font = Theme.MonoFont(7.4f, FontStyle.Bold),
+            ForeColor = Theme.Primary
+        };
+        head.Controls.Add(_inspTitle);
+        head.Controls.Add(_inspSubtitle);
+        head.Controls.Add(overline);
+
+        var policyCard = new CardPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 62,
+            Padding = new Padding(12, 8, 12, 8),
+            Margin = new Padding(0, 6, 0, 8),
+            CornerRadius = 8,
+            BackColor = Theme.SurfaceWarm,
+            BorderColor = Theme.Border,
+            AccentStripeColor = Theme.Warning,
+            AccentStripeLeft = true,
+            AccentStripeThickness = 3
+        };
+        policyCard.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Chính sách bảo vệ: Quản trị viên không thể tự khóa tài khoản đang đăng nhập. Khi đặt lại mật khẩu, nhân sự sẽ được yêu cầu đổi mật khẩu ở lần đăng nhập kế tiếp.",
+            Font = Theme.Font(8.1f),
+            ForeColor = Theme.TextSecondary,
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 6, 0, 0),
+            BackColor = Color.Transparent
+        };
+
+        _resetButton = Theme.Button("Đặt lại mật khẩu", Theme.Warning, IconKind.Key);
         _resetButton.Click += async (_, _) => await ResetAsync();
 
-        _detailButton = Theme.Button("Xem chi tiết", Theme.Secondary);
-        _detailButton.Width = 120;
+        _lockButton.Click += async (_, _) => await LockAsync();
+
+        _detailButton = Theme.OutlineButton("Bản in chi tiết", Theme.BorderStrong, IconKind.Eye);
         _detailButton.Click += (_, _) => ShowDetails();
 
-        group.Controls.Add(_lockButton);
-        group.Controls.Add(_resetButton);
-        group.Controls.Add(_detailButton);
+        actions.Controls.Add(_resetButton);
+        actions.Controls.Add(_lockButton);
+        actions.Controls.Add(_detailButton);
 
-        return Ui.SelectionActionBar("Chọn một tài khoản để xem chi tiết, đặt lại mật khẩu hoặc đổi trạng thái khóa/mở khóa.", group);
+        var body = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(0, 8, 0, 0) };
+        body.Controls.Add(_dossierFields);
+
+        card.Controls.Add(body);
+        card.Controls.Add(head);
+        card.Controls.Add(policyCard);
+        card.Controls.Add(actions);
+        return card;
     }
 
     private int? Id() => _grid.CurrentRow?.Cells["Id"].Value is object x ? Convert.ToInt32(x) : null;
@@ -125,7 +260,14 @@ public sealed class AccountsPage : UserControl
             }
             _grid.DataSource = dt;
             if (_grid.Columns.Contains("Id")) _grid.Columns["Id"].Visible = false;
-            UpdateLockButton();
+
+            if (_grid.Rows.Count > 0)
+            {
+                _grid.Rows[0].Selected = true;
+                var firstCol = _grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => c.Visible);
+                if (firstCol is not null) _grid.CurrentCell = _grid.Rows[0].Cells[firstCol.Index];
+            }
+            UpdateInspectorAndActions();
         }
         catch (Exception ex)
         {
@@ -133,23 +275,52 @@ public sealed class AccountsPage : UserControl
         }
     }
 
-    private void GridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    private void ConfigureGridPainting()
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.CellStyle is null) return;
-        var colName = _grid.Columns[e.ColumnIndex].Name;
+        _grid.CellFormatting += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.CellStyle is null) return;
+            var colName = _grid.Columns[e.ColumnIndex].Name;
+            if (colName == "Vai trò" && e.Value is string role)
+            {
+                e.CellStyle.ForeColor = role.Contains("QuanTri", StringComparison.OrdinalIgnoreCase) ? Theme.Primary : Theme.TextSecondary;
+                e.CellStyle.Font = Theme.Font(8.9f, FontStyle.Bold);
+            }
+        };
 
-        if (colName == "Trạng thái" && e.Value is string status)
+        _grid.CellPainting += (_, e) =>
         {
-            var colors = Theme.GetStatusColors(status);
-            e.CellStyle.ForeColor = colors.Text;
-            e.CellStyle.SelectionForeColor = colors.Text;
-            e.CellStyle.Font = Theme.Font(8.8f, FontStyle.Bold);
-        }
-        else if (colName == "Vai trò" && e.Value is string role)
-        {
-            e.CellStyle.ForeColor = role.Contains("QuanTri", StringComparison.OrdinalIgnoreCase) ? Theme.Primary : Theme.TextSecondary;
-            e.CellStyle.Font = Theme.Font(9.0f, FontStyle.Bold);
-        }
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            var colName = _grid.Columns[e.ColumnIndex].Name;
+            if (colName != "Trạng thái") return;
+
+            e.PaintBackground(e.ClipBounds, true);
+            var status = e.FormattedValue?.ToString() ?? "";
+            if (!string.IsNullOrEmpty(status) && e.Graphics is { } g)
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var (fg, bg, border) = Theme.GetStatusColors(status);
+                using var font = Theme.Font(7.9f, FontStyle.Bold);
+                var sz = TextRenderer.MeasureText(g, status, font);
+                var pillW = Math.Min(e.CellBounds.Width - 10, sz.Width + 16);
+                var pillH = 23;
+                var rect = new RectangleF(
+                    e.CellBounds.Left + 6,
+                    e.CellBounds.Top + (e.CellBounds.Height - pillH) / 2f,
+                    pillW,
+                    pillH);
+
+                using var path = Theme.RoundedRectangle(rect, 11f);
+                using var fill = new SolidBrush(bg);
+                using var pen = new Pen(border, 1f);
+                g.FillPath(fill, path);
+                g.DrawPath(pen, path);
+
+                TextRenderer.DrawText(g, status, font, Rectangle.Round(rect), fg,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
+            e.Handled = true;
+        };
     }
 
     private async Task CreateAsync()
@@ -171,7 +342,7 @@ public sealed class AccountsPage : UserControl
         if (d.ShowDialog(this) != DialogResult.OK) return;
         var r = await _app.Administration.ResetPasswordAsync(id.Value, d.Value, _app.Session!);
         if (!r.Success) Ui.Error(this, r.Message);
-        else Ui.Info(this, r.Message);
+        else { Ui.Info(this, r.Message); await LoadAsync(); }
     }
 
     private async Task LockAsync()
@@ -191,17 +362,48 @@ public sealed class AccountsPage : UserControl
     }
 
     private bool IsActiveSelection() =>
-        _grid.CurrentRow is not null && _grid.Columns.Contains("Trạng thái") && _grid.CurrentRow.Cells["Trạng thái"].Value?.ToString() == "HOAT_DONG";
+        _grid.CurrentRow is not null && _grid.Columns.Contains("Trạng thái") &&
+        _grid.CurrentRow.Cells["Trạng thái"].Value?.ToString() == "HOAT_DONG";
 
-    private void UpdateLockButton()
+    private void UpdateInspectorAndActions()
     {
-        var enabled = Id() is not null;
+        var id = Id();
+        var row = _grid.CurrentRow;
+        var enabled = id is not null && row is not null;
         var active = IsActiveSelection();
-        _lockButton.Text = active ? "Khóa tài khoản" : "Mở khóa tài khoản";
+
+        _lockButton.Text = active ? "Khóa tài khoản" : "Mở khóa";
+        _lockButton.Icon = active ? IconKind.Lock : IconKind.Unlock;
         _lockButton.BackColor = active ? Theme.Danger : Theme.Success;
         _lockButton.Enabled = enabled;
         if (_resetButton is not null) _resetButton.Enabled = enabled;
         if (_detailButton is not null) _detailButton.Enabled = enabled;
+
+        if (!enabled || row is null)
+        {
+            _inspTitle.Text = "Chưa chọn tài khoản";
+            _inspSubtitle.Text = "Chọn một dòng bên trái để kiểm tra bảo mật";
+            _dossierFields.SetRows([("Trạng thái", "Chưa có tài khoản được chọn", Theme.Muted, false)]);
+            return;
+        }
+
+        var visibleCols = _grid.Columns.Cast<DataGridViewColumn>().Where(c => c.Visible).ToList();
+        var username = _grid.Columns.Contains("Tên đăng nhập") ? row.Cells["Tên đăng nhập"].FormattedValue?.ToString() ?? "" : "";
+        var role = _grid.Columns.Contains("Vai trò") ? row.Cells["Vai trò"].FormattedValue?.ToString() ?? "" : "";
+
+        _inspTitle.Text = $"{username}  •  {role}";
+        _inspSubtitle.Text = id == _app.Session?.TaiKhoanId ? "Tài khoản phiên làm việc hiện tại của bạn" : $"Mã tài khoản hệ thống: #{id}";
+
+        var fieldList = new List<(string Label, string Value, Color? ValueColor, bool Highlight)>();
+        foreach (var col in visibleCols)
+        {
+            var val = row.Cells[col.Index].FormattedValue?.ToString() ?? "—";
+            var isStatus = col.HeaderText.Contains("Trạng thái", StringComparison.OrdinalIgnoreCase);
+            var isRole = col.HeaderText.Contains("Vai trò", StringComparison.OrdinalIgnoreCase);
+            Color? colColor = isStatus ? Theme.GetStatusColors(val).Text : (isRole ? Theme.Primary : null);
+            fieldList.Add((col.HeaderText, val, colColor, isStatus || isRole));
+        }
+        _dossierFields.SetRows(fieldList);
     }
 
     private void ShowDetails()
@@ -221,15 +423,25 @@ internal sealed class PasswordPrompt : Form
 
     public PasswordPrompt()
     {
-        Text = "Đặt lại mật khẩu tài khoản • StudioManager";
+        Text = "Đặt lại mật khẩu tạm • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(440, 220);
+        ClientSize = new Size(460, 240);
         BackColor = Theme.Background;
-        Padding = new Padding(26);
+        Padding = new Padding(18);
         Font = Theme.Font();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
+
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(22, 18, 22, 18),
+            BackColor = Theme.Surface,
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Warning,
+            AccentStripeThickness = 4
+        };
 
         var body = new FlowLayoutPanel
         {
@@ -238,10 +450,10 @@ internal sealed class PasswordPrompt : Form
             WrapContents = false,
             BackColor = Color.Transparent
         };
-        body.Controls.Add(Ui.Field("MẬT KHẨU TẠM MỚI (TỐI THIỂU 8 KÝ TỰ)", _value, 380));
+        body.Controls.Add(Ui.Field("MẬT KHẨU TẠM MỚI (TỐI THIỂU 8 KÝ TỰ)", _value, 376));
 
-        var ok = Theme.Button("Xác nhận đặt lại");
-        ok.Width = 380;
+        var ok = Theme.Button("Xác nhận đặt lại", Theme.Primary, IconKind.Key);
+        ok.Width = 376;
         ok.Click += (_, _) =>
         {
             if (Value.Length < 8)
@@ -254,7 +466,8 @@ internal sealed class PasswordPrompt : Form
         };
         body.Controls.Add(ok);
 
-        Controls.Add(body);
+        card.Controls.Add(body);
+        Controls.Add(card);
         AcceptButton = ok;
     }
 }
@@ -273,11 +486,11 @@ internal sealed class AccountDialog : Form
 
     public AccountDialog(IReadOnlyList<StudioManager.Application.LookupItem> employees)
     {
-        Text = "Tạo tài khoản người dùng mới • StudioManager";
+        Text = "Khởi tạo tài khoản truy cập • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(480, 420);
+        ClientSize = new Size(500, 440);
         BackColor = Theme.Background;
-        Padding = new Padding(26);
+        Padding = new Padding(18);
         Font = Theme.Font();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -290,6 +503,16 @@ internal sealed class AccountDialog : Form
         _role.Items.AddRange(["Nhân viên vận hành", "Quản trị viên hệ thống"]);
         _role.SelectedIndex = 0;
 
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(22, 18, 22, 18),
+            BackColor = Theme.Surface,
+            CornerRadius = 10,
+            AccentStripeColor = Theme.Primary,
+            AccentStripeThickness = 4
+        };
+
         var body = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -297,18 +520,18 @@ internal sealed class AccountDialog : Form
             WrapContents = false,
             BackColor = Color.Transparent
         };
-        body.Controls.Add(Ui.Field("NHÂN VIÊN LIÊN KẾT", _employee, 410));
-        body.Controls.Add(Ui.Field("TÊN ĐĂNG NHẬP *", _username, 410));
-        body.Controls.Add(Ui.Field("MẬT KHẨU TẠM *", _password, 410));
-        body.Controls.Add(Ui.Field("VAI TRÒ TRUY CẬP", _role, 410));
+        body.Controls.Add(Ui.Field("NHÂN VIÊN LIÊN KẾT", _employee, 416));
+        body.Controls.Add(Ui.Field("TÊN ĐĂNG NHẬP *", _username, 416));
+        body.Controls.Add(Ui.Field("MẬT KHẨU KHỞI TẠO *", _password, 416));
+        body.Controls.Add(Ui.Field("VAI TRÒ PHÂN QUYỀN", _role, 416));
 
-        var save = Theme.Button("Tạo tài khoản");
-        save.Width = 410;
+        var save = Theme.Button("Tạo tài khoản", Theme.Primary, IconKind.Check);
+        save.Width = 416;
         save.Click += (_, _) =>
         {
-            if (Username.Length < 3 || Password.Length < 8)
+            if (string.IsNullOrWhiteSpace(Username) || Password.Length < 8)
             {
-                Ui.Error(this, "Tên đăng nhập tối thiểu 3 ký tự, mật khẩu tối thiểu 8 ký tự.");
+                Ui.Error(this, "Vui lòng nhập tên đăng nhập và mật khẩu ít nhất 8 ký tự.");
                 return;
             }
             DialogResult = DialogResult.OK;
@@ -316,7 +539,8 @@ internal sealed class AccountDialog : Form
         };
         body.Controls.Add(save);
 
-        Controls.Add(body);
+        card.Controls.Add(body);
+        Controls.Add(card);
         AcceptButton = save;
     }
 

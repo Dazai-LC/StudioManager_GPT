@@ -3,11 +3,13 @@ using System.Drawing.Text;
 
 namespace StudioManager.WinForms.Controls;
 
+/// <summary>
+/// Project Phoenix — Hybrid Column & Spline Area Revenue Telemetry Chart.
+/// </summary>
 public sealed class RevenueBarChart : Control
 {
     private IReadOnlyList<(string Label, decimal Value)> _data = [];
     private int _hoveredIndex = -1;
-    private readonly ToolTip _toolTip = new();
 
     public IReadOnlyList<(string Label, decimal Value)> Data
     {
@@ -22,11 +24,20 @@ public sealed class RevenueBarChart : Control
 
     public RevenueBarChart()
     {
-        DoubleBuffered = true;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.SupportsTransparentBackColor, true);
         BackColor = Theme.Surface;
-        MinimumSize = new Size(360, 200);
+        MinimumSize = new Size(340, 190);
         MouseMove += OnChartMouseMove;
-        MouseLeave += (_, _) => { _hoveredIndex = -1; _toolTip.Hide(this); Invalidate(); };
+        MouseLeave += (_, _) =>
+        {
+            if (_hoveredIndex != -1)
+            {
+                _hoveredIndex = -1;
+                Invalidate();
+            }
+        };
     }
 
     private void OnChartMouseMove(object? sender, MouseEventArgs e)
@@ -35,24 +46,27 @@ public sealed class RevenueBarChart : Control
         var plot = GetPlotRectangle();
         if (!plot.Contains(e.Location))
         {
-            if (_hoveredIndex != -1) { _hoveredIndex = -1; _toolTip.Hide(this); Invalidate(); }
+            if (_hoveredIndex != -1)
+            {
+                _hoveredIndex = -1;
+                Invalidate();
+            }
             return;
         }
 
-        var slot = plot.Width / (float)Math.Max(1, _data.Count - 1);
-        var nearest = (int)Math.Round((e.X - plot.Left) / slot);
+        var slotWidth = plot.Width / (float)Math.Max(1, _data.Count);
+        var nearest = (int)((e.X - plot.Left) / slotWidth);
         nearest = Math.Clamp(nearest, 0, _data.Count - 1);
 
         if (nearest != _hoveredIndex)
         {
             _hoveredIndex = nearest;
-            var item = _data[nearest];
-            _toolTip.Show($"{item.Label}: {item.Value:N0} đ", this, e.X + 10, e.Y - 25, 2500);
             Invalidate();
         }
     }
 
-    private Rectangle GetPlotRectangle() => new(54, 28, Math.Max(20, Width - 80), Math.Max(20, Height - 68));
+    private Rectangle GetPlotRectangle() =>
+        new(58, 26, Math.Max(40, Width - 78), Math.Max(40, Height - 62));
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -63,122 +77,141 @@ public sealed class RevenueBarChart : Control
 
         var plot = GetPlotRectangle();
 
-        // Background subtle grid lines
-        using var gridPen = new Pen(Color.FromArgb(241, 245, 249), 1f);
+        using var gridPen = new Pen(Theme.Primitives.Alabaster200, 1f) { DashStyle = DashStyle.Dot };
+        using var baselinePen = new Pen(Theme.BorderStrong, 1f);
         using var axisFont = Theme.Font(8.0f);
+        using var axisBoldFont = Theme.Font(8.0f, FontStyle.Bold);
         using var axisBrush = new SolidBrush(Theme.Muted);
 
         var maxVal = _data.Count > 0 ? Math.Max(1m, _data.Max(x => x.Value)) : 1000000m;
-        // Round max up to nice round number
         var magnitude = (decimal)Math.Pow(10, Math.Max(1, (int)Math.Log10((double)maxVal)));
         var niceMax = Math.Ceiling(maxVal / magnitude) * magnitude;
-        if (niceMax == 0) niceMax = 1000000m;
+        if (niceMax <= 0) niceMax = 1000000m;
 
         for (var i = 0; i <= 4; i++)
         {
             var y = plot.Top + plot.Height * i / 4;
-            g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+            g.DrawLine(i == 4 ? baselinePen : gridPen, plot.Left, y, plot.Right, y);
 
             var val = niceMax * (4 - i) / 4;
-            var valText = val >= 1_000_000 ? $"{val / 1_000_000:0.#}M" : val >= 1_000 ? $"{val / 1_000:0}k" : $"{val:0}";
+            var valText = val >= 1_000_000 ? $"{val / 1_000_000:0.#}tr" : val >= 1_000 ? $"{val / 1_000:0}k" : $"{val:0}";
             var size = g.MeasureString(valText, axisFont);
             g.DrawString(valText, axisFont, axisBrush, plot.Left - size.Width - 8, y - size.Height / 2);
         }
 
         if (_data.Count == 0)
         {
-            DrawEmptyState(g, "Chưa có dữ liệu doanh thu trong giai đoạn này");
+            DrawEmptyState(g, "Chưa có phát sinh doanh thu trong 6 tháng gần nhất");
             return;
         }
 
-        var slot = plot.Width / (float)Math.Max(1, _data.Count - 1);
+        var slotWidth = plot.Width / (float)Math.Max(1, _data.Count);
+        var barWidth = Math.Clamp(slotWidth * 0.42f, 16f, 38f);
         var points = new List<PointF>();
 
         for (var i = 0; i < _data.Count; i++)
         {
             var item = _data[i];
-            var x = plot.Left + slot * i;
-            var y = plot.Bottom - (float)(item.Value / niceMax) * plot.Height;
-            points.Add(new PointF(x, y));
+            var cx = plot.Left + slotWidth * i + slotWidth / 2f;
+            var ratio = (float)(item.Value / niceMax);
+            var barHeight = Math.Max(4f, ratio * plot.Height);
+            var cy = plot.Bottom - ratio * plot.Height;
+            points.Add(new PointF(cx, cy));
 
-            // Month label
-            var labelSize = g.MeasureString(item.Label, axisFont);
-            g.DrawString(item.Label, axisFont, axisBrush, x - labelSize.Width / 2, plot.Bottom + 10);
+            var isHovered = i == _hoveredIndex;
+            var barRect = new RectangleF(cx - barWidth / 2f, plot.Bottom - barHeight, barWidth, barHeight);
+
+            using (var barPath = Theme.RoundedRectangle(barRect, 5f))
+            {
+                using var barFill = new LinearGradientBrush(
+                    new RectangleF(barRect.Left, plot.Top, barRect.Width, plot.Height + 4),
+                    isHovered ? Theme.Primary : Color.FromArgb(185, Theme.Primary),
+                    isHovered ? Theme.PrimaryHover : Color.FromArgb(55, Theme.Primitives.Terracotta200),
+                    LinearGradientMode.Vertical);
+                g.FillPath(barFill, barPath);
+
+                if (isHovered)
+                {
+                    using var barOutline = new Pen(Theme.PrimaryPressed, 1.2f);
+                    g.DrawPath(barOutline, barPath);
+                }
+            }
+
+            // X-axis month label
+            var labelSize = g.MeasureString(item.Label, isHovered ? axisBoldFont : axisFont);
+            using var lblBrush = new SolidBrush(isHovered ? Theme.Primary : Theme.TextSecondary);
+            g.DrawString(item.Label, isHovered ? axisBoldFont : axisFont, lblBrush, cx - labelSize.Width / 2f, plot.Bottom + 8);
         }
 
+        // Trend line overlay connecting column tops
         if (points.Count > 1)
         {
-            // Gradient fill under the curve
-            using var fillPath = new GraphicsPath();
-            fillPath.AddLines(points.ToArray());
-            fillPath.AddLine(points[^1].X, plot.Bottom, points[0].X, plot.Bottom);
-            fillPath.CloseFigure();
-
-            using var fill = new LinearGradientBrush(
-                new Rectangle(plot.Left, plot.Top, plot.Width, plot.Height + 2),
-                Color.FromArgb(90, Theme.Primary),
-                Color.FromArgb(5, Theme.Primary),
-                LinearGradientMode.Vertical);
-            g.FillPath(fill, fillPath);
-
-            // Spline/Line stroke
-            using var line = new Pen(Theme.Primary, 2.8f) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round };
-            g.DrawLines(line, points.ToArray());
+            using var trendPen = new Pen(Theme.Primitives.Espresso800, 2.0f)
+            {
+                LineJoin = LineJoin.Round,
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round
+            };
+            g.DrawLines(trendPen, points.ToArray());
         }
 
-        // Draw points with hover emphasis
+        // Data nodes & floating callout pill for hovered point
         for (var i = 0; i < points.Count; i++)
         {
             var pt = points[i];
             var isHovered = i == _hoveredIndex;
-            var radius = isHovered ? 6f : 4f;
+            var r = isHovered ? 5.5f : 3.5f;
+
+            using var dotFill = new SolidBrush(Theme.Surface);
+            using var dotBorder = new Pen(isHovered ? Theme.Primary : Theme.Primitives.Espresso800, isHovered ? 2.5f : 1.8f);
+            g.FillEllipse(dotFill, pt.X - r, pt.Y - r, r * 2, r * 2);
+            g.DrawEllipse(dotBorder, pt.X - r, pt.Y - r, r * 2, r * 2);
 
             if (isHovered)
             {
-                // Glow outer ring
-                using var glowBrush = new SolidBrush(Color.FromArgb(40, Theme.Primary));
-                g.FillEllipse(glowBrush, pt.X - 10, pt.Y - 10, 20, 20);
+                var item = _data[i];
+                var calloutText = $"{item.Label}: {item.Value:N0} đ";
+                var textSize = g.MeasureString(calloutText, axisBoldFont);
+                var pillW = textSize.Width + 16f;
+                var pillH = 24f;
+                var pillX = Math.Clamp(pt.X - pillW / 2f, plot.Left, plot.Right - pillW);
+                var pillY = Math.Max(4f, pt.Y - pillH - 10f);
+                var pillRect = new RectangleF(pillX, pillY, pillW, pillH);
 
-                // Vertical indicator line
-                using var vlinePen = new Pen(Color.FromArgb(160, Theme.Primary), 1f) { DashStyle = DashStyle.Dash };
-                g.DrawLine(vlinePen, pt.X, plot.Top, pt.X, plot.Bottom);
+                using var pillPath = Theme.RoundedRectangle(pillRect, 6f);
+                using var pillBrush = new SolidBrush(Theme.Primitives.Espresso900);
+                using var textBrush = new SolidBrush(Theme.Primitives.Alabaster50);
+                g.FillPath(pillBrush, pillPath);
+                g.DrawString(calloutText, axisBoldFont, textBrush, pillX + 8f, pillY + (pillH - textSize.Height) / 2f);
             }
-
-            using var dotBrush = new SolidBrush(Color.White);
-            using var borderPen = new Pen(Theme.Primary, isHovered ? 2.5f : 2f);
-            g.FillEllipse(dotBrush, pt.X - radius, pt.Y - radius, radius * 2, radius * 2);
-            g.DrawEllipse(borderPen, pt.X - radius, pt.Y - radius, radius * 2, radius * 2);
         }
     }
 
     private void DrawEmptyState(Graphics g, string message)
     {
-        using var font = Theme.Font(9.5f);
+        using var font = Theme.Font(9.0f);
         using var brush = new SolidBrush(Theme.Muted);
         var size = g.MeasureString(message, font);
-        g.DrawString(message, font, brush, (Width - size.Width) / 2, (Height - size.Height) / 2);
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) _toolTip.Dispose();
-        base.Dispose(disposing);
+        g.DrawString(message, font, brush, (Width - size.Width) / 2f, (Height - size.Height) / 2f);
     }
 }
 
+/// <summary>
+/// Project Phoenix — Studio Workflow Stage Funnel & Ring Hybrid Chart.
+/// </summary>
 public sealed class StatusDonutChart : Control
 {
     private IReadOnlyDictionary<string, int> _data = new Dictionary<string, int>();
 
     private static readonly (string Status, Color Color)[] Palette =
     [
-        ("Đã đặt lịch", Color.FromArgb(37, 99, 235)),       // Blue
-        ("Đã chụp", Color.FromArgb(124, 58, 237)),          // Purple
-        ("Đang chỉnh sửa ảnh", Color.FromArgb(245, 158, 11)), // Amber
-        ("Chờ giao ảnh", Color.FromArgb(6, 182, 212)),       // Cyan
-        ("Đã giao ảnh", Color.FromArgb(16, 185, 129)),       // Emerald
-        ("Hoàn thành", Color.FromArgb(100, 116, 139)),      // Slate
-        ("Đã hủy", Color.FromArgb(239, 68, 68))             // Red
+        ("Đã đặt lịch", Theme.Primitives.Terracotta600),
+        ("Đã chụp", Theme.Primitives.Plum600),
+        ("Đang chỉnh sửa ảnh", Theme.Primitives.Ochre600),
+        ("Chờ giao ảnh", Theme.Primitives.Teal600),
+        ("Đã giao ảnh", Theme.Primitives.Sage600),
+        ("Hoàn thành", Theme.Primitives.Umber700),
+        ("Đã hủy", Theme.Primitives.Crimson600)
     ];
 
     public IReadOnlyDictionary<string, int> Data
@@ -193,16 +226,21 @@ public sealed class StatusDonutChart : Control
 
     public StatusDonutChart()
     {
-        DoubleBuffered = true;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.SupportsTransparentBackColor, true);
         BackColor = Theme.Surface;
-        MinimumSize = new Size(290, 200);
+        MinimumSize = new Size(280, 190);
     }
 
-    private Color ColorForStatus(string status, int index)
+    private static Color ColorForStatus(string status, int index)
     {
         var found = Palette.FirstOrDefault(p => p.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
         if (found.Color != Color.Empty) return found.Color;
-        var fallback = new[] { Theme.Primary, Theme.Success, Theme.Warning, Theme.Cyan, Theme.Purple, Theme.Danger, Color.FromArgb(100, 116, 139) };
+        var fallback = new[]
+        {
+            Theme.Primary, Theme.Purple, Theme.Warning, Theme.Cyan, Theme.Success, Theme.Secondary, Theme.Danger
+        };
         return fallback[index % fallback.Length];
     }
 
@@ -214,13 +252,13 @@ public sealed class StatusDonutChart : Control
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
         var total = _data.Values.Sum();
-        var diameter = Math.Min(148, Math.Min(Height - 36, Width / 2 - 10));
-        var donutRect = new Rectangle(20, (Height - diameter) / 2, diameter, diameter);
-        const float strokeWidth = 24f;
+        var diameter = Math.Min(132, Math.Min(Height - 36, Math.Max(90, Width / 2 - 24)));
+        var donutRect = new Rectangle(14, (Height - diameter) / 2, diameter, diameter);
+        const float strokeWidth = 18f;
 
         if (total == 0)
         {
-            using var emptyPen = new Pen(Color.FromArgb(241, 245, 249), strokeWidth);
+            using var emptyPen = new Pen(Theme.Primitives.Alabaster200, strokeWidth);
             g.DrawEllipse(emptyPen, donutRect);
         }
         else
@@ -238,72 +276,200 @@ public sealed class StatusDonutChart : Control
                         StartCap = LineCap.Flat,
                         EndCap = LineCap.Flat
                     };
-                    g.DrawArc(pen, donutRect, start, Math.Max(1.5f, sweep - 1.5f));
+                    g.DrawArc(pen, donutRect, start, Math.Max(2f, sweep - 2f));
                 }
                 start += sweep;
             }
         }
 
-        // Center total metric
-        using var totalFont = Theme.Font(20, FontStyle.Bold);
-        using var captionFont = Theme.Font(8.0f);
+        // Center total metric inside aperture ring
+        using var totalFont = Theme.Font(17f, FontStyle.Bold);
+        using var captionFont = Theme.Font(7.6f, FontStyle.Bold);
         using var textBrush = new SolidBrush(Theme.Text);
         using var mutedBrush = new SolidBrush(Theme.Muted);
 
         var totalStr = total.ToString();
         var totalSize = g.MeasureString(totalStr, totalFont);
         g.DrawString(totalStr, totalFont, textBrush,
-            donutRect.Left + (donutRect.Width - totalSize.Width) / 2,
-            donutRect.Top + donutRect.Height / 2 - 22);
+            donutRect.Left + (donutRect.Width - totalSize.Width) / 2f,
+            donutRect.Top + donutRect.Height / 2f - 18f);
 
-        var capStr = "Tổng lịch";
+        var capStr = "TỔNG LỊCH";
         var capSize = g.MeasureString(capStr, captionFont);
         g.DrawString(capStr, captionFont, mutedBrush,
-            donutRect.Left + (donutRect.Width - capSize.Width) / 2,
-            donutRect.Top + donutRect.Height / 2 + 8);
+            donutRect.Left + (donutRect.Width - capSize.Width) / 2f,
+            donutRect.Top + donutRect.Height / 2f + 6f);
 
-        // Legend list on the right
-        var lx = donutRect.Right + 26;
-        var ly = Math.Max(16, (Height - Math.Min(5, _data.Count) * 28) / 2);
-        var legendIndex = 0;
+        // Right-hand Pipeline Stage Progress Bars
+        var lx = donutRect.Right + 22;
+        var rightW = Math.Max(80, Width - lx - 10);
+        var items = _data.OrderByDescending(x => x.Value).Take(6).ToList();
+        var rowH = 28;
+        var ly = Math.Max(10, (Height - items.Count * rowH) / 2);
 
-        foreach (var item in _data.OrderByDescending(x => x.Value).Take(5))
+        using var legFont = Theme.Font(8.2f, FontStyle.Regular);
+        using var valFont = Theme.Font(8.2f, FontStyle.Bold);
+
+        for (var i = 0; i < items.Count; i++)
         {
-            var col = ColorForStatus(item.Key, legendIndex++);
-            using var pillBrush = new SolidBrush(col);
-            g.FillEllipse(pillBrush, lx, ly + 5, 9, 9);
+            var item = items[i];
+            var col = ColorForStatus(item.Key, i);
+            var pct = total > 0 ? (item.Value * 100f / total) : 0f;
 
-            var pct = total > 0 ? (item.Value * 100f / total) : 0;
-            using var legFont = Theme.Font(8.5f);
-            using var valFont = Theme.Font(8.5f, FontStyle.Bold);
+            // Label & Count
+            var labelText = item.Key.Length > 18 ? item.Key[..16] + "…" : item.Key;
+            g.DrawString(labelText, legFont, textBrush, lx, ly);
 
-            // Status label
-            var labelText = item.Key;
-            if (labelText.Length > 16) labelText = labelText.Substring(0, 14) + "…";
-            g.DrawString(labelText, legFont, mutedBrush, lx + 16, ly);
-
-            // Value + percentage
             var countText = $"{item.Value} ({pct:0}%)";
             var countSize = g.MeasureString(countText, valFont);
-            g.DrawString(countText, valFont, textBrush, Width - countSize.Width - 14, ly);
+            g.DrawString(countText, valFont, mutedBrush, lx + rightW - countSize.Width, ly);
 
-            ly += 28;
+            // Mini stage progress track
+            var trackRect = new RectangleF(lx, ly + 17, rightW, 5f);
+            using (var trackPath = Theme.RoundedRectangle(trackRect, 2.5f))
+            using (var trackBrush = new SolidBrush(Theme.Primitives.Alabaster200))
+            {
+                g.FillPath(trackBrush, trackPath);
+            }
+
+            if (pct > 0)
+            {
+                var fillW = Math.Max(6f, rightW * (pct / 100f));
+                var fillRect = new RectangleF(lx, ly + 17, fillW, 5f);
+                using var fillPath = Theme.RoundedRectangle(fillRect, 2.5f);
+                using var fillBrush = new SolidBrush(col);
+                g.FillPath(fillBrush, fillPath);
+            }
+
+            ly += rowH;
+        }
+    }
+}
+
+/// <summary>
+/// Project Phoenix — Horizontal Ranked Package Revenue Chart for ReportsPage.
+/// </summary>
+public sealed class PackageHorizontalBarChart : Control
+{
+    private IReadOnlyList<(string Name, decimal Value)> _data = [];
+
+    public IReadOnlyList<(string Name, decimal Value)> Data
+    {
+        get => _data;
+        set
+        {
+            _data = value ?? [];
+            Invalidate();
+        }
+    }
+
+    public PackageHorizontalBarChart()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.SupportsTransparentBackColor, true);
+        BackColor = Theme.Surface;
+        MinimumSize = new Size(280, 180);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        if (_data.Count == 0)
+        {
+            using var emptyFont = Theme.Font(9.2f);
+            using var emptyBrush = new SolidBrush(Theme.Muted);
+            const string msg = "Không có dữ liệu gói chụp trong kỳ báo cáo đã chọn";
+            var sz = g.MeasureString(msg, emptyFont);
+            g.DrawString(msg, emptyFont, emptyBrush, (Width - sz.Width) / 2f, (Height - sz.Height) / 2f);
+            return;
+        }
+
+        var items = _data.OrderByDescending(x => x.Value).Take(7).ToList();
+        var maxVal = Math.Max(1m, items.Max(x => x.Value));
+        var totalVal = Math.Max(1m, _data.Sum(x => x.Value));
+
+        using var rankFont = Theme.MonoFont(8.2f, FontStyle.Bold);
+        using var nameFont = Theme.Font(9.0f, FontStyle.Bold);
+        using var valFont = Theme.Font(8.6f, FontStyle.Bold);
+        using var textBrush = new SolidBrush(Theme.Text);
+        using var mutedBrush = new SolidBrush(Theme.Muted);
+
+        var padX = 10f;
+        var usableW = Math.Max(100f, Width - padX * 2);
+        var rowH = Math.Clamp((Height - 16f) / Math.Max(1, items.Count), 38f, 52f);
+        var y = 8f;
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var share = (float)(item.Value * 100m / totalVal);
+            var barRatio = (float)(item.Value / maxVal);
+
+            // Rank badge
+            var rankBadge = new RectangleF(padX, y + 2, 24, 18);
+            using (var rPath = Theme.RoundedRectangle(rankBadge, 4f))
+            using (var rFill = new SolidBrush(i == 0 ? Theme.Primary : Theme.Primitives.Alabaster200))
+            using (var rText = new SolidBrush(i == 0 ? Color.White : Theme.TextSecondary))
+            {
+                g.FillPath(rFill, rPath);
+                var rStr = $"#{i + 1}";
+                var rSz = g.MeasureString(rStr, rankFont);
+                g.DrawString(rStr, rankFont, rText, rankBadge.Left + (rankBadge.Width - rSz.Width) / 2f, rankBadge.Top + (rankBadge.Height - rSz.Height) / 2f);
+            }
+
+            // Package name
+            var pkgName = item.Name.Length > 34 ? item.Name[..32] + "…" : item.Name;
+            g.DrawString(pkgName, nameFont, textBrush, padX + 32, y + 1);
+
+            // Revenue + Share % on the right
+            var metricStr = $"{item.Value:N0} đ ({share:0.#}%)";
+            var mSize = g.MeasureString(metricStr, valFont);
+            g.DrawString(metricStr, valFont, i == 0 ? new SolidBrush(Theme.Primary) : mutedBrush, padX + usableW - mSize.Width, y + 2);
+
+            // Horizontal Bar Track
+            var trackRect = new RectangleF(padX, y + 23, usableW, 8f);
+            using (var tPath = Theme.RoundedRectangle(trackRect, 4f))
+            using (var tFill = new SolidBrush(Theme.Primitives.Alabaster100))
+            {
+                g.FillPath(tFill, tPath);
+            }
+
+            var fillW = Math.Max(8f, usableW * barRatio);
+            var fillRect = new RectangleF(padX, y + 23, fillW, 8f);
+            using (var fPath = Theme.RoundedRectangle(fillRect, 4f))
+            using (var fBrush = new LinearGradientBrush(
+                new RectangleF(padX, y + 23, usableW, 8f),
+                i == 0 ? Theme.Primary : Theme.Primitives.Ochre600,
+                i == 0 ? Theme.Primitives.Ochre600 : Theme.Primitives.Terracotta500,
+                LinearGradientMode.Horizontal))
+            {
+                g.FillPath(fBrush, fPath);
+            }
+
+            y += rowH;
         }
     }
 }
 
 public sealed class SkeletonLoader : Control
 {
-    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 24 };
+    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 28 };
     private int _offset;
 
     public SkeletonLoader()
     {
-        DoubleBuffered = true;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.SupportsTransparentBackColor, true);
         BackColor = Theme.Background;
         _timer.Tick += (_, _) =>
         {
-            _offset = (_offset + 16) % Math.Max(1, Width + 320);
+            _offset = (_offset + 18) % Math.Max(1, Width + 320);
             Invalidate();
         };
     }
@@ -335,25 +501,19 @@ public sealed class SkeletonLoader : Control
 
         var blocks = new List<Rectangle>();
         const int margin = 12;
-        var cardWidth = Math.Max(140, (Width - 5 * margin) / 4);
+        var leftColW = Math.Max(300, (int)(Width * 0.66f) - margin);
+        var rightColW = Math.Max(220, Width - leftColW - margin * 3);
 
-        // Header greeting bar
-        blocks.Add(new Rectangle(margin, 16, Math.Min(360, Width - 2 * margin), 48));
+        // Top PulseStrip
+        blocks.Add(new Rectangle(margin, 12, leftColW, 92));
+        // Middle Charts
+        blocks.Add(new Rectangle(margin, 116, leftColW, 230));
+        // Bottom Recent Orders
+        blocks.Add(new Rectangle(margin, 358, leftColW, Math.Max(140, Height - 374)));
+        // Right Studio Call Sheet
+        blocks.Add(new Rectangle(margin + leftColW + margin, 12, rightColW, Math.Max(300, Height - 28)));
 
-        // 4 KPI Cards
-        for (var i = 0; i < 4; i++)
-            blocks.Add(new Rectangle(margin + i * (cardWidth + margin), 78, cardWidth, 120));
-
-        // Middle analytics (2 panels)
-        var leftWidth = Math.Max(260, (int)(Width * 0.58f) - margin);
-        var rightWidth = Math.Max(220, Width - leftWidth - 3 * margin);
-        blocks.Add(new Rectangle(margin, 214, leftWidth, 260));
-        blocks.Add(new Rectangle(margin + leftWidth + margin, 214, rightWidth, 260));
-
-        // Bottom recent data grid
-        blocks.Add(new Rectangle(margin, 490, Math.Max(220, Width - 2 * margin), Math.Max(120, Height - 510)));
-
-        using var baseBrush = new SolidBrush(Color.FromArgb(235, 239, 245));
+        using var baseBrush = new SolidBrush(Theme.Primitives.Alabaster200);
 
         foreach (var block in blocks)
         {
@@ -367,7 +527,7 @@ public sealed class SkeletonLoader : Control
                 using var shine = new LinearGradientBrush(
                     shimmer,
                     Color.FromArgb(0, 255, 255, 255),
-                    Color.FromArgb(160, 255, 255, 255),
+                    Color.FromArgb(140, 255, 255, 255),
                     LinearGradientMode.Horizontal);
                 g.FillRectangle(shine, intersect);
             }

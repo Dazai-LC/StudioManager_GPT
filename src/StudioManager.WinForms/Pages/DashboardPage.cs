@@ -1,5 +1,7 @@
-using StudioManager.Application.Services;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using StudioManager.Application;
+using StudioManager.Application.Services;
 using StudioManager.Domain;
 using StudioManager.WinForms.Controls;
 
@@ -10,33 +12,40 @@ public sealed class DashboardPage : UserControl
     private readonly AppFacade _app;
     private DashboardData? _initialData;
 
-    private readonly StatCard _orders = new("TỔNG ĐƠN (THÁNG NÀY)", Theme.Primary, "📅");
-    private readonly StatCard _revenueCard = new("DOANH THU (THÁNG NÀY)", Theme.Success, "₫");
-    private readonly StatCard _projects = new("ĐANG THỰC HIỆN", Theme.Purple, "📷");
-    private readonly StatCard _debt = new("CÔNG NỢ CẦN THU", Theme.Danger, "⚠");
+    private readonly StudioPulseRibbon _pulseRibbon = new() { Dock = DockStyle.Fill };
+    private readonly RevenueBarChart _revenueChart = new() { Dock = DockStyle.Fill };
+    private readonly StatusDonutChart _statusChart = new() { Dock = DockStyle.Fill };
+    private readonly DataGridView _recentGrid = Theme.Grid();
 
-    private readonly RevenueBarChart _revenue = new() { Dock = DockStyle.Fill };
-    private readonly StatusDonutChart _status = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _grid = Theme.Grid();
-    private readonly FlowLayoutPanel _schedule = new()
+    private readonly Label _revenueSummaryBadge = new()
     {
-        Dock = DockStyle.Fill,
-        FlowDirection = FlowDirection.TopDown,
-        WrapContents = false,
-        AutoScroll = true,
-        BackColor = Theme.Surface
+        Dock = DockStyle.Right,
+        Width = 190,
+        Font = Theme.Font(8.8f, FontStyle.Bold),
+        ForeColor = Theme.Primary,
+        TextAlign = ContentAlignment.MiddleRight,
+        Text = "Tháng này: 0 đ"
     };
-    private readonly FlowLayoutPanel _activity = new()
+
+    private readonly SegmentedTabBar _callSheetTabs = new()
+    {
+        Dock = DockStyle.Top,
+        Height = 38
+    };
+
+    private readonly FlowLayoutPanel _callSheetList = new()
     {
         Dock = DockStyle.Fill,
         FlowDirection = FlowDirection.TopDown,
         WrapContents = false,
         AutoScroll = true,
-        BackColor = Theme.Surface
+        BackColor = Theme.Surface,
+        Padding = new Padding(0, 6, 0, 6)
     };
 
     private readonly SkeletonLoader _skeleton = new() { Dock = DockStyle.Fill };
-    private readonly ToolTip _toolTip = new() { AutoPopDelay = 8000, InitialDelay = 300, ReshowDelay = 150 };
+    private IReadOnlyList<LichChup> _cachedUpcoming = [];
+    private string _activeFeedMode = "callsheet";
 
     public event EventHandler? ViewBookingsRequested;
 
@@ -45,198 +54,272 @@ public sealed class DashboardPage : UserControl
         _app = app;
         _initialData = initialData;
         BackColor = Theme.Background;
-        AutoScroll = true;
 
-        var scrollContainer = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 840,
-            Padding = new Padding(0, 0, 8, 20),
-            BackColor = Color.Transparent
-        };
-
-        var header = BuildGreeting();
-
-        var cards = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 138,
-            ColumnCount = 4,
-            RowCount = 1,
-            Padding = new Padding(0, 4, 0, 10),
-            BackColor = Color.Transparent
-        };
-        for (var i = 0; i < 4; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        AddCard(cards, _orders, 0);
-        AddCard(cards, _revenueCard, 1);
-        AddCard(cards, _projects, 2);
-        AddCard(cards, _debt, 3);
-
-        var analytics = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 320,
-            ColumnCount = 3,
-            RowCount = 1,
-            Padding = new Padding(0, 0, 0, 12),
-            BackColor = Color.Transparent
-        };
-        analytics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 47));
-        analytics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 29));
-        analytics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
-
-        analytics.Controls.Add(CreateSectionCard("Doanh thu thực thu", _revenue, "Năm " + DateTime.Today.Year), 0, 0);
-        analytics.Controls.Add(CreateSectionCard("Lịch hôm nay", _schedule, "Xem tất cả  →", OpenBookings), 1, 0);
-        analytics.Controls.Add(CreateSectionCard("Phân bổ trạng thái", _status), 2, 0);
-
-        var lower = new TableLayoutPanel
+        var rootSplit = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = Color.Transparent
+            BackColor = Theme.Background,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
         };
-        lower.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
-        lower.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        rootSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 67f));
+        rootSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+        rootSplit.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-        lower.Controls.Add(CreateSectionCard("Đơn hàng gần đây", _grid, "Xem tất cả  →", OpenBookings), 0, 0);
-        lower.Controls.Add(CreateSectionCard("Nhật ký hoạt động", _activity, "Xem tất cả  →", OpenBookings), 1, 0);
+        rootSplit.Controls.Add(BuildLeftCommandColumn(), 0, 0);
+        rootSplit.Controls.Add(BuildRightCallSheetColumn(), 1, 0);
 
-        scrollContainer.Controls.Add(lower);
-        scrollContainer.Controls.Add(analytics);
-        scrollContainer.Controls.Add(cards);
-        scrollContainer.Controls.Add(header);
-
-        Controls.Add(scrollContainer);
+        Controls.Add(rootSplit);
         Controls.Add(_skeleton);
         _skeleton.BringToFront();
 
-        _schedule.ClientSizeChanged += (_, _) => ResizeRows(_schedule);
-        _activity.ClientSizeChanged += (_, _) => ResizeRows(_activity);
-        _grid.CellMouseEnter += GridCellMouseEnter;
-
+        ConfigureRecentGridStyling();
+        _callSheetList.ClientSizeChanged += (_, _) => FitCallSheetCards();
         Load += async (_, _) => await LoadAsync();
     }
 
-    private Control BuildGreeting()
+    private Control BuildLeftCommandColumn()
     {
-        var header = new Panel
+        var left = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
-            Height = 76,
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 4,
+            Margin = new Padding(0, 0, 12, 0),
+            BackColor = Color.Transparent
+        };
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));  // 0: Welcome & Quick Actions Bar
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 108)); // 1: 5-Metric Studio Pulse Telemetry Ribbon
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 252)); // 2: Hybrid Revenue Chart + Workflow Funnel
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // 3: Recent Bookings Matrix
+
+        left.Controls.Add(BuildTopGreetingBar(), 0, 0);
+
+        var pulseHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 2, 0, 10), BackColor = Color.Transparent };
+        pulseHost.Controls.Add(_pulseRibbon);
+        left.Controls.Add(pulseHost, 0, 1);
+
+        var middleCharts = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(0, 0, 0, 10),
+            BackColor = Color.Transparent
+        };
+        middleCharts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55f));
+        middleCharts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45f));
+        middleCharts.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+        var revCard = CreateHeaderCard("Biểu đồ Thực thu 6 Tháng", _revenueChart, _revenueSummaryBadge);
+        revCard.Margin = new Padding(0, 0, 6, 0);
+
+        var statusCard = CreateHeaderCard("Phễu Trạng thái Lịch chụp", _statusChart);
+        statusCard.Margin = new Padding(6, 0, 0, 0);
+
+        middleCharts.Controls.Add(revCard, 0, 0);
+        middleCharts.Controls.Add(statusCard, 1, 0);
+        left.Controls.Add(middleCharts, 0, 2);
+
+        var openAllBtn = Theme.GhostButton("Mở sổ điều phối lịch chụp", IconKind.ArrowRight);
+        openAllBtn.Dock = DockStyle.Right;
+        openAllBtn.Click += (_, _) => ViewBookingsRequested?.Invoke(this, EventArgs.Empty);
+
+        var gridCard = CreateHeaderCard("Danh sách Lịch chụp & Đơn hàng Gần nhất", _recentGrid, openAllBtn);
+        left.Controls.Add(gridCard, 0, 3);
+
+        return left;
+    }
+
+    private Control BuildTopGreetingBar()
+    {
+        var bar = new Panel
+        {
+            Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
-            Padding = new Padding(0, 0, 0, 8)
+            Padding = new Padding(2, 0, 0, 6)
         };
 
-        var dateCard = new CardPanel
+        var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
-            Width = 240,
-            Height = 44,
-            Padding = new Padding(12, 8, 12, 8),
-            CornerRadius = 10,
-            BorderColor = Theme.Border
+            Width = 340,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 2, 0, 0)
         };
 
-        var dateLabel = new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = "📅   " + DateTime.Today.ToString("dddd, dd/MM/yyyy"),
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Theme.TextSecondary,
-            Font = Theme.Font(9.0f, FontStyle.Bold),
-            BackColor = Color.Transparent
-        };
-        dateCard.Controls.Add(dateLabel);
+        var openBookingsBtn = Theme.Button("Điều phối Lịch chụp", Theme.Primary, IconKind.Calendar);
+        openBookingsBtn.Click += (_, _) => ViewBookingsRequested?.Invoke(this, EventArgs.Empty);
 
-        var copy = new Label
+        var refreshBtn = Theme.OutlineButton("Làm mới", Theme.BorderStrong, IconKind.Refresh);
+        refreshBtn.Click += async (_, _) => await LoadAsync();
+
+        actions.Controls.Add(openBookingsBtn);
+        actions.Controls.Add(refreshBtn);
+
+        var greeting = new Label
         {
             Dock = DockStyle.Fill,
-            Text = $"Chào buổi {DayPart()}, {_app.Session!.HoTen} 👋\nTổng quan hoạt động và tiến độ lịch chụp trong hệ thống.",
+            Text = $"Xin chào {_app.Session?.HoTen ?? "Studio"}  •  {DateTime.Today:dddd, dd/MM/yyyy}",
+            Font = Theme.Font(11.0f, FontStyle.Bold),
             ForeColor = Theme.Text,
-            Font = Theme.Font(10.2f),
-            TextAlign = ContentAlignment.MiddleLeft,
-            BackColor = Color.Transparent
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        header.Controls.Add(copy);
-        header.Controls.Add(dateCard);
-        return header;
+        bar.Controls.Add(greeting);
+        bar.Controls.Add(actions);
+        return bar;
     }
 
-    private static string DayPart() => DateTime.Now.Hour < 12 ? "sáng" : DateTime.Now.Hour < 18 ? "chiều" : "tối";
-
-    private static void AddCard(TableLayoutPanel host, Control card, int column)
-    {
-        card.Dock = DockStyle.Fill;
-        card.Margin = new Padding(column == 0 ? 0 : 6, 2, column == 3 ? 0 : 6, 6);
-        host.Controls.Add(card, column, 0);
-    }
-
-    private static Control CreateSectionCard(string title, Control content, string action = "", Action? onAction = null)
+    private Control BuildRightCallSheetColumn()
     {
         var card = new CardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(16, 12, 16, 14),
-            Margin = new Padding(0, 0, 10, 0),
+            Padding = new Padding(18, 16, 18, 14),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.BorderStrong,
             CornerRadius = 12,
-            BorderColor = Theme.Border
+            AccentStripeColor = Theme.Primitives.Espresso900,
+            AccentStripeThickness = 4
+        };
+
+        var header = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 46,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 0, 0, 6)
+        };
+
+        var overline = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 16,
+            Text = "STUDIO CALL SHEET & LIVE STREAM",
+            Font = Theme.MonoFont(7.6f, FontStyle.Bold),
+            ForeColor = Theme.Primary,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        var title = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Lịch trực phòng máy & Hoạt động",
+            Font = Theme.Font(11.5f, FontStyle.Bold),
+            ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        header.Controls.Add(title);
+        header.Controls.Add(overline);
+
+        _callSheetTabs.SetItems([
+            new("callsheet", "Call Sheet Ca chụp", IconKind.Camera),
+            new("activity", "Nhật ký Vận hành", IconKind.History)
+        ], "callsheet");
+
+        _callSheetTabs.SegmentSelected += (_, seg) =>
+        {
+            _activeFeedMode = seg.Key;
+            RenderCallSheetItems();
+        };
+
+        var footerBtn = Theme.OutlineButton("Chuyển tới Điều phối Lịch chụp đầy đủ", Theme.BorderStrong, IconKind.ArrowRight);
+        footerBtn.Dock = DockStyle.Bottom;
+        footerBtn.Height = 38;
+        footerBtn.Click += (_, _) => ViewBookingsRequested?.Invoke(this, EventArgs.Empty);
+
+        var spacer = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Color.Transparent };
+
+        card.Controls.Add(_callSheetList);
+        card.Controls.Add(spacer);
+        card.Controls.Add(_callSheetTabs);
+        card.Controls.Add(header);
+        card.Controls.Add(footerBtn);
+
+        return card;
+    }
+
+    private static CardPanel CreateHeaderCard(string title, Control body, Control? rightHeaderControl = null)
+    {
+        var card = new CardPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(16, 12, 16, 12),
+            BackColor = Theme.Surface,
+            BorderColor = Theme.Border,
+            CornerRadius = 10
         };
 
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 36,
+            Height = 34,
             BackColor = Color.Transparent,
             Padding = new Padding(0, 0, 0, 6)
         };
 
-        head.Controls.Add(new Label
+        var titleLbl = new Label
         {
             Dock = DockStyle.Fill,
             Text = title,
-            Font = Theme.Font(10.5f, FontStyle.Bold),
+            Font = Theme.Font(10.2f, FontStyle.Bold),
             ForeColor = Theme.Text,
-            TextAlign = ContentAlignment.MiddleLeft,
-            BackColor = Color.Transparent
-        });
+            TextAlign = ContentAlignment.MiddleLeft
+        };
 
-        if (action.Length > 0 && onAction is null)
+        head.Controls.Add(titleLbl);
+        if (rightHeaderControl is not null)
         {
-            head.Controls.Add(new Label
-            {
-                Dock = DockStyle.Right,
-                Width = 120,
-                Text = action,
-                Font = Theme.Font(8.5f),
-                ForeColor = Theme.Muted,
-                TextAlign = ContentAlignment.MiddleRight,
-                BackColor = Color.Transparent
-            });
-        }
-        else if (action.Length > 0 && onAction is not null)
-        {
-            var link = new LinkLabel
-            {
-                Dock = DockStyle.Right,
-                Width = 120,
-                Text = action,
-                Font = Theme.Font(8.8f, FontStyle.Bold),
-                LinkColor = Theme.Primary,
-                ActiveLinkColor = Theme.PrimaryHover,
-                TextAlign = ContentAlignment.MiddleRight,
-                Cursor = Cursors.Hand,
-                TabStop = true,
-                BackColor = Color.Transparent
-            };
-            link.LinkClicked += (_, _) => onAction();
-            head.Controls.Add(link);
+            head.Controls.Add(rightHeaderControl);
+            rightHeaderControl.BringToFront();
         }
 
-        card.Controls.Add(content);
+        card.Controls.Add(body);
         card.Controls.Add(head);
         return card;
+    }
+
+    private void ConfigureRecentGridStyling()
+    {
+        _recentGrid.CellPainting += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            var colName = _recentGrid.Columns[e.ColumnIndex].Name;
+            if (colName != "Trạng_thái") return;
+
+            e.PaintBackground(e.ClipBounds, true);
+            var statusText = e.FormattedValue?.ToString() ?? "";
+            if (!string.IsNullOrEmpty(statusText) && e.Graphics is { } g)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var (fg, bg, border) = Theme.GetStatusColors(statusText);
+                using var font = Theme.Font(8.0f, FontStyle.Bold);
+                var sz = TextRenderer.MeasureText(g, statusText, font);
+                var pillW = Math.Min(e.CellBounds.Width - 12, sz.Width + 18);
+                var pillH = 24;
+                var pillRect = new RectangleF(
+                    e.CellBounds.Left + 8,
+                    e.CellBounds.Top + (e.CellBounds.Height - pillH) / 2f,
+                    pillW,
+                    pillH);
+
+                using var path = Theme.RoundedRectangle(pillRect, 12f);
+                using var fill = new SolidBrush(bg);
+                using var pen = new Pen(border, 1f);
+                g.FillPath(fill, path);
+                g.DrawPath(pen, path);
+
+                TextRenderer.DrawText(g, statusText, font, Rectangle.Round(pillRect), fg,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
+            e.Handled = true;
+        };
     }
 
     private async Task LoadAsync()
@@ -268,178 +351,274 @@ public sealed class DashboardPage : UserControl
 
     private void Bind(DashboardData d)
     {
-        var monthlyRevenue = d.DoanhThu6Thang.LastOrDefault().ThucThu;
+        var currentMonthRev = d.DoanhThu6Thang.LastOrDefault().ThucThu;
+        _revenueSummaryBadge.Text = $"Tháng này: {currentMonthRev:N0} đ";
 
-        _orders.Value = (d.LichHomNay + d.LichSapToi + d.DangXuLy).ToString();
-        _orders.Trend = "↑ Cập nhật trực tiếp";
+        _pulseRibbon.SetMetrics([
+            new("CA CHỤP HÔM NAY", d.LichHomNay.ToString(), "Lịch trong ngày", Theme.Primary, IconKind.Camera),
+            new("LỊCH SẮP TỚI", d.LichSapToi.ToString(), "Đã đặt trước", Theme.Primitives.Plum600, IconKind.Calendar),
+            new("ĐANG HẬU KỲ", d.DangXuLy.ToString(), "Chụp & chỉnh sửa", Theme.Warning, IconKind.Sparkles),
+            new("CHỜ GIAO ẢNH", d.ChoGiao.ToString(), "Sẵn sàng bàn giao", Theme.Cyan, IconKind.Check),
+            new("CÔNG NỢ CẦN THU", $"{d.CongNo:N0} đ", "Cần theo dõi thu", Theme.Danger, IconKind.Wallet)
+        ]);
 
-        _revenueCard.Value = $"{monthlyRevenue:N0} đ";
-        _revenueCard.Trend = "↑ Thực thu tháng này";
+        _revenueChart.Data = d.DoanhThu6Thang.Select(x => (x.Thang, x.ThucThu)).ToList();
+        _statusChart.Data = d.TheoTrangThai;
 
-        _projects.Value = (d.DangXuLy + d.ChoGiao).ToString();
-        _projects.Trend = $"↑ {d.ChoGiao} lịch chờ giao";
+        _cachedUpcoming = d.LichGanNhat.OrderBy(x => x.BatDau).Take(8).ToList();
+        RenderCallSheetItems();
 
-        _debt.Value = $"{d.CongNo:N0} đ";
-        _debt.Trend = "Cần theo dõi thu nợ";
-
-        _revenue.Data = d.DoanhThu6Thang.Select(x => (x.Thang, x.ThucThu)).ToList();
-        _status.Data = d.TheoTrangThai;
-
-        var upcoming = d.LichGanNhat.OrderBy(x => x.BatDau).Take(5).ToList();
-
-        _schedule.Controls.Clear();
-        foreach (var x in upcoming)
-            _schedule.Controls.Add(ScheduleRow(x));
-
-        _activity.Controls.Clear();
-        foreach (var x in upcoming.Take(5))
-            _activity.Controls.Add(ActivityRow(x));
-
-        ResizeRows(_schedule);
-        ResizeRows(_activity);
-
-        _grid.DataSource = upcoming.Select(x => new
+        _recentGrid.DataSource = _cachedUpcoming.Select(x => new
         {
             Mã_đơn = x.Ma,
             Khách_hàng = x.KhachHang,
             Dịch_vụ = x.TenGoiChot,
-            Ngày_chụp = x.BatDau.ToString("dd/MM/yyyy"),
+            Phòng_và_Ekip = $"{x.Phong} • {x.NhiepAnhGia}",
+            Ngày_chụp = x.BatDau.ToString("dd/MM/yyyy HH:mm"),
             Trạng_thái = x.TrangThai.HienThi(),
             Tổng_tiền = $"{x.TongThanhToan:N0} đ"
         }).ToList();
 
-        // Custom grid column formatting
-        if (_grid.Columns.Contains("Mã_đơn")) _grid.Columns["Mã_đơn"].HeaderText = "Mã đơn";
-        if (_grid.Columns.Contains("Khách_hàng")) _grid.Columns["Khách_hàng"].HeaderText = "Khách hàng";
-        if (_grid.Columns.Contains("Dịch_vụ")) _grid.Columns["Dịch_vụ"].HeaderText = "Gói chụp";
-        if (_grid.Columns.Contains("Ngày_chụp")) _grid.Columns["Ngày_chụp"].HeaderText = "Ngày chụp";
-        if (_grid.Columns.Contains("Trạng_thái")) _grid.Columns["Trạng_thái"].HeaderText = "Trạng thái";
-        if (_grid.Columns.Contains("Tổng_tiền"))
+        if (_recentGrid.Columns.Contains("Mã_đơn"))
         {
-            _grid.Columns["Tổng_tiền"].HeaderText = "Tổng tiền";
-            _grid.Columns["Tổng_tiền"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            _recentGrid.Columns["Mã_đơn"].HeaderText = "Mã lịch";
+            _recentGrid.Columns["Mã_đơn"].FillWeight = 78;
+        }
+        if (_recentGrid.Columns.Contains("Khách_hàng")) _recentGrid.Columns["Khách_hàng"].HeaderText = "Khách hàng";
+        if (_recentGrid.Columns.Contains("Dịch_vụ")) _recentGrid.Columns["Dịch_vụ"].HeaderText = "Gói chụp";
+        if (_recentGrid.Columns.Contains("Phòng_và_Ekip")) _recentGrid.Columns["Phòng_và_Ekip"].HeaderText = "Phòng • Nhiếp ảnh";
+        if (_recentGrid.Columns.Contains("Ngày_chụp")) _recentGrid.Columns["Ngày_chụp"].HeaderText = "Khung giờ";
+        if (_recentGrid.Columns.Contains("Trạng_thái"))
+        {
+            _recentGrid.Columns["Trạng_thái"].HeaderText = "Trạng thái";
+            _recentGrid.Columns["Trạng_thái"].FillWeight = 115;
+        }
+        if (_recentGrid.Columns.Contains("Tổng_tiền"))
+        {
+            _recentGrid.Columns["Tổng_tiền"].HeaderText = "Tổng thanh toán";
+            _recentGrid.Columns["Tổng_tiền"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
         }
     }
 
-    private Control ScheduleRow(LichChup x)
+    private void RenderCallSheetItems()
     {
-        var row = new TableLayoutPanel
+        _callSheetList.SuspendLayout();
+        _callSheetList.Controls.Clear();
+
+        if (_cachedUpcoming.Count == 0)
         {
-            Width = 320,
-            Height = 54,
-            Margin = new Padding(0, 2, 0, 4),
-            ColumnCount = 3,
-            RowCount = 1,
-            BackColor = Color.FromArgb(248, 250, 252)
-        };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
-
-        var timeLabel = new Label
+            var empty = new Label
+            {
+                Width = Math.Max(220, _callSheetList.ClientSize.Width - 12),
+                Height = 120,
+                Text = "Chưa có ca chụp hoặc hoạt động nào trong danh sách gần đây.",
+                Font = Theme.Font(9.0f),
+                ForeColor = Theme.Muted,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            _callSheetList.Controls.Add(empty);
+        }
+        else
         {
-            Dock = DockStyle.Fill,
-            Text = x.BatDau.ToString("HH:mm"),
-            Font = Theme.Font(9.0f, FontStyle.Bold),
-            ForeColor = Theme.Primary,
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.Transparent
-        };
+            foreach (var item in _cachedUpcoming.Take(6))
+            {
+                var card = new CallSheetTicketControl(item, isActivityMode: _activeFeedMode == "activity")
+                {
+                    Width = Math.Max(220, _callSheetList.ClientSize.Width - 18),
+                    Height = 76,
+                    Margin = new Padding(0, 0, 0, 8)
+                };
+                card.Click += (_, _) => ViewBookingsRequested?.Invoke(this, EventArgs.Empty);
+                _callSheetList.Controls.Add(card);
+            }
+        }
 
-        var detail = new Label
-        {
-            Dock = DockStyle.Fill,
-            AutoEllipsis = true,
-            Text = $"{x.KhachHang}\n{x.TenGoiChot}",
-            Font = Theme.Font(8.5f),
-            ForeColor = Theme.Text,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(4, 0, 4, 0),
-            BackColor = Color.Transparent
-        };
-        _toolTip.SetToolTip(detail, $"{x.KhachHang} — {x.TenGoiChot}\nThời gian: {x.BatDau:HH:mm} - {x.KetThuc:HH:mm}");
-
-        var colors = Theme.GetStatusColors(x.TrangThai.HienThi());
-        var badge = new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = x.TrangThai.HienThi(),
-            AutoEllipsis = false,
-            Font = Theme.Font(7.5f, FontStyle.Bold),
-            ForeColor = colors.Text,
-            BackColor = colors.Background,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Margin = new Padding(4, 8, 8, 8)
-        };
-        badge.Resize += (_, _) => Theme.Round(badge, 6);
-
-        row.Controls.Add(timeLabel, 0, 0);
-        row.Controls.Add(detail, 1, 0);
-        row.Controls.Add(badge, 2, 0);
-        row.Resize += (_, _) => Theme.Round(row, 8);
-
-        return row;
+        _callSheetList.ResumeLayout(true);
+        FitCallSheetCards();
     }
 
-    private Control ActivityRow(LichChup x)
+    private void FitCallSheetCards()
     {
-        var row = new TableLayoutPanel
-        {
-            Width = 420,
-            Height = 58,
-            Margin = new Padding(0, 2, 0, 4),
-            ColumnCount = 2,
-            RowCount = 1,
-            BackColor = Color.FromArgb(248, 250, 252)
-        };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var w = Math.Max(200, _callSheetList.ClientSize.Width - (_callSheetList.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth + 4 : 6));
+        foreach (Control c in _callSheetList.Controls) c.Width = w;
+    }
+}
 
-        var icon = new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = "✓",
-            BackColor = Color.FromArgb(236, 253, 245),
-            ForeColor = Theme.Success,
-            Font = Theme.Font(12, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleCenter,
-            Margin = new Padding(6, 8, 4, 8)
-        };
-        icon.Resize += (_, _) => Theme.Round(icon, 8);
+/// <summary>
+/// 5-Metric Horizontal Studio Telemetry Ribbon Bar.
+/// </summary>
+internal sealed class StudioPulseRibbon : CardPanel
+{
+    public sealed record PulseItem(string Label, string Value, string Subtitle, Color Accent, IconKind Icon);
 
-        var text = $"Lịch #{x.Ma}  •  {x.TrangThai.HienThi()}\nKhách: {x.KhachHang}  —  {x.BatDau:dd/MM HH:mm}";
-        var detail = new Label
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(6, 2, 4, 0),
-            Text = text,
-            AutoEllipsis = true,
-            Font = Theme.Font(8.4f),
-            ForeColor = Theme.Text,
-            TextAlign = ContentAlignment.MiddleLeft,
-            BackColor = Color.Transparent
-        };
-        _toolTip.SetToolTip(detail, text);
+    private readonly List<PulseItem> _items = [];
 
-        row.Controls.Add(icon, 0, 0);
-        row.Controls.Add(detail, 1, 0);
-        row.Resize += (_, _) => Theme.Round(row, 8);
-
-        return row;
+    public StudioPulseRibbon()
+    {
+        CornerRadius = 10;
+        BackColor = Theme.Surface;
+        BorderColor = Theme.BorderStrong;
+        AccentStripeColor = Theme.Primary;
+        AccentStripeThickness = 3;
+        Padding = new Padding(8);
     }
 
-    private void OpenBookings() => ViewBookingsRequested?.Invoke(this, EventArgs.Empty);
-
-    private static void ResizeRows(FlowLayoutPanel panel)
+    public void SetMetrics(IEnumerable<PulseItem> items)
     {
-        var width = Math.Max(180, panel.ClientSize.Width - (panel.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0) - 6);
-        foreach (Control row in panel.Controls) row.Width = width;
+        _items.Clear();
+        _items.AddRange(items);
+        Invalidate();
     }
 
-    private void GridCellMouseEnter(object? sender, DataGridViewCellEventArgs e)
+    protected override void OnPaint(PaintEventArgs e)
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-        var cell = _grid.Rows[e.RowIndex].Cells[e.ColumnIndex];
-        cell.ToolTipText = cell.FormattedValue?.ToString() ?? "";
+        base.OnPaint(e);
+        if (_items.Count == 0) return;
+
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        var slotW = (Width - 16f) / _items.Count;
+        using var dividerPen = new Pen(Theme.Border, 1f);
+        using var lblFont = Theme.Font(7.6f, FontStyle.Bold);
+        using var valFont = Theme.Font(15.5f, FontStyle.Bold);
+        using var subFont = Theme.Font(7.8f, FontStyle.Bold);
+        using var mutedBrush = new SolidBrush(Theme.Muted);
+        using var textBrush = new SolidBrush(Theme.Text);
+
+        for (var i = 0; i < _items.Count; i++)
+        {
+            var item = _items[i];
+            var x = 8f + i * slotW;
+
+            if (i > 0)
+            {
+                g.DrawLine(dividerPen, x, 16, x, Height - 14);
+            }
+
+            // Icon badge
+            var iconBox = new RectangleF(x + 12, 16, 32, 32);
+            using (var p = Theme.RoundedRectangle(iconBox, 8f))
+            using (var fill = new SolidBrush(Color.FromArgb(24, item.Accent)))
+            {
+                g.FillPath(fill, p);
+            }
+            VectorIcons.Draw(g, item.Icon, new RectangleF(iconBox.Left + 7, iconBox.Top + 7, 18, 18), item.Accent, 1.8f);
+
+            var textX = x + 52;
+            var maxTextW = Math.Max(40, (int)slotW - 58);
+
+            TextRenderer.DrawText(g, item.Label, lblFont, new Rectangle((int)textX, 13, maxTextW, 16),
+                Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+            TextRenderer.DrawText(g, item.Value, valFont, new Rectangle((int)textX, 30, maxTextW, 28),
+                Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+            TextRenderer.DrawText(g, item.Subtitle, subFont, new Rectangle((int)textX, 60, maxTextW, 16),
+                item.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+    }
+}
+
+/// <summary>
+/// Custom GDI+ Studio Call Sheet Ticket Card.
+/// </summary>
+internal sealed class CallSheetTicketControl : Control
+{
+    private readonly LichChup _item;
+    private readonly bool _isActivityMode;
+    private bool _hovered;
+
+    public CallSheetTicketControl(LichChup item, bool isActivityMode)
+    {
+        _item = item;
+        _isActivityMode = isActivityMode;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        Cursor = Cursors.Hand;
+        BackColor = Theme.Surface;
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); _hovered = true; Invalidate(); }
+    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); _hovered = false; Invalidate(); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        var statusText = _item.TrangThai.HienThi();
+        var (statusFg, statusBg, statusBorder) = Theme.GetStatusColors(statusText);
+
+        var bounds = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
+        using var path = Theme.RoundedRectangle(bounds, 9f);
+        using var fill = new SolidBrush(_hovered ? Theme.PrimaryLight : Theme.SurfaceWarm);
+        using var border = new Pen(_hovered ? Theme.Primary : Theme.Border, 1f);
+        g.FillPath(fill, path);
+        g.DrawPath(border, path);
+
+        // Left vertical status accent stripe
+        var state = g.Save();
+        g.SetClip(path);
+        using (var stripe = new SolidBrush(statusFg))
+        {
+            g.FillRectangle(stripe, 0, 0, 4, Height);
+        }
+        g.Restore(state);
+
+        using var timeFont = Theme.MonoFont(8.8f, FontStyle.Bold);
+        using var dateFont = Theme.Font(7.6f, FontStyle.Bold);
+        using var nameFont = Theme.Font(9.3f, FontStyle.Bold);
+        using var metaFont = Theme.Font(8.2f);
+        using var pillFont = Theme.Font(7.5f, FontStyle.Bold);
+
+        if (!_isActivityMode)
+        {
+            // Left Time Box
+            var timeBox = new Rectangle(12, 10, 62, Height - 20);
+            TextRenderer.DrawText(g, _item.BatDau.ToString("HH:mm"), timeFont, new Rectangle(timeBox.Left, 12, 62, 20),
+                Theme.Primary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, _item.BatDau.ToString("dd/MM"), dateFont, new Rectangle(timeBox.Left, 34, 62, 18),
+                Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+            // Customer & Room/Photographer
+            var contentX = 76;
+            var contentW = Math.Max(60, Width - contentX - 96);
+            TextRenderer.DrawText(g, _item.KhachHang, nameFont, new Rectangle(contentX, 11, contentW, 22),
+                Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+            var meta = $"{_item.Phong}  •  {_item.NhiepAnhGia}\n{_item.TenGoiChot}";
+            TextRenderer.DrawText(g, meta, metaFont, new Rectangle(contentX, 33, contentW, 34),
+                Theme.TextSecondary, TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+        }
+        else
+        {
+            // Activity Mode: Code + Financial progress
+            VectorIcons.Draw(g, IconKind.Clock, new RectangleF(14, 16, 18, 18), statusFg, 1.8f);
+            var contentX = 40;
+            var contentW = Math.Max(60, Width - contentX - 96);
+            TextRenderer.DrawText(g, $"#{_item.Ma} — {_item.KhachHang}", nameFont, new Rectangle(contentX, 11, contentW, 22),
+                Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+            var fin = _item.ConLai > 0
+                ? $"Đã thu {_item.DaThu:N0} đ  •  Còn nợ {_item.ConLai:N0} đ"
+                : $"Đã tất toán đủ {_item.TongThanhToan:N0} đ";
+            TextRenderer.DrawText(g, $"{_item.TenGoiChot}\n{fin}", metaFont, new Rectangle(contentX, 33, contentW, 34),
+                _item.ConLai > 0 ? Theme.Warning : Theme.Success,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+        }
+
+        // Right Status Pill
+        var pillRect = new RectangleF(Width - 92, 12, 82, 22);
+        using var pillPath = Theme.RoundedRectangle(pillRect, 11f);
+        using var pillBg = new SolidBrush(statusBg);
+        using var pillPen = new Pen(statusBorder, 1f);
+        g.FillPath(pillBg, pillPath);
+        g.DrawPath(pillPen, pillPath);
+        TextRenderer.DrawText(g, statusText, pillFont, Rectangle.Round(pillRect), statusFg,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 }
