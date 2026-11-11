@@ -356,11 +356,17 @@ public sealed class MainForm : Form
                     break;
 
                 case "bookings":
-                    _subNav.Visible = false;
-                    _workspaceHost.SubNavVisible = false;
-                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  WORKSPACE 02";
-                    _hubTitle.Text = "Điều phối Lịch chụp & Tiến độ Hậu kỳ";
-                    MountPage(new BookingsPage(_app));
+                    var bookingTabs = new List<SegmentedTabBar.SegmentItem>
+                    {
+                        new("LichChup", "Lịch chụp chính thức", IconKind.Calendar),
+                        new("YeuCauDatLich", "Yêu cầu đặt lịch", IconKind.Clock),
+                        new("DoiSoatThanhToan", "Đối soát & Thanh toán", IconKind.Wallet)
+                    };
+                    var targetBookingKey = subKey ?? (_activeSubKey is "LichChup" or "YeuCauDatLich" or "DoiSoatThanhToan" ? _activeSubKey : "LichChup");
+                    _subNav.SetItems(bookingTabs, targetBookingKey);
+                    _subNav.Visible = true;
+                    _workspaceHost.SubNavVisible = true;
+                    OpenSubView("bookings", targetBookingKey);
                     break;
 
                 case "catalog":
@@ -426,7 +432,31 @@ public sealed class MainForm : Form
     private void OpenSubView(string hubKey, string subKey)
     {
         _activeSubKey = subKey;
-        if (hubKey == "catalog")
+        if (hubKey == "bookings")
+        {
+            switch (subKey)
+            {
+                case "YeuCauDatLich":
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  ĐIỀU PHỐI VẬN HÀNH  /  YÊU CẦU ĐẶT LỊCH";
+                    _hubTitle.Text = "Hộp thư Tiếp nhận Yêu cầu Đặt lịch Trực tuyến";
+                    MountPage(new BookingRequestsPlaceholderPage(_app));
+                    break;
+
+                case "DoiSoatThanhToan":
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  ĐIỀU PHỐI VẬN HÀNH  /  ĐỐI SOÁT & THANH TOÁN";
+                    _hubTitle.Text = "Trung tâm Đối soát & Cổng Thanh toán Số";
+                    MountPage(new PaymentWorkspacePlaceholderPage(_app));
+                    break;
+
+                case "LichChup":
+                default:
+                    _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  ĐIỀU PHỐI VẬN HÀNH  /  LỊCH CHỤP CHÍNH THỨC";
+                    _hubTitle.Text = "Điều phối Lịch chụp & Tiến độ Hậu kỳ";
+                    MountPage(new BookingsPage(_app));
+                    break;
+            }
+        }
+        else if (hubKey == "catalog")
         {
             var (title, entity) = subKey switch
             {
@@ -772,7 +802,9 @@ internal sealed class QuickCommandPaletteDialog : Form
         KeyPreview = true;
 
         _all.Add(new("Bàn điều khiển trung tâm (Dashboard)", "Bàn làm việc", "dashboard", null, IconKind.Dashboard));
-        _all.Add(new("Điều phối Lịch chụp & Phòng máy", "Vận hành", "bookings", null, IconKind.Calendar));
+        _all.Add(new("Lịch chụp chính thức & Tiến độ", "Lịch chụp & Vận hành", "bookings", "LichChup", IconKind.Calendar));
+        _all.Add(new("Hộp thư Yêu cầu đặt lịch trực tuyến (v2.2 Demo)", "Lịch chụp & Vận hành", "bookings", "YeuCauDatLich", IconKind.Clock));
+        _all.Add(new("Trung tâm Đối soát & Thanh toán (v2.2 Demo)", "Lịch chụp & Vận hành", "bookings", "DoiSoatThanhToan", IconKind.Wallet));
         _all.Add(new("Hồ sơ Khách hàng", "Khách & Danh mục", "catalog", "KhachHang", IconKind.Users));
 
         if (isAdmin)
