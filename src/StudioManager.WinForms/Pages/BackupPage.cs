@@ -258,12 +258,22 @@ public sealed class BackupPage : UserControl
         using var o = new OpenFileDialog { Filter = "SQL Server backup (*.bak)|*.bak" };
         if (o.ShowDialog(this) != DialogResult.OK) return;
 
-        if (MessageBox.Show("Dữ liệu hiện tại sẽ bị thay thế hoàn toàn bởi bản sao lưu. Bạn đã chắc chắn có bản sao lưu gần nhất chưa?",
-            "Xác nhận phục hồi (Bước 1/2)", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(
+            this,
+            "Xác nhận phục hồi (Bước 1/2)",
+            "Dữ liệu hiện tại sẽ bị thay thế hoàn toàn bởi bản sao lưu. Bạn đã chắc chắn có bản sao lưu gần nhất chưa?",
+            confirmText: "Tiếp tục kiểm tra",
+            cancelText: "Hủy phục hồi",
+            isDestructive: true))
             return;
 
-        if (MessageBox.Show("Xác nhận lần cuối: Tiếp tục phục hồi dữ liệu và khởi động lại ứng dụng?",
-            "Xác nhận phục hồi (Bước 2/2)", MessageBoxButtons.YesNo, MessageBoxIcon.Stop) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(
+            this,
+            "Xác nhận phục hồi (Bước 2/2)",
+            "Xác nhận lần cuối: Tiếp tục phục hồi dữ liệu và khởi động lại ứng dụng?",
+            confirmText: "Phục hồi ngay",
+            cancelText: "Dừng lại",
+            isDestructive: true))
             return;
 
         var r = await _app.BackupRestore.RestoreAsync(o.FileName, _app.Session!);

@@ -2,7 +2,9 @@ using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using StudioManager.Application;
 using StudioManager.Application.Services;
+using StudioManager.WinForms.Contracts;
 using StudioManager.WinForms.Controls;
+using StudioManager.WinForms.Simulation;
 
 namespace StudioManager.WinForms.Pages;
 
@@ -45,6 +47,13 @@ public sealed class CrudPage : UserControl
         AutoEllipsis = true
     };
     private readonly DossierFieldList _dossierFields = new() { Dock = DockStyle.Top, Height = 240 };
+    private readonly RoleBadgePill _dossierRoleBadge = new() { Height = 26, Visible = false };
+    private readonly ToolTip _toolTip = new();
+    private VisualMediaPictureBox? _catalogMediaPreview;
+    private Label? _catalogMediaCaption;
+    private ModernButton? _mediaManagerButton;
+    private string? _selectedCatalogCode;
+    private string _selectedCatalogName = "";
 
     // Audit Diff Live Boxes (only visible when _entity == "NhatKy")
     private readonly RichTextBox _auditOldBox = new()
@@ -453,10 +462,11 @@ public sealed class CrudPage : UserControl
             AccentStripeThickness = 4
         };
 
+        var supportsRoleBadge = _entity is "NhanVien" or "KhachHang";
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 76,
+            Height = supportsRoleBadge ? 108 : 76,
             BackColor = Color.Transparent
         };
         var overline = new Label
@@ -470,6 +480,14 @@ public sealed class CrudPage : UserControl
         };
         head.Controls.Add(_dossierTitle);
         head.Controls.Add(_dossierSubtitle);
+        if (supportsRoleBadge)
+        {
+            _dossierRoleBadge.Visible = true;
+            _dossierRoleBadge.Location = new Point(0, 3);
+            var badgeHost = new Panel { Dock = DockStyle.Bottom, Height = 32, BackColor = Color.Transparent };
+            badgeHost.Controls.Add(_dossierRoleBadge);
+            head.Controls.Add(badgeHost);
+        }
         head.Controls.Add(overline);
 
         var body = new Panel
@@ -504,6 +522,29 @@ public sealed class CrudPage : UserControl
         else
         {
             body.Controls.Add(_dossierFields);
+            if (SupportsVisualCatalog())
+            {
+                _dossierFields.Height = 205;
+                _catalogMediaCaption = new Label
+                {
+                    Dock = DockStyle.Top,
+                    Height = 24,
+                    Text = "Chọn bản ghi để xem ảnh minh họa & thư viện",
+                    Font = Theme.Font(8.2f, FontStyle.Italic),
+                    ForeColor = Theme.Muted,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    AutoEllipsis = true,
+                    Padding = new Padding(0, 0, 0, 4)
+                };
+                _catalogMediaPreview = new VisualMediaPictureBox(VisualAssetService.GetCoverEntry(DefaultCatalogPreviewCode()))
+                {
+                    Dock = DockStyle.Top,
+                    Height = 148,
+                    Margin = new Padding(0, 0, 0, 4)
+                };
+                body.Controls.Add(_catalogMediaCaption);
+                body.Controls.Add(_catalogMediaPreview);
+            }
         }
 
         // Guard Note if applicable
@@ -575,6 +616,17 @@ public sealed class CrudPage : UserControl
         _detailsButton.Click += (_, _) => ShowDetails();
         panel.Controls.Add(_detailsButton);
 
+        if (SupportsVisualCatalog())
+        {
+            var canEditMedia = !_readOnly && _app.Session?.VaiTro == StudioManager.Domain.VaiTro.QuanTriVien;
+            _mediaManagerButton = Theme.OutlineButton(
+                canEditMedia ? "Quản lý ảnh (Demo)" : "Xem thư viện ảnh",
+                Theme.Primary,
+                IconKind.Eye);
+            _mediaManagerButton.Click += (_, _) => OpenCatalogMediaDialog();
+            panel.Controls.Add(_mediaManagerButton);
+        }
+
         if (!_readOnly)
         {
             _stopButton = Theme.Button(_entity == "KhachHang" ? "Xóa hồ sơ" : "Ngừng dùng", Theme.Danger, IconKind.Trash);
@@ -635,14 +687,24 @@ public sealed class CrudPage : UserControl
     {
         var row = _grid.CurrentRow;
         var enabled = row is not null && SelectedId() is not null;
-        foreach (var button in new[] { _detailsButton, _historyButton, _editButton, _stopButton })
+        foreach (var button in new[] { _detailsButton, _historyButton, _editButton, _stopButton, _mediaManagerButton })
             if (button is not null) button.Enabled = enabled;
 
         if (!enabled || row is null)
         {
             _dossierTitle.Text = "Chưa chọn bản ghi";
             _dossierSubtitle.Text = "Chọn một dòng ở bảng bên trái để xem chi tiết";
+            if (_entity == "KhachHang")
+                _dossierRoleBadge.SetRole(RoleVisualResolver.ForCustomer(), _toolTip);
+            else if (_entity == "NhanVien")
+                _dossierRoleBadge.SetRole(RoleVisualResolver.Unknown("Chưa chọn nhân sự"), _toolTip);
             _dossierFields.SetRows([("Trạng thái", "Chưa có mục nào được chọn", Theme.Muted, false)]);
+            _selectedCatalogCode = null;
+            _selectedCatalogName = "";
+            if (_catalogMediaPreview is not null)
+                _catalogMediaPreview.BindAsset(VisualAssetService.GetCoverEntry(DefaultCatalogPreviewCode()));
+            if (_catalogMediaCaption is not null)
+                _catalogMediaCaption.Text = "Chọn một dòng bên trái để xem ảnh minh họa & thư viện";
             _auditOldBox.Text = "";
             _auditNewBox.Text = "";
             return;
@@ -660,6 +722,10 @@ public sealed class CrudPage : UserControl
         _dossierTitle.Text = primaryText;
         _dossierSubtitle.Text = $"Mã định danh hệ thống: #{SelectedId()}";
 
+        var rowRoleVisual = ResolveEntityRowVisual(row);
+        if (rowRoleVisual is not null)
+            _dossierRoleBadge.SetRole(rowRoleVisual, _toolTip);
+
         var fieldRows = new List<(string Label, string Value, Color? ValueColor, bool Highlight)>();
         foreach (var col in visibleCols)
         {
@@ -669,6 +735,14 @@ public sealed class CrudPage : UserControl
             if (col.HeaderText.Contains("Trạng thái", StringComparison.OrdinalIgnoreCase))
             {
                 valColor = Theme.GetStatusColors(val).Text;
+                highlight = true;
+            }
+            else if (col.HeaderText.Contains("Chức vụ", StringComparison.OrdinalIgnoreCase) && _entity == "NhanVien")
+            {
+                var rawPos = row.Cells[col.Index].Value?.ToString() ?? val;
+                var posVisual = RoleVisualResolver.ResolveRaw(rawPos);
+                val = posVisual.DisplayLabel;
+                valColor = posVisual.Accent;
                 highlight = true;
             }
             else if (col.HeaderText.Contains("Giá", StringComparison.OrdinalIgnoreCase))
@@ -681,6 +755,11 @@ public sealed class CrudPage : UserControl
 
         _dossierFields.SetRows(fieldRows);
 
+        if (SupportsVisualCatalog())
+        {
+            BindCatalogVisualForRow(row, visibleCols);
+        }
+
         if (_entity == "NhatKy")
         {
             _auditOldBox.Text = _grid.Columns.Contains("Giá trị cũ")
@@ -689,6 +768,94 @@ public sealed class CrudPage : UserControl
             _auditNewBox.Text = _grid.Columns.Contains("Giá trị mới")
                 ? (row.Cells["Giá trị mới"].FormattedValue?.ToString() ?? "(Trống)")
                 : "(Trống)";
+        }
+    }
+
+    private bool SupportsVisualCatalog() => _entity is "GoiChup" or "PhongChup" or "TaiNguyen";
+
+    private string DefaultCatalogPreviewCode() => _entity switch
+    {
+        "PhongChup" => "P0001",
+        "TaiNguyen" => "TN000001",
+        _ => "GC000001"
+    };
+
+    private void BindCatalogVisualForRow(DataGridViewRow row, List<DataGridViewColumn> visibleCols)
+    {
+        if (_catalogMediaPreview is null) return;
+
+        string? matchedCode = null;
+        string displayName = "";
+
+        foreach (var col in visibleCols)
+        {
+            var raw = row.Cells[col.Index].FormattedValue?.ToString()?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+
+            if (col.HeaderText.Contains("Mã", StringComparison.OrdinalIgnoreCase) &&
+                (raw.StartsWith("GC", StringComparison.OrdinalIgnoreCase) ||
+                 raw.StartsWith("P", StringComparison.OrdinalIgnoreCase) ||
+                 raw.StartsWith("TN", StringComparison.OrdinalIgnoreCase)))
+            {
+                matchedCode = raw.ToUpperInvariant();
+            }
+            else if (col.HeaderText.Contains("Tên", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(displayName))
+            {
+                displayName = raw;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(matchedCode))
+        {
+            var codeCol = visibleCols.FirstOrDefault(c => c.HeaderText.Contains("Mã", StringComparison.OrdinalIgnoreCase));
+            matchedCode = codeCol is not null
+                ? row.Cells[codeCol.Index].FormattedValue?.ToString()?.Trim().ToUpperInvariant()
+                : (visibleCols.Count > 0 ? row.Cells[visibleCols[0].Index].FormattedValue?.ToString()?.Trim().ToUpperInvariant() : null);
+        }
+        if (string.IsNullOrWhiteSpace(matchedCode))
+            matchedCode = DefaultCatalogPreviewCode();
+
+        if (string.IsNullOrWhiteSpace(displayName) && visibleCols.Count > 1)
+            displayName = row.Cells[visibleCols[1].Index].FormattedValue?.ToString()?.Trim() ?? matchedCode;
+
+        _selectedCatalogCode = matchedCode;
+        _selectedCatalogName = string.IsNullOrWhiteSpace(displayName) ? matchedCode : displayName;
+
+        var gallery = VisualAssetService.GetGallery(matchedCode);
+        var cover = VisualAssetService.GetCoverEntry(matchedCode);
+        _catalogMediaPreview.BindAsset(cover, gallery);
+        if (_catalogMediaCaption is not null)
+        {
+            _catalogMediaCaption.Text = $"{cover.SourceBadgeLabel} • {cover.Title} ({gallery.Count} ảnh • Nhấp ảnh để phóng to)";
+        }
+    }
+
+    private void OpenCatalogMediaDialog()
+    {
+        if (!SupportsVisualCatalog() || string.IsNullOrWhiteSpace(_selectedCatalogCode))
+            return;
+
+        var entityKind = _entity switch
+        {
+            "PhongChup" => MediaTargetEntityKind.Room,
+            "TaiNguyen" => MediaTargetEntityKind.Resource,
+            _ => MediaTargetEntityKind.Package
+        };
+
+        var canEdit = !_readOnly && _app.Session?.VaiTro == StudioManager.Domain.VaiTro.QuanTriVien;
+        var actorName = _app.Session?.HoTen ?? "Nhân sự Studio";
+
+        using var dlg = new AdminMediaManagerDialog(
+            entityKind,
+            _selectedCatalogCode,
+            _selectedCatalogName,
+            canEdit,
+            actorName);
+        dlg.ShowDialog(FindForm());
+
+        if (dlg.Changed && _grid.CurrentRow is not null)
+        {
+            UpdateInspectorAndActionState();
         }
     }
 
@@ -817,6 +984,9 @@ public sealed class CrudPage : UserControl
             if (_grid.Columns.Contains("Giá trị mới")) _grid.Columns["Giá trị mới"].Visible = false;
         }
 
+        if (_grid.Columns.Contains("Chức vụ")) _grid.Columns["Chức vụ"].MinimumWidth = 148;
+        if (_grid.Columns.Contains("Trạng thái")) _grid.Columns["Trạng thái"].MinimumWidth = 130;
+
         foreach (var col in new[] { "Giá", "Đơn giá", "Tổng tiền", "Thực thu" })
         {
             if (_grid.Columns.Contains(col))
@@ -833,6 +1003,19 @@ public sealed class CrudPage : UserControl
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
             var colName = _grid.Columns[e.ColumnIndex].Name;
+            if (colName == "Chức vụ" && _entity == "NhanVien")
+            {
+                e.PaintBackground(e.ClipBounds, true);
+                var rawPos = e.Value?.ToString() ?? e.FormattedValue?.ToString();
+                if (e.Graphics is { } gPos)
+                {
+                    var posVisual = RoleVisualResolver.ResolveRaw(rawPos);
+                    var selected = (e.State & DataGridViewElementStates.Selected) != 0;
+                    RoleVisualResolver.DrawGridRolePill(gPos, e.CellBounds, posVisual, selected);
+                }
+                e.Handled = true;
+                return;
+            }
             if (colName != "Trạng thái") return;
 
             e.PaintBackground(e.ClipBounds, true);
@@ -890,7 +1073,13 @@ public sealed class CrudPage : UserControl
             ? "Xóa khách hàng đã chọn? Lưu ý chỉ khách hàng chưa phát sinh lịch mới được phép xóa."
             : "Ngừng sử dụng mục đã chọn? Dữ liệu lịch sử giao dịch vẫn được lưu trữ nguyên vẹn.";
 
-        if (MessageBox.Show(message, "Xác nhận thao tác", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(
+                this,
+                "Xác nhận thao tác",
+                message,
+                confirmText: _entity == "KhachHang" ? "Xóa khách hàng" : "Ngừng sử dụng",
+                cancelText: "Giữ nguyên",
+                isDestructive: true))
             return;
 
         var r = await _app.Administration.DeactivateAsync(_entity, id.Value, _app.Session!);
@@ -934,13 +1123,76 @@ public sealed class CrudPage : UserControl
             return;
         }
 
+        if (_entity is "NhanVien" or "KhachHang")
+        {
+            var row = _grid.CurrentRow;
+            var visible = _grid.Columns.Cast<DataGridViewColumn>().Where(x => x.Visible).OrderBy(x => x.DisplayIndex).ToList();
+            var primary = visible.FirstOrDefault() is { } c0 ? row.Cells[c0.Index].FormattedValue?.ToString() ?? EntityDisplayName(_entity) : EntityDisplayName(_entity);
+            var roleVisual = ResolveEntityRowVisual(row) ?? RoleVisualResolver.Unknown();
+            var fields = new List<(string Label, string Value, Color? ValueColor, bool Highlight)>();
+            foreach (var col in visible)
+            {
+                var val = row.Cells[col.Index].FormattedValue?.ToString() ?? "—";
+                Color? valColor = null;
+                var highlight = false;
+                if (col.HeaderText.Contains("Trạng thái", StringComparison.OrdinalIgnoreCase))
+                {
+                    valColor = Theme.GetStatusColors(val).Text;
+                    highlight = true;
+                }
+                else if (col.HeaderText.Contains("Chức vụ", StringComparison.OrdinalIgnoreCase) && _entity == "NhanVien")
+                {
+                    var rawPos = row.Cells[col.Index].Value?.ToString() ?? val;
+                    var posVisual = RoleVisualResolver.ResolveRaw(rawPos);
+                    val = posVisual.DisplayLabel;
+                    valColor = posVisual.Accent;
+                    highlight = true;
+                }
+                fields.Add((col.HeaderText, val, valColor, highlight));
+            }
+            using var profileDialog = new RoleProfileDetailDialog(
+                $"Hồ sơ {EntityDisplayName(_entity)} • {primary}",
+                $"HỒ SƠ CHI TIẾT  •  {EntityDisplayName(_entity).ToUpperInvariant()}",
+                primary,
+                roleVisual,
+                fields);
+            profileDialog.ShowDialog(this);
+            return;
+        }
+
         var lines = _grid.Columns.Cast<DataGridViewColumn>()
             .Where(x => x.Visible)
             .OrderBy(x => x.DisplayIndex)
             .Select(x => $"{x.HeaderText}: {_grid.CurrentRow.Cells[x.Index].FormattedValue}");
 
-        MessageBox.Show(string.Join(Environment.NewLine + Environment.NewLine, lines),
-            $"Hồ sơ {EntityDisplayName(_entity)}", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        AtelierNotificationService.ShowInfo(
+            this,
+            string.Join(Environment.NewLine + Environment.NewLine, lines),
+            $"Hồ sơ {EntityDisplayName(_entity)}");
+    }
+
+    private RoleVisualInfo? ResolveEntityRowVisual(DataGridViewRow row)
+    {
+        if (_entity == "KhachHang")
+            return RoleVisualResolver.ForCustomer();
+
+        if (_entity == "NhanVien")
+        {
+            var rawPos = _grid.Columns.Contains("Chức vụ")
+                ? row.Cells["Chức vụ"].Value?.ToString() ?? row.Cells["Chức vụ"].FormattedValue?.ToString()
+                : null;
+            return RoleVisualResolver.ResolveRaw(rawPos);
+        }
+
+        return null;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _toolTip.Dispose();
+
+        base.Dispose(disposing);
     }
 
     private sealed class RowView(IDictionary<string, object?> data)
@@ -952,6 +1204,7 @@ public sealed class CrudPage : UserControl
 internal sealed class SimpleEditDialog : Form
 {
     private readonly Dictionary<string, Control> _inputs = new();
+    private readonly ToolTip _toolTip = new();
     public IReadOnlyDictionary<string, object?> Values => _inputs.ToDictionary(x => x.Key, x => Read(x.Value));
 
     public SimpleEditDialog(string entity, long? id, DataGridViewRow? row, IReadOnlyList<LookupItem>? rentalServices = null)
@@ -980,13 +1233,28 @@ internal sealed class SimpleEditDialog : Form
 
         var title = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 36,
+            Dock = DockStyle.Fill,
             Text = (id is null ? "Khởi tạo hồ sơ " : "Hiệu chỉnh hồ sơ ") + EntityDisplayName(entity),
             Font = Theme.Font(12.5f, FontStyle.Bold),
             ForeColor = Theme.Text,
             TextAlign = ContentAlignment.MiddleLeft
         };
+        var headerBar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            BackColor = Color.Transparent
+        };
+        RoleBadgePill? roleBadge = null;
+        if (entity is "NhanVien" or "KhachHang")
+        {
+            roleBadge = new RoleBadgePill { Height = 26 };
+            var badgeHost = new Panel { Dock = DockStyle.Right, Width = 175, BackColor = Color.Transparent };
+            roleBadge.Location = new Point(0, 7);
+            badgeHost.Controls.Add(roleBadge);
+            headerBar.Controls.Add(badgeHost);
+        }
+        headerBar.Controls.Add(title);
 
         var fieldDefs = Fields(entity).ToList();
         var rowCount = Math.Max(1, (fieldDefs.Count + 1) / 2);
@@ -1049,15 +1317,40 @@ internal sealed class SimpleEditDialog : Form
         footer.Controls.Add(cancel);
 
         card.Controls.Add(body);
-        card.Controls.Add(title);
+        card.Controls.Add(headerBar);
         card.Controls.Add(footer);
-        title.SendToBack();
+        headerBar.SendToBack();
         footer.SendToBack();
         body.BringToFront();
         Controls.Add(card);
 
         if (row != null) Fill(row);
+
+        if (roleBadge is not null)
+        {
+            void RefreshRoleBadge()
+            {
+                if (entity == "KhachHang")
+                    roleBadge.SetRole(RoleVisualResolver.ForCustomer(), _toolTip);
+                else if (_inputs.TryGetValue("ChucVu", out var chucVuControl) && chucVuControl is ComboBox chucVuCombo)
+                    roleBadge.SetRole(RoleVisualResolver.ResolveRaw(chucVuCombo.SelectedItem?.ToString()), _toolTip);
+            }
+
+            if (_inputs.TryGetValue("ChucVu", out var posInput) && posInput is ComboBox posCombo)
+                posCombo.SelectedIndexChanged += (_, _) => RefreshRoleBadge();
+
+            RefreshRoleBadge();
+        }
+
         AcceptButton = save;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _toolTip.Dispose();
+
+        base.Dispose(disposing);
     }
 
     private static string EntityDisplayName(string e) => e switch
@@ -1097,6 +1390,13 @@ internal sealed class SimpleEditDialog : Form
         {
             var c = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
             c.Items.AddRange(f.Options);
+            if (f.Name == "ChucVu")
+            {
+                RoleVisualResolver.AttachRoleIconComboBox(
+                    c,
+                    item => RoleVisualResolver.ResolveRaw(item?.ToString()),
+                    item => RoleVisualResolver.ResolveRaw(item?.ToString()).DisplayLabel);
+            }
             if (c.Items.Count > 0) c.SelectedIndex = 0;
             return c;
         }
@@ -1135,7 +1435,7 @@ internal sealed class SimpleEditDialog : Form
         {
             if (string.IsNullOrWhiteSpace(p.Value.Text))
             {
-                MessageBox.Show("Vui lòng nhập đầy đủ các trường thông tin bắt buộc (*).", "StudioManager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                AtelierNotificationService.ShowWarning(this, "Vui lòng nhập đầy đủ các trường thông tin bắt buộc (*).", "Thiếu thông tin bắt buộc");
                 p.Value.Focus();
                 return false;
             }

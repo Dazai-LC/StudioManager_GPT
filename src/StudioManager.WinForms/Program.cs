@@ -16,11 +16,11 @@ internal static class Program
         System.Windows.Forms.Application.ThreadException += (_, e) =>
         {
             Controls.Ui.LogError("Application.ThreadException", e.Exception);
-            MessageBox.Show(
-                Controls.Ui.FormatRuntimeError("Runtime", e.Exception),
-                "StudioManager — Atelier Lumière",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            Controls.AtelierNotificationService.ShowException(
+                null,
+                "Runtime",
+                e.Exception,
+                Controls.Ui.FormatRuntimeError("Runtime", e.Exception));
         };
         var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) ?? new();
         var facade = new AppFacade(new SqlStudioRepository(settings.ConnectionString), new Pbkdf2PasswordHasher(), new SystemClock());

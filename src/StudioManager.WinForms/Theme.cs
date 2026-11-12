@@ -51,7 +51,11 @@ public enum IconKind
     AlertTriangle,
     Info,
     LogOut,
-    Command
+    Command,
+    RoleAdmin,
+    RoleStaff,
+    RolePhotographer,
+    RoleCustomer
 }
 
 /// <summary>
@@ -109,6 +113,11 @@ public static class Theme
         public static readonly Color Plum50 = Color.FromArgb(246, 241, 251);
         public static readonly Color Plum200 = Color.FromArgb(216, 196, 238);
         public static readonly Color Plum600 = Color.FromArgb(108, 60, 156);
+
+        public static readonly Color Slate50 = Color.FromArgb(241, 245, 249);
+        public static readonly Color Slate200 = Color.FromArgb(203, 213, 225);
+        public static readonly Color Slate600 = Color.FromArgb(71, 85, 105);
+        public static readonly Color Slate700 = Color.FromArgb(51, 65, 85);
     }
 
     // =========================================================================
@@ -704,6 +713,44 @@ public static class VectorIcons
                 g.DrawEllipse(pen, cx - r * 0.85f, cy + r * 0.4f, r * 0.45f, r * 0.45f);
                 g.DrawEllipse(pen, cx + r * 0.4f, cy + r * 0.4f, r * 0.45f, r * 0.45f);
                 break;
+
+            case IconKind.RoleAdmin:
+                PointF[] adminShield =
+                [
+                    new(cx, cy - r * 0.96f),
+                    new(cx + r * 0.86f, cy - r * 0.62f),
+                    new(cx + r * 0.76f, cy + r * 0.24f),
+                    new(cx, cy + r * 0.96f),
+                    new(cx - r * 0.76f, cy + r * 0.24f),
+                    new(cx - r * 0.86f, cy - r * 0.62f)
+                ];
+                g.DrawPolygon(pen, adminShield);
+                g.DrawLines(pen, [new PointF(cx - r * 0.36f, cy + r * 0.02f), new PointF(cx - r * 0.1f, cy + r * 0.3f), new PointF(cx + r * 0.38f, cy - r * 0.24f)]);
+                break;
+
+            case IconKind.RoleStaff:
+                var badgeCard = new RectangleF(cx - r * 0.88f, cy - r * 0.48f, r * 1.76f, r * 1.36f);
+                using (var p = Theme.RoundedRectangle(badgeCard, 2.2f)) g.DrawPath(pen, p);
+                g.DrawLines(pen, [new PointF(cx - r * 0.26f, cy - r * 0.48f), new PointF(cx - r * 0.18f, cy - r * 0.88f), new PointF(cx + r * 0.18f, cy - r * 0.88f), new PointF(cx + r * 0.26f, cy - r * 0.48f)]);
+                g.DrawEllipse(pen, cx - r * 0.56f, cy - r * 0.18f, r * 0.46f, r * 0.46f);
+                g.DrawArc(pen, cx - r * 0.7f, cy + r * 0.34f, r * 0.74f, r * 0.48f, 190, 160);
+                g.DrawLine(pen, cx + r * 0.1f, cy - r * 0.04f, cx + r * 0.6f, cy - r * 0.04f);
+                g.DrawLine(pen, cx + r * 0.1f, cy + r * 0.34f, cx + r * 0.52f, cy + r * 0.34f);
+                break;
+
+            case IconKind.RolePhotographer:
+                var photoCamBody = new RectangleF(cx - r, cy - r * 0.48f, r * 2f, r * 1.38f);
+                using (var p = Theme.RoundedRectangle(photoCamBody, 2.4f)) g.DrawPath(pen, p);
+                g.DrawLines(pen, [new PointF(cx - r * 0.44f, cy - r * 0.48f), new PointF(cx - r * 0.24f, cy - r * 0.88f), new PointF(cx + r * 0.24f, cy - r * 0.88f), new PointF(cx + r * 0.44f, cy - r * 0.48f)]);
+                g.DrawLine(pen, cx - r * 0.8f, cy - r * 0.66f, cx - r * 0.54f, cy - r * 0.66f);
+                g.DrawEllipse(pen, cx - r * 0.44f, cy - r * 0.2f, r * 0.88f, r * 0.88f);
+                g.DrawEllipse(pen, cx - r * 0.18f, cy + r * 0.06f, r * 0.36f, r * 0.36f);
+                break;
+
+            case IconKind.RoleCustomer:
+                g.DrawEllipse(pen, cx - r * 0.4f, cy - r * 0.88f, r * 0.8f, r * 0.8f);
+                g.DrawArc(pen, cx - r * 0.84f, cy + r * 0.1f, r * 1.68f, r * 1.15f, 190, 160);
+                break;
         }
 
         g.Restore(state);
@@ -937,7 +984,7 @@ public sealed class ModernButton : Control, IButtonControl
         {
             var textRect = new Rectangle(startX, 0, Math.Max(8, Width - startX - 4), Height);
             TextRenderer.DrawText(g, Text, activeFont, textRect, textCol,
-                TextFormatFlags.SingleLine | TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                TextFormatFlags.SingleLine | TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         }
 
         scaledFont?.Dispose();

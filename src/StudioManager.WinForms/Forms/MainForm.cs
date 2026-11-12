@@ -266,18 +266,20 @@ public sealed class MainForm : Form
     {
         var session = _app.Session;
         var fullName = session?.HoTen ?? "Nhân sự Studio";
-        var isAdminRole = session?.VaiTro == VaiTro.QuanTriVien;
-        var roleName = isAdminRole ? "QUẢN TRỊ VIÊN" : "NHÂN VIÊN";
-        var roleColor = isAdminRole ? Theme.Primary : Theme.Primitives.Teal600;
-        var initials = Initials(fullName);
+        var username = session?.TenDangNhap ?? "staff";
+        var roleVisual = RoleVisualResolver.Resolve(session?.VaiTro);
+        var roleName = roleVisual.DisplayLabel.ToUpperInvariant();
+        var roleColor = roleVisual.Accent;
 
         var pill = new Panel
         {
-            Width = 236,
+            Width = 252,
             Height = 42,
             Margin = Padding.Empty,
             BackColor = Color.Transparent
         };
+
+        _toolTip.SetToolTip(pill, $"{fullName} (@{username}) — {roleVisual.DisplayLabel}\n{roleVisual.TooltipDetail}");
 
         pill.Paint += (_, e) =>
         {
@@ -292,23 +294,21 @@ public sealed class MainForm : Form
             g.FillPath(bg, path);
             g.DrawPath(border, path);
 
-            // Avatar circle on right
+            // Role emblem circle on right
             const float avSize = 32f;
             var avRect = new RectangleF(pill.Width - avSize - 5f, (pill.Height - avSize) / 2f, avSize, avSize);
-            using var avFill = new SolidBrush(roleColor);
+            using var avFill = new SolidBrush(roleVisual.SoftBackground);
+            using var avBorder = new Pen(roleVisual.BorderColor, 1f);
             g.FillEllipse(avFill, avRect);
-
-            using var avFont = Theme.Font(8.8f, FontStyle.Bold);
-            using var whiteBrush = new SolidBrush(Color.White);
-            var avSz = g.MeasureString(initials, avFont);
-            g.DrawString(initials, avFont, whiteBrush, avRect.Left + (avRect.Width - avSz.Width) / 2f, avRect.Top + (avRect.Height - avSz.Height) / 2f);
+            g.DrawEllipse(avBorder, avRect);
+            VectorIcons.Draw(g, roleVisual.Icon, RectangleF.Inflate(avRect, -7.5f, -7.5f), roleColor, 1.75f);
 
             // Name & Role
             using var nameFont = Theme.Font(8.8f, FontStyle.Bold);
             using var roleFont = Theme.MonoFont(7.2f, FontStyle.Bold);
             var halfH = pill.Height / 2;
-            var nameRect = new Rectangle(12, 3, Math.Max(40, pill.Width - 54), Math.Max(16, halfH - 2));
-            var roleRect = new Rectangle(12, halfH, Math.Max(40, pill.Width - 54), Math.Max(14, pill.Height - halfH - 3));
+            var nameRect = new Rectangle(14, 3, Math.Max(40, pill.Width - 56), Math.Max(16, halfH - 2));
+            var roleRect = new Rectangle(14, halfH, Math.Max(40, pill.Width - 56), Math.Max(14, pill.Height - halfH - 3));
 
             TextRenderer.DrawText(g, fullName, nameFont, nameRect, Theme.Text,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);

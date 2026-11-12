@@ -8,6 +8,7 @@ public sealed class ChangePasswordForm : Form
 {
     private readonly AppFacade _app;
     private readonly UserSession _session;
+    private readonly ToolTip _toolTip = new();
 
     private readonly TextBox _password = new()
     {
@@ -60,8 +61,8 @@ public sealed class ChangePasswordForm : Form
         _session = session;
         Text = "Thiết lập mật khẩu bảo mật • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(540, 530);
-        MinimumSize = new Size(500, 500);
+        ClientSize = new Size(556, 566);
+        MinimumSize = new Size(520, 536);
         AutoScaleMode = AutoScaleMode.Dpi;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -90,7 +91,7 @@ public sealed class ChangePasswordForm : Form
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58)); // 0: Header Badge + Title
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 1: Intro
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); // 1: Verified Role Pill + Intro
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); // 2: Password
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82)); // 3: Confirm
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56)); // 4: Policy Card
@@ -118,14 +119,45 @@ public sealed class ChangePasswordForm : Form
         };
         headerPanel.Controls.Add(titleLabel);
 
-        var introLabel = new Label
+        var identityStrip = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 2, 0, 2),
+            BackColor = Color.Transparent
+        };
+        var roleBadge = new RoleBadgePill { Height = 26 };
+        roleBadge.SetRole(RoleVisualResolver.Resolve(_session.VaiTro), _toolTip);
+        var accountHandle = new Label
+        {
+            AutoSize = true,
+            Text = $"@{_session.TenDangNhap}  •  {_session.HoTen}",
+            ForeColor = Theme.TextSecondary,
+            Font = Theme.Font(8.8f, FontStyle.Bold),
+            Padding = new Padding(10, 4, 0, 0)
+        };
+        identityStrip.Controls.Add(roleBadge);
+        identityStrip.Controls.Add(accountHandle);
+
+        var introLabel = new Panel
         {
             Dock = DockStyle.Fill,
-            Text = $"Xin chào {_session.HoTen}. Vui lòng thiết lập mật khẩu cá nhân mới để bảo vệ tài khoản làm việc của bạn.",
+            BackColor = Color.Transparent
+        };
+        var introCopy = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Vui lòng thiết lập mật khẩu cá nhân mới để bảo vệ tài khoản làm việc của bạn.",
             ForeColor = Theme.Muted,
-            Font = Theme.Font(9.0f),
+            Font = Theme.Font(8.9f),
+            Padding = new Padding(0, 4, 0, 0),
             TextAlign = ContentAlignment.TopLeft
         };
+        introLabel.Controls.Add(introCopy);
+        introLabel.Controls.Add(identityStrip);
 
         var policyCard = new CardPanel
         {
@@ -187,8 +219,7 @@ public sealed class ChangePasswordForm : Form
                 return;
             }
 
-            MessageBox.Show(this, "Mật khẩu đã được cập nhật thành công.",
-                "StudioManager", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            AtelierNotificationService.ShowSuccess(this, "Mật khẩu đã được cập nhật thành công.", "Đổi mật khẩu hoàn tất");
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -262,5 +293,13 @@ public sealed class ChangePasswordForm : Form
         panel.Controls.Add(border);
         panel.Controls.Add(caption);
         return panel;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _toolTip.Dispose();
+
+        base.Dispose(disposing);
     }
 }

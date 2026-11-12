@@ -3,7 +3,9 @@ using System.Drawing.Text;
 using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.Domain;
+using StudioManager.WinForms.Contracts;
 using StudioManager.WinForms.Controls;
+using StudioManager.WinForms.Simulation;
 
 namespace StudioManager.WinForms.Pages;
 
@@ -39,8 +41,12 @@ public sealed class BookingsPage : UserControl
         TextAlign = ContentAlignment.MiddleLeft
     };
     private readonly BookingStageTrackControl _stageTrack = new() { Dock = DockStyle.Top, Height = 54 };
+    private readonly VisualMediaPictureBox _bookingPackagePreview = new(VisualAssetService.GetCoverEntry("GC000001")) { Dock = DockStyle.Top, Height = 112, Margin = new Padding(0, 0, 0, 8) };
     private readonly DossierFieldList _dossierFields = new() { Dock = DockStyle.Top, Height = 212 };
     private readonly BookingFinancialGaugeControl _finGauge = new() { Dock = DockStyle.Top, Height = 104 };
+    private readonly RoleBadgePill _inspCustomerPill = new() { Height = 24, AutoWidth = false, Width = 178 };
+    private readonly RoleBadgePill _inspPhotographerPill = new() { Height = 24, AutoWidth = false, Width = 178 };
+    private readonly ToolTip _toolTip = new();
 
     private ModernButton _edit = null!;
     private ModernButton _detail = null!;
@@ -239,6 +245,12 @@ public sealed class BookingsPage : UserControl
 
         flow.Controls.Add(Ui.Field("TỪ NGÀY", _from, 142));
         flow.Controls.Add(Ui.Field("ĐẾN NGÀY", _to, 142));
+        RoleVisualResolver.AttachRoleIconComboBox(
+            _photographer,
+            item => item is FilterOption opt && opt.Id > 0
+                ? RoleVisualResolver.ForPhotographer()
+                : RoleVisualResolver.Unknown("Tất cả"),
+            item => item is FilterOption opt ? opt.Name : item?.ToString() ?? string.Empty);
         flow.Controls.Add(Ui.Field("NHIẾP ẢNH GIA", _photographer, 185));
         flow.Controls.Add(Ui.Field("PHÒNG CHỤP", _room, 160));
         flow.Controls.Add(Ui.Field("GÓI CHỤP", _package, 180));
@@ -309,7 +321,7 @@ public sealed class BookingsPage : UserControl
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 76,
+            Height = 106,
             BackColor = Color.Transparent
         };
         var overline = new Label
@@ -321,8 +333,23 @@ public sealed class BookingsPage : UserControl
             ForeColor = Theme.Primary,
             TextAlign = ContentAlignment.MiddleLeft
         };
+        var roleStrip = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 30,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 3, 0, 2),
+            BackColor = Color.Transparent
+        };
+        _inspCustomerPill.Margin = new Padding(0, 0, 6, 0);
+        roleStrip.Controls.Add(_inspCustomerPill);
+        roleStrip.Controls.Add(_inspPhotographerPill);
+
         header.Controls.Add(_inspCode);
         header.Controls.Add(_inspCustomer);
+        header.Controls.Add(roleStrip);
         header.Controls.Add(overline);
 
         var scrollBody = new Panel
@@ -334,6 +361,7 @@ public sealed class BookingsPage : UserControl
         };
         scrollBody.Controls.Add(_finGauge);
         scrollBody.Controls.Add(_dossierFields);
+        scrollBody.Controls.Add(_bookingPackagePreview);
         scrollBody.Controls.Add(_stageTrack);
 
         var isAdmin = _app.Session!.VaiTro == VaiTro.QuanTriVien;
@@ -584,6 +612,8 @@ public sealed class BookingsPage : UserControl
         {
             _inspCode.Text = "Chưa chọn lịch chụp";
             _inspCustomer.Text = "Chọn một lịch ở bảng bên trái để xem hồ sơ chi tiết";
+            _inspCustomerPill.SetRole(RoleVisualResolver.ForCustomer(), _toolTip, "Khách hàng: —");
+            _inspPhotographerPill.SetRole(RoleVisualResolver.ForPhotographer(), _toolTip, "Nhiếp ảnh: —");
             _stageTrack.SetBooking(null);
             _dossierFields.SetRows([
                 ("Khách hàng", "—", null, false),
@@ -594,11 +624,14 @@ public sealed class BookingsPage : UserControl
                 ("Ghi chú", "—", null, false)
             ]);
             _finGauge.SetBooking(null);
+            _bookingPackagePreview.BindAsset(VisualAssetService.GetCoverEntry("GC000001"));
             return;
         }
 
         _inspCode.Text = $"#{b.Ma}  •  {b.TrangThai.HienThi()}";
         _inspCustomer.Text = $"Khách hàng: {b.KhachHang}";
+        _inspCustomerPill.SetRole(RoleVisualResolver.ForCustomer(tooltipDetail: $"Khách hàng đặt lịch: {b.KhachHang}"), _toolTip, b.KhachHang);
+        _inspPhotographerPill.SetRole(RoleVisualResolver.ForPhotographer(tooltipDetail: $"Nhiếp ảnh gia phụ trách: {b.NhiepAnhGia}"), _toolTip, b.NhiepAnhGia);
         _stageTrack.SetBooking(b);
 
         var nextStep = b.TrangThai.BuocTiepTheo();
@@ -607,7 +640,7 @@ public sealed class BookingsPage : UserControl
         _dossierFields.SetRows([
             ("Gói chụp chốt", $"{b.TenGoiChot} ({b.GiaGoiChot:N0} đ)", Theme.Primary, true),
             ("Thời gian chụp", $"{b.BatDau:dd/MM/yyyy HH:mm} - {b.KetThuc:HH:mm}", null, false),
-            ("Nhiếp ảnh gia", b.NhiepAnhGia, null, false),
+            ("Nhiếp ảnh gia", b.NhiepAnhGia, RoleVisualResolver.ForPhotographer().Accent, true),
             ("Phòng chụp", b.Phong, null, false),
             ("Dịch vụ bổ sung", $"{b.TienDichVu:N0} đ", null, false),
             ("Giảm giá", b.TienGiam > 0 ? $"-{b.TienGiam:N0} đ ({b.LyDoGiam})" : "0 đ", b.TienGiam > 0 ? Theme.Warning : Theme.Muted, false),
@@ -615,6 +648,12 @@ public sealed class BookingsPage : UserControl
         ]);
 
         _finGauge.SetBooking(b);
+
+        var pkgCode = SeedGroundedCatalogRepository.GetPackages()
+            .FirstOrDefault(p => b.TenGoiChot.Contains(p.TenGoi, StringComparison.OrdinalIgnoreCase) ||
+                                 p.TenGoi.Contains(b.TenGoiChot, StringComparison.OrdinalIgnoreCase))
+            ?.MaGoiChup ?? "GC000001";
+        _bookingPackagePreview.BindAsset(VisualAssetService.GetCoverEntry(pkgCode), VisualAssetService.GetGallery(pkgCode));
     }
 
     private async Task LoadFiltersAsync()
@@ -650,6 +689,14 @@ public sealed class BookingsPage : UserControl
     private static int? SelectedId(ComboBox box) => box.SelectedItem is FilterOption option && option.Id > 0 ? option.Id : null;
     private string? SelectedStatus() => _status.SelectedItem is FilterOption option && !string.IsNullOrWhiteSpace(option.Code) ? option.Code : null;
     private sealed record FilterOption(int Id, string Code, string Name);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _toolTip.Dispose();
+
+        base.Dispose(disposing);
+    }
 
     private async Task CreateAsync()
     {
@@ -710,8 +757,12 @@ public sealed class BookingsPage : UserControl
             return;
         }
 
-        if (MessageBox.Show($"Xác nhận chuyển lịch #{b.Ma} sang trạng thái “{next.Value.HienThi()}”?",
-                "Cập nhật tiến độ lịch chụp", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(
+                this,
+                "Cập nhật tiến độ lịch chụp",
+                $"Xác nhận chuyển lịch #{b.Ma} sang trạng thái “{next.Value.HienThi()}”?",
+                confirmText: "Chuyển trạng thái",
+                cancelText: "Giữ nguyên"))
             return;
 
         var r = await _app.Bookings.AdvanceAsync(b.Id, _app.Session!);
@@ -1278,7 +1329,13 @@ internal sealed class BookingDetailDialog : Form
     {
         var id = SelectedChildId(_services);
         if (id is null) return;
-        if (MessageBox.Show("Xóa dịch vụ đã chọn? Hệ thống sẽ từ chối nếu làm tổng phải thu thấp hơn số đã thu.", "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(
+                this,
+                "Xác nhận xóa dịch vụ",
+                "Xóa dịch vụ đã chọn? Hệ thống sẽ từ chối nếu làm tổng phải thu thấp hơn số đã thu.",
+                confirmText: "Xóa dịch vụ",
+                cancelText: "Quay lại",
+                isDestructive: true))
             return;
         var r = await _app.BookingSupport.RemoveServiceAsync(_booking.Id, id.Value, _app.Session!);
         if (!r.Success) Ui.Error(this, r.Message);
@@ -1295,9 +1352,12 @@ internal sealed class BookingDetailDialog : Form
         var addRental = false;
         if (selected?.Extra?.Contains("Dịch vụ thuê:", StringComparison.OrdinalIgnoreCase) == true)
         {
-            addRental = MessageBox.Show(
+            addRental = AtelierNotificationService.Confirm(
+                this,
+                "Xác nhận dịch vụ thuê",
                 $"{selected.Name} có {selected.Extra.Split("Dịch vụ thuê:", StringSplitOptions.None).Last().Trim()}.\n\nThêm dịch vụ thuê tương ứng vào lịch với số lượng {d.Quantity:0}?",
-                "Xác nhận dịch vụ thuê", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+                confirmText: "Thêm dịch vụ thuê",
+                cancelText: "Chỉ phân công tài nguyên");
         }
 
         var r = await _app.BookingSupport.AssignResourceAsync(_booking.Id, (int)d.SelectedId, (int)d.Quantity, addRental, _app.Session!);
@@ -1319,7 +1379,13 @@ internal sealed class BookingDetailDialog : Form
         var id = SelectedChildId(_resources);
         if (id is null) return;
         var action = next == TrangThaiPhanCong.DaTra ? "đánh dấu tài nguyên đã trả" : "hủy phân công tài nguyên";
-        if (MessageBox.Show($"Xác nhận {action}?", "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(
+                this,
+                "Xác nhận cập nhật tài nguyên",
+                $"Xác nhận {action}?",
+                confirmText: "Xác nhận",
+                cancelText: "Hủy",
+                isDestructive: next != TrangThaiPhanCong.DaTra))
             return;
         var r = await _app.BookingSupport.UpdateResourceAssignmentAsync(id.Value, next, _app.Session!);
         if (!r.Success) Ui.Error(this, r.Message);
@@ -1548,6 +1614,14 @@ internal sealed class BookingDialog : Form
 
         _customer.Dock = DockStyle.Fill;
         _customer.Margin = new Padding(0, 2, 6, 0);
+        RoleVisualResolver.AttachRoleIconComboBox(
+            _customer,
+            _ => RoleVisualResolver.ForCustomer(),
+            item => item is LookupView lv ? lv.Display : item?.ToString() ?? string.Empty);
+        RoleVisualResolver.AttachRoleIconComboBox(
+            _photographer,
+            _ => RoleVisualResolver.ForPhotographer(),
+            item => item is LookupView lv ? lv.Display : item?.ToString() ?? string.Empty);
 
         _addCustomer = Theme.OutlineButton("Thêm khách hàng", Theme.Primary, IconKind.Plus);
         _addCustomer.Dock = DockStyle.Fill;
@@ -1976,7 +2050,32 @@ internal sealed class ReceiptPreviewForm : Form
         close.Width = 100;
         close.Click += (_, _) => Close();
 
+        var multiFmt = Theme.OutlineButton("Xem đa khổ (A4 / K80 / K58)", Theme.Primary, IconKind.Eye);
+        multiFmt.Width = 216;
+        multiFmt.Click += (_, _) =>
+        {
+            var services = booking.TienDichVu > 0
+                ? new[] { new BookingRequestServiceLineDto("DV_BO_SUNG", "Dịch vụ bổ sung theo lịch chụp", "Gói", booking.TienDichVu, 1) }
+                : Array.Empty<BookingRequestServiceLineDto>();
+
+            var doc = DesktopDemoSessionStore.BuildReceiptPreview(
+                ReceiptFormatKind.A4Invoice,
+                booking.Ma,
+                booking.KhachHang,
+                "Khách hàng studio",
+                booking.TenGoiChot,
+                booking.Phong,
+                services,
+                booking.GiaGoiChot,
+                refund ? Math.Max(0, booking.DaThu) : amount,
+                string.IsNullOrWhiteSpace(transTypeDisplay) ? "Thanh toán tại studio" : transTypeDisplay,
+                staffDisplay);
+            using var ext = new ExtendedReceiptPreviewForm(doc);
+            ext.ShowDialog(this);
+        };
+
         actions.Controls.Add(print);
+        actions.Controls.Add(multiFmt);
         actions.Controls.Add(close);
 
         _document.PrintPage += (_, e) =>

@@ -8,11 +8,12 @@ public sealed class PageHeader : Panel
     public FlowLayoutPanel Actions { get; } = new()
     {
         Dock = DockStyle.Right,
-        Width = 540,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
         FlowDirection = FlowDirection.RightToLeft,
         WrapContents = false,
         AutoScroll = false,
-        Padding = new Padding(0, 6, 0, 0),
+        Padding = new Padding(8, 6, 0, 0),
         BackColor = Color.Transparent
     };
 
@@ -32,6 +33,7 @@ public sealed class PageHeader : Panel
         _titleLabel = new Label
         {
             Text = title,
+            UseMnemonic = false,
             Dock = DockStyle.Top,
             Height = 30,
             Font = Theme.Font(13.5f, FontStyle.Bold),
@@ -43,6 +45,7 @@ public sealed class PageHeader : Panel
         _subtitleLabel = new Label
         {
             Text = subtitle,
+            UseMnemonic = false,
             Dock = DockStyle.Fill,
             Font = Theme.Font(9.0f),
             ForeColor = Theme.Muted,
@@ -184,6 +187,7 @@ public sealed class StatCard : CardPanel
         _titleLabel = new Label
         {
             Text = title.ToUpperInvariant(),
+            UseMnemonic = false,
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
             Font = Theme.Font(7.8f, FontStyle.Bold),
@@ -204,6 +208,7 @@ public sealed class StatCard : CardPanel
         _trend = new Label
         {
             Text = "Đồng bộ trực tiếp",
+            UseMnemonic = false,
             Dock = DockStyle.Fill,
             AutoEllipsis = true,
             Font = Theme.Font(8.0f, FontStyle.Bold),
@@ -390,12 +395,12 @@ public sealed class SegmentedTabBar : Control
         for (var i = 0; i < _items.Count; i++)
         {
             var item = _items[i];
-            var ts = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPadding);
+            var ts = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPrefix);
             var iw = item.Icon != IconKind.None ? 20f : 0f;
             var bw = !string.IsNullOrWhiteSpace(item.Badge)
-                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 14f
+                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + 14f
                 : 0f;
-            naturalWidths[i] = ts.Width + iw + bw + horizPad;
+            naturalWidths[i] = ts.Width + iw + bw + horizPad + 10f;
             totalNatural += naturalWidths[i];
         }
 
@@ -407,12 +412,12 @@ public sealed class SegmentedTabBar : Control
             for (var i = 0; i < _items.Count; i++)
             {
                 var item = _items[i];
-                var ts = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPadding);
+                var ts = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPrefix);
                 var iw = item.Icon != IconKind.None ? 18f : 0f;
                 var bw = !string.IsNullOrWhiteSpace(item.Badge)
-                    ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 12f
+                    ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + 12f
                     : 0f;
-                naturalWidths[i] = ts.Width + iw + bw + horizPad;
+                naturalWidths[i] = ts.Width + iw + bw + horizPad + 8f;
                 totalNatural += naturalWidths[i];
             }
         }
@@ -428,9 +433,9 @@ public sealed class SegmentedTabBar : Control
         for (var i = 0; i < _items.Count; i++)
         {
             var item = _items[i];
-            var textSize = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPadding);
+            var textSize = TextRenderer.MeasureText(g, item.Label, activeFont, new Size(600, 36), TextFormatFlags.NoPrefix);
             var badgeWidth = !string.IsNullOrWhiteSpace(item.Badge)
-                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding).Width + 13f
+                ? TextRenderer.MeasureText(g, item.Badge, badgeFont, new Size(200, 24), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + 13f
                 : 0f;
 
             var tabWidth = Math.Max(54f, naturalWidths[i] * scale);
@@ -465,10 +470,10 @@ public sealed class SegmentedTabBar : Control
                 cursorX += 19f;
             }
 
-            var maxTextW = Math.Max(12, (int)(rect.Right - cursorX - badgeWidth - 4f));
-            var textRect = new Rectangle((int)cursorX, (int)rect.Top, Math.Min(textSize.Width + 2, maxTextW), (int)rect.Height);
+            var maxTextW = Math.Max(12, (int)(rect.Right - cursorX - badgeWidth - 2f));
+            var textRect = new Rectangle((int)cursorX, (int)rect.Top, Math.Min(textSize.Width + 6, maxTextW), (int)rect.Height);
             TextRenderer.DrawText(g, item.Label, activeFont, textRect, fg,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             cursorX += textRect.Width + 4f;
 
             if (!string.IsNullOrWhiteSpace(item.Badge) && cursorX + badgeWidth - 6f <= rect.Right)
@@ -479,7 +484,7 @@ public sealed class SegmentedTabBar : Control
                 g.FillPath(bFill, bPath);
                 TextRenderer.DrawText(g, item.Badge, badgeFont, Rectangle.Round(badgeRect),
                     isSelected ? Theme.Primary : Theme.Muted,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
 
             x += tabWidth + gap;
@@ -739,10 +744,10 @@ public static class Ui
     };
 
     public static void Error(IWin32Window owner, string message) =>
-        MessageBox.Show(owner, message, "Không thể thực hiện", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        AtelierNotificationService.ShowWarning(owner, message, "Không thể thực hiện");
 
     public static void Info(IWin32Window owner, string message) =>
-        MessageBox.Show(owner, message, "StudioManager — Atelier Lumière", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        AtelierNotificationService.ShowInfo(owner, message, "StudioManager — Atelier Lumière");
 
     public static bool IsDatabaseException(Exception ex)
     {

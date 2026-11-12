@@ -28,6 +28,8 @@ public sealed class AccountsPage : UserControl
         TextAlign = ContentAlignment.MiddleLeft
     };
     private readonly DossierFieldList _dossierFields = new() { Dock = DockStyle.Top, Height = 190 };
+    private readonly RoleBadgePill _inspRoleBadge = new() { Height = 26 };
+    private readonly ToolTip _toolTip = new();
 
     private readonly ModernButton _lockButton = Theme.Button("Khóa tài khoản", Theme.Danger, IconKind.Lock);
     private ModernButton? _resetButton, _detailButton;
@@ -172,7 +174,7 @@ public sealed class AccountsPage : UserControl
         var head = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 76,
+            Height = 108,
             BackColor = Color.Transparent
         };
         var overline = new Label
@@ -184,8 +186,19 @@ public sealed class AccountsPage : UserControl
             ForeColor = Theme.Primary,
             TextAlign = ContentAlignment.MiddleLeft
         };
+        var badgeHost = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 32,
+            Padding = new Padding(0, 2, 0, 2),
+            BackColor = Color.Transparent
+        };
+        _inspRoleBadge.Location = new Point(0, 3);
+        badgeHost.Controls.Add(_inspRoleBadge);
+
         head.Controls.Add(_inspTitle);
         head.Controls.Add(_inspSubtitle);
+        head.Controls.Add(badgeHost);
         head.Controls.Add(overline);
 
         var policyCard = new CardPanel
@@ -276,6 +289,8 @@ public sealed class AccountsPage : UserControl
             }
             _grid.DataSource = dt;
             if (_grid.Columns.Contains("Id")) _grid.Columns["Id"].Visible = false;
+            if (_grid.Columns.Contains("Vai trò")) _grid.Columns["Vai trò"].MinimumWidth = 148;
+            if (_grid.Columns.Contains("Trạng thái")) _grid.Columns["Trạng thái"].MinimumWidth = 132;
 
             if (_grid.Rows.Count > 0)
             {
@@ -308,6 +323,19 @@ public sealed class AccountsPage : UserControl
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
             var colName = _grid.Columns[e.ColumnIndex].Name;
+            if (colName == "Vai trò")
+            {
+                e.PaintBackground(e.ClipBounds, true);
+                var rawRole = e.Value?.ToString() ?? e.FormattedValue?.ToString();
+                if (e.Graphics is { } gRole)
+                {
+                    var roleVisual = RoleVisualResolver.ResolveRaw(rawRole);
+                    var selected = (e.State & DataGridViewElementStates.Selected) != 0;
+                    RoleVisualResolver.DrawGridRolePill(gRole, e.CellBounds, roleVisual, selected);
+                }
+                e.Handled = true;
+                return;
+            }
             if (colName != "Trạng thái") return;
 
             e.PaintBackground(e.ClipBounds, true);
@@ -341,7 +369,10 @@ public sealed class AccountsPage : UserControl
 
     private async Task CreateAsync()
     {
-        using var d = new AccountDialog(await _app.Administration.GetLookupsAsync("NhanVien"));
+        var employees = await _app.Administration.GetLookupsAsync("NhanVien");
+        var photographers = await _app.Administration.GetLookupsAsync("NhiepAnhGia", activeOnly: false);
+        var photographerIds = photographers.Select(x => (int)x.Id).ToHashSet();
+        using var d = new AccountDialog(employees, photographerIds);
         if (d.ShowDialog(this) != DialogResult.OK) return;
         var r = await _app.Administration.CreateAccountAsync(d.Username, d.Password, d.EmployeeId, d.Role, _app.Session!);
         if (!r.Success) Ui.Error(this, r.Message);
@@ -369,7 +400,7 @@ public sealed class AccountsPage : UserControl
 
         var locking = IsActiveSelection();
         var action = locking ? "khóa" : "mở khóa";
-        if (MessageBox.Show($"Xác nhận {action} tài khoản người dùng đã chọn?", "Xác nhận thao tác", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        if (!AtelierNotificationService.Confirm(this, "Xác nhận thao tác tài khoản", $"Xác nhận {action} tài khoản người dùng đã chọn?", isDestructive: locking))
             return;
 
         var r = await _app.Administration.ToggleAccountLockAsync(id.Value, _app.Session!);
@@ -399,6 +430,7 @@ public sealed class AccountsPage : UserControl
         {
             _inspTitle.Text = "Chưa chọn tài khoản";
             _inspSubtitle.Text = "Chọn một dòng bên trái để kiểm tra bảo mật";
+            _inspRoleBadge.SetRole(RoleVisualResolver.Unknown("Chưa chọn vai trò"), _toolTip);
             _dossierFields.SetRows([("Trạng thái", "Chưa có tài khoản được chọn", Theme.Muted, false)]);
             return;
         }
@@ -406,9 +438,11 @@ public sealed class AccountsPage : UserControl
         var visibleCols = _grid.Columns.Cast<DataGridViewColumn>().Where(c => c.Visible).ToList();
         var username = _grid.Columns.Contains("Tên đăng nhập") ? row.Cells["Tên đăng nhập"].FormattedValue?.ToString() ?? "" : "";
         var role = _grid.Columns.Contains("Vai trò") ? row.Cells["Vai trò"].FormattedValue?.ToString() ?? "" : "";
+        var roleVisual = RoleVisualResolver.ResolveRaw(role);
 
-        _inspTitle.Text = $"{username}  •  {role}";
+        _inspTitle.Text = string.IsNullOrWhiteSpace(username) ? roleVisual.DisplayLabel : username;
         _inspSubtitle.Text = id == _app.Session?.TaiKhoanId ? "Tài khoản phiên làm việc hiện tại của bạn" : $"Mã tài khoản hệ thống: #{id}";
+        _inspRoleBadge.SetRole(roleVisual, _toolTip);
 
         var fieldList = new List<(string Label, string Value, Color? ValueColor, bool Highlight)>();
         foreach (var col in visibleCols)
@@ -416,8 +450,9 @@ public sealed class AccountsPage : UserControl
             var val = row.Cells[col.Index].FormattedValue?.ToString() ?? "—";
             var isStatus = col.HeaderText.Contains("Trạng thái", StringComparison.OrdinalIgnoreCase);
             var isRole = col.HeaderText.Contains("Vai trò", StringComparison.OrdinalIgnoreCase);
-            Color? colColor = isStatus ? Theme.GetStatusColors(val).Text : (isRole ? Theme.Primary : null);
-            fieldList.Add((col.HeaderText, val, colColor, isStatus || isRole));
+            Color? colColor = isStatus ? Theme.GetStatusColors(val).Text : (isRole ? roleVisual.Accent : null);
+            var displayVal = isRole ? roleVisual.DisplayLabel : val;
+            fieldList.Add((col.HeaderText, displayVal, colColor, isStatus || isRole));
         }
         _dossierFields.SetRows(fieldList);
     }
@@ -425,10 +460,37 @@ public sealed class AccountsPage : UserControl
     private void ShowDetails()
     {
         if (_grid.CurrentRow is null) { Ui.Error(this, "Vui lòng chọn một tài khoản."); return; }
-        var lines = _grid.Columns.Cast<DataGridViewColumn>()
-            .Where(c => c.Visible)
-            .Select(c => $"{c.HeaderText}: {_grid.CurrentRow.Cells[c.Index].FormattedValue}");
-        MessageBox.Show(string.Join(Environment.NewLine + Environment.NewLine, lines), "Chi tiết tài khoản", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        var row = _grid.CurrentRow;
+        var username = _grid.Columns.Contains("Tên đăng nhập") ? row.Cells["Tên đăng nhập"].FormattedValue?.ToString() ?? "Tài khoản" : "Tài khoản";
+        var rawRole = _grid.Columns.Contains("Vai trò") ? row.Cells["Vai trò"].FormattedValue?.ToString() : null;
+        var roleVisual = RoleVisualResolver.ResolveRaw(rawRole);
+
+        var fields = new List<(string Label, string Value, Color? ValueColor, bool Highlight)>();
+        foreach (var col in _grid.Columns.Cast<DataGridViewColumn>().Where(c => c.Visible))
+        {
+            var val = row.Cells[col.Index].FormattedValue?.ToString() ?? "—";
+            var isStatus = col.HeaderText.Contains("Trạng thái", StringComparison.OrdinalIgnoreCase);
+            var isRole = col.HeaderText.Contains("Vai trò", StringComparison.OrdinalIgnoreCase);
+            Color? colColor = isStatus ? Theme.GetStatusColors(val).Text : (isRole ? roleVisual.Accent : null);
+            fields.Add((col.HeaderText, isRole ? roleVisual.DisplayLabel : val, colColor, isStatus || isRole));
+        }
+
+        using var detail = new RoleProfileDetailDialog(
+            $"Chi tiết tài khoản • {username}",
+            "HỒ SƠ TÀI KHOẢN ĐĂNG NHẬP",
+            username,
+            roleVisual,
+            fields);
+        detail.ShowDialog(this);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _toolTip.Dispose();
+
+        base.Dispose(disposing);
     }
 }
 
@@ -494,17 +556,28 @@ internal sealed class AccountDialog : Form
     private readonly TextBox _password = new() { UseSystemPasswordChar = true, Font = Theme.Font(9.5f) };
     private readonly ComboBox _employee = new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
     private readonly ComboBox _role = new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
+    private readonly RoleBadgePill _previewBadge = new() { Height = 28 };
+    private readonly Label _previewNote = new()
+    {
+        AutoSize = true,
+        Font = Theme.Font(8.1f),
+        ForeColor = Theme.Muted,
+        Padding = new Padding(0, 6, 0, 0)
+    };
+    private readonly ToolTip _toolTip = new();
+    private readonly HashSet<int> _photographerIds;
 
     public string Username => _username.Text.Trim();
     public string Password => _password.Text;
     public int? EmployeeId => _employee.SelectedValue is int i ? i : null;
     public VaiTro Role => _role.SelectedIndex == 0 ? VaiTro.NhanVien : VaiTro.QuanTriVien;
 
-    public AccountDialog(IReadOnlyList<StudioManager.Application.LookupItem> employees)
+    public AccountDialog(IReadOnlyList<StudioManager.Application.LookupItem> employees, HashSet<int>? photographerIds = null)
     {
+        _photographerIds = photographerIds ?? [];
         Text = "Khởi tạo tài khoản truy cập • StudioManager";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(500, 470);
+        ClientSize = new Size(504, 534);
         BackColor = Theme.Background;
         Padding = new Padding(18);
         Font = Theme.Font();
@@ -515,9 +588,20 @@ internal sealed class AccountDialog : Form
         _employee.DisplayMember = "Name";
         _employee.ValueMember = "Id";
         _employee.DataSource = employees.Select(x => new Employee((int)x.Id, x.Name)).ToList();
+        RoleVisualResolver.AttachRoleIconComboBox(
+            _employee,
+            item => item is Employee emp && _photographerIds.Contains(emp.Id)
+                ? RoleVisualResolver.ForPhotographer()
+                : RoleVisualResolver.ForStaff(),
+            item => item is Employee emp ? emp.Name : item?.ToString() ?? string.Empty);
 
         _role.Items.AddRange(["Nhân viên vận hành", "Quản trị viên hệ thống"]);
         _role.SelectedIndex = 0;
+        RoleVisualResolver.AttachRoleIconComboBox(
+            _role,
+            item => item?.ToString()?.Contains("Quản trị", StringComparison.OrdinalIgnoreCase) == true
+                ? RoleVisualResolver.ForAdmin()
+                : RoleVisualResolver.ForStaff());
 
         var card = new CardPanel
         {
@@ -536,13 +620,27 @@ internal sealed class AccountDialog : Form
             WrapContents = false,
             BackColor = Color.Transparent
         };
-        body.Controls.Add(Ui.Field("NHÂN VIÊN LIÊN KẾT", _employee, 416));
-        body.Controls.Add(Ui.Field("TÊN ĐĂNG NHẬP *", _username, 416));
-        body.Controls.Add(Ui.Field("MẬT KHẨU KHỞI TẠO *", _password, 416));
-        body.Controls.Add(Ui.Field("VAI TRÒ PHÂN QUYỀN", _role, 416));
+        body.Controls.Add(Ui.Field("NHÂN VIÊN LIÊN KẾT", _employee, 420));
+        body.Controls.Add(Ui.Field("TÊN ĐĂNG NHẬP *", _username, 420));
+        body.Controls.Add(Ui.Field("MẬT KHẨU KHỞI TẠO *", _password, 420));
+        body.Controls.Add(Ui.Field("VAI TRÒ PHÂN QUYỀN", _role, 420));
+
+        var previewStrip = new FlowLayoutPanel
+        {
+            Width = 420,
+            Height = 36,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 2, 0, 10),
+            Padding = new Padding(0, 2, 0, 2),
+            BackColor = Color.Transparent
+        };
+        previewStrip.Controls.Add(_previewBadge);
+        previewStrip.Controls.Add(_previewNote);
+        body.Controls.Add(previewStrip);
 
         var save = Theme.Button("Tạo tài khoản", Theme.Primary, IconKind.Check);
-        save.Width = 416;
+        save.Width = 420;
         save.Click += (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(Username) || Password.Length < 8)
@@ -555,9 +653,31 @@ internal sealed class AccountDialog : Form
         };
         body.Controls.Add(save);
 
+        _employee.SelectedIndexChanged += (_, _) => UpdateRolePreview();
+        _role.SelectedIndexChanged += (_, _) => UpdateRolePreview();
+        UpdateRolePreview();
+
         card.Controls.Add(body);
         Controls.Add(card);
         AcceptButton = save;
+    }
+
+    private void UpdateRolePreview()
+    {
+        var isPhotographer = EmployeeId is int empId && _photographerIds.Contains(empId);
+        var visual = RoleVisualResolver.Resolve(Role, isPhotographer ? ChucVu.NhiepAnhGia : ChucVu.TiepNhan);
+        _previewBadge.SetRole(visual, _toolTip);
+        _previewNote.Text = Role == VaiTro.QuanTriVien
+            ? "Toàn quyền quản trị"
+            : (isPhotographer ? "Nhân viên • Nhiếp ảnh gia" : "Tài khoản nhân viên");
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _toolTip.Dispose();
+
+        base.Dispose(disposing);
     }
 
     private sealed record Employee(int Id, string Name);

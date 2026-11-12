@@ -224,6 +224,7 @@ public sealed class DashboardPage : UserControl
             Dock = DockStyle.Top,
             Height = 18,
             Text = "STUDIO CALL SHEET & LIVE STREAM",
+            UseMnemonic = false,
             Font = Theme.MonoFont(7.6f, FontStyle.Bold),
             ForeColor = Theme.Primary,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -234,6 +235,7 @@ public sealed class DashboardPage : UserControl
         {
             Dock = DockStyle.Fill,
             Text = "Lịch trực phòng máy & Hoạt động",
+            UseMnemonic = false,
             Font = Theme.Font(11.5f, FontStyle.Bold),
             ForeColor = Theme.Text,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -308,6 +310,7 @@ public sealed class DashboardPage : UserControl
         {
             Dock = DockStyle.Fill,
             Text = title,
+            UseMnemonic = false,
             Font = Theme.Font(10.2f, FontStyle.Bold),
             ForeColor = Theme.Text,
             TextAlign = ContentAlignment.MiddleLeft,
