@@ -764,26 +764,20 @@ public static class Ui
 
     public static string FormatRuntimeError(string stage, Exception ex)
     {
-        if (IsDatabaseException(ex))
-        {
-            return $"Không thể kết nối hoặc truy vấn SQL Server tại bước [{stage}] ({ex.GetType().Name}): {ex.Message}";
-        }
+        return StudioManager.Application.SafeDiagnostics.Capture(ex, stage).Message;
+    }
 
-        return $"Lỗi tại bước [{stage}] ({ex.GetType().Name}): {ex.Message}";
+    public static string ReportError(string stage, Exception ex)
+    {
+        LogError(stage, ex);
+        return FormatRuntimeError(stage, ex);
     }
 
     public static void LogError(string stage, Exception ex)
     {
         try
         {
-            var entry =
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] STAGE: {stage}{Environment.NewLine}" +
-                $"Exception: {ex.GetType().FullName}: {ex.Message}{Environment.NewLine}" +
-                (ex.InnerException is not null
-                    ? $"InnerException: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}{Environment.NewLine}"
-                    : string.Empty) +
-                $"StackTrace:{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}" +
-                new string('-', 72) + Environment.NewLine;
+            var entry = StudioManager.Application.SafeDiagnostics.Capture(ex, stage).DiagnosticJson + Environment.NewLine;
 
             System.Diagnostics.Debug.WriteLine(entry);
 

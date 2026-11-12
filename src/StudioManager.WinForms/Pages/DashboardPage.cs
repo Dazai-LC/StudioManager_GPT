@@ -459,7 +459,7 @@ public sealed class DashboardPage : UserControl
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("DashboardPage", ex));
         }
         finally
         {

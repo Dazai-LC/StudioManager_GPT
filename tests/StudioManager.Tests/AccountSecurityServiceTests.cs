@@ -18,7 +18,7 @@ public sealed class AccountSecurityServiceTests
     {
         var service = new AuthService(null!, new TestHasher(), new FixedClock());
 
-        var result = await service.ChangePasswordAsync(1, password, password);
+        var result = await service.ChangePasswordAsync("CurrentPassword1", password, password);
 
         Assert.False(result.Success);
         Assert.Equal(expectedCode, result.Code);
@@ -29,7 +29,7 @@ public sealed class AccountSecurityServiceTests
     {
         var service = new AuthService(null!, new TestHasher(), new FixedClock());
 
-        var result = await service.ChangePasswordAsync(1, "Password1", "Password2");
+        var result = await service.ChangePasswordAsync("CurrentPassword1", "Password1", "Password2");
 
         Assert.False(result.Success);
         Assert.Equal("PASSWORD_MISMATCH", result.Code);

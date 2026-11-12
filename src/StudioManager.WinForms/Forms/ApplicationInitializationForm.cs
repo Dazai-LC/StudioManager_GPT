@@ -77,8 +77,12 @@ public sealed class ApplicationInitializationForm : Form
 
         Shown += async (_, _) => await InitializeAsync();
         FormClosing += (_, _) => _initializationCts?.Cancel();
-        _retry.Click += async (_, _) => await InitializeAsync();
-        _logout.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
+        _retry.Click += async (_, _) =>
+        {
+            if (_app.Session is null) { DialogResult = DialogResult.Cancel; Close(); return; }
+            await InitializeAsync();
+        };
+        _logout.Click += (_, _) => { _app.Auth.SignOut(); DialogResult = DialogResult.Cancel; Close(); };
     }
 
     private Control BuildConsoleCard()
@@ -207,10 +211,12 @@ public sealed class ApplicationInitializationForm : Form
             DialogResult = DialogResult.OK;
             Close();
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { _app.Auth.SignOut(); }
         catch (Exception ex)
         {
             LastError = ex;
+            _app.Auth.SignOut();
+            _retry.Text = "Quay lại đăng nhập";
             Ui.LogError("ApplicationInitializationForm.InitializeAsync", ex);
             LastErrorMessage = FriendlyError(ex);
             _spinner.Running = false;
@@ -223,9 +229,7 @@ public sealed class ApplicationInitializationForm : Form
     }
 
     private static string FriendlyError(Exception ex) =>
-        Ui.IsDatabaseException(ex)
-            ? $"Không thể kết nối cơ sở dữ liệu SQL Server ({ex.GetType().Name}): {ex.Message}"
-            : $"Lỗi khởi tạo dữ liệu ({ex.GetType().Name}): {ex.Message}";
+        Ui.FormatRuntimeError("ApplicationInitializationForm.InitializeAsync", ex);
 }
 
 internal enum StepNodeState

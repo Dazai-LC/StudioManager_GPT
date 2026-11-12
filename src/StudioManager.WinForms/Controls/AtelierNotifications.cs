@@ -550,7 +550,8 @@ public static class AtelierNotificationService
         var summary = string.IsNullOrWhiteSpace(userFriendlyMessage)
             ? Ui.FormatRuntimeError(stage, ex)
             : userFriendlyMessage;
-        var details = $"Bước xử lý: {stage}{Environment.NewLine}{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{ex.StackTrace}";
+        Ui.LogError("AtelierNotifications.ShowException", ex);
+        var details = StudioManager.Application.SafeDiagnostics.Capture(ex, "AtelierNotifications.ShowException").DiagnosticJson;
         ShowDialogCore(owner, AtelierNotificationKind.Error, "Đã xảy ra sự cố xử lý", summary, "Đóng", null, false, details);
     }
 

@@ -1,0 +1,15 @@
+{
+  "status": "PROPOSED_NOT_EXECUTED",
+  "machine": "MSI",
+  "dataSource": "localhost\\SQLEXPRESS",
+  "serverName": "MSI\\SQLEXPRESS",
+  "instance": "SQLEXPRESS",
+  "database": "StudioManager_P02_Test_7d70a08ac15349acbd207f82c8349f6e",
+  "runId": "7d70a08ac15349acbd207f82c8349f6e",
+  "schemaVersion": "baseline-c2c3c23-spec2.1",
+  "schemaScriptsSha256": "B8A556B123DDB93B742FDA93643AC70CB4D11E8F62E9AE30BAF37758900B0EF3",
+  "testWindowsPrincipal": "MSI\\PhoenixP02Tests",
+  "testWindowsUser": "MSI\\PhoenixP02Runner",
+  "provisioningIdentityPolicy": "Current sysadmin identity: provisioning only; never run tests or UAT",
+  "environmentEvidence": "Owner-reported SQL Server 2022 Express; not reconnected during offline preparation"
+}

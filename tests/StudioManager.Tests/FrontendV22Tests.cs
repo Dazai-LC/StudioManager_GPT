@@ -123,11 +123,22 @@ public sealed class FrontendV22Tests
     }
 
     [Fact]
-    public void LegacyCustomerPortalAndArchivedNextJs_WereNotDeletedByDesktopPivot()
+    public void DesktopOnlySolution_PreservesDocumentedArchivesWithoutDependingOnUntrackedPrototypes()
     {
         var repoRoot = ResolveRepoRoot();
-        var blazorCsproj = Path.Combine(repoRoot, "src", "StudioManager.CustomerPortal", "StudioManager.CustomerPortal.csproj");
-        Assert.True(File.Exists(blazorCsproj), "Untracked Blazor CustomerPortal project must stay preserved.");
+        var amendment = File.ReadAllText(Path.Combine(repoRoot, "docs", "v2.2", "frontend", "DESKTOP_ONLY_ARCHITECTURE_AMENDMENT.md"));
+        var solution = File.ReadAllText(Path.Combine(repoRoot, "StudioManager.sln"));
+        var desktopProject = File.ReadAllText(Path.Combine(WinFormsRoot(), "StudioManager.WinForms.csproj"));
+
+        // Archives remain documented; an untracked prototype in a different worktree is not a build prerequisite.
+        Assert.Contains("DEC-01-DESKTOP-ONLY", amendment, StringComparison.Ordinal);
+        Assert.Contains("archive/v2.2-phase02-nextjs", amendment, StringComparison.Ordinal);
+        Assert.Contains("src/StudioManager.CustomerPortal/", amendment, StringComparison.Ordinal);
+        Assert.Contains("untracked", amendment, StringComparison.Ordinal);
+        Assert.DoesNotContain("StudioManager.CustomerPortal", solution, StringComparison.Ordinal);
+        Assert.DoesNotContain("Next.js", solution, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("StudioManager.WinForms", solution, StringComparison.Ordinal);
+        Assert.Contains("<UseWindowsForms>true</UseWindowsForms>", desktopProject, StringComparison.Ordinal);
     }
 
     [Fact]

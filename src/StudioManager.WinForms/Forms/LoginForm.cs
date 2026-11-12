@@ -534,7 +534,6 @@ public sealed class LoginForm : Form
         _login.Text = "Đang xác thực...";
         _login.Refresh();
 
-        var stage = "Xác thực đăng nhập";
 
         try
         {
@@ -547,7 +546,6 @@ public sealed class LoginForm : Form
                 return;
             }
 
-            _app.Session = result.Data;
 
             var secRole = result.Data.VaiTro == VaiTro.QuanTriVien
                 ? UserSecurityRole.Admin
@@ -561,33 +559,32 @@ public sealed class LoginForm : Form
                 IsDemoSession: false));
             if (!route.IsAllowed)
             {
-                _app.Session = null;
+                _app.Auth.SignOut();
                 ShowError(route.BlockReason ?? "Tài khoản chưa được phép truy cập.");
                 return;
             }
 
             if (result.Data.PhaiDoiMatKhau)
             {
-                stage = "Đổi mật khẩu bảo mật lần đầu";
                 using var change = new ChangePasswordForm(_app, result.Data);
                 if (change.ShowDialog(this) != DialogResult.OK)
                 {
-                    _app.Session = null;
+                    _app.Auth.SignOut();
                     _password.Clear();
                     ShowError("Bạn cần hoàn tất đổi mật khẩu bảo mật trước khi truy cập hệ thống.");
                     _password.Focus();
                     return;
                 }
-                _app.Session = result.Data with { PhaiDoiMatKhau = false };
+                if (_app.Session is null || _app.Session.PhaiDoiMatKhau)
+                    throw new UnauthorizedAccessException();
             }
 
             Hide();
 
-            stage = "Khởi tạo không gian làm việc";
             using var initialization = new ApplicationInitializationForm(_app);
             if (initialization.ShowDialog() != DialogResult.OK || initialization.DashboardData is null)
             {
-                _app.Session = null;
+                _app.Auth.SignOut();
                 _password.Clear();
                 RestoreLoginWindow();
                 ShowError(!string.IsNullOrWhiteSpace(initialization.LastErrorMessage)
@@ -597,13 +594,11 @@ public sealed class LoginForm : Form
                 return;
             }
 
-            stage = "Khởi tạo giao diện chính (MainForm)";
             using var main = new MainForm(_app, initialization.DashboardData);
 
-            stage = "Hiển thị bàn làm việc chính";
             main.ShowDialog();
 
-            _app.Session = null;
+            _app.Auth.SignOut();
             _password.Clear();
             ClearError();
             RestoreLoginWindow();
@@ -611,19 +606,16 @@ public sealed class LoginForm : Form
         }
         catch (Exception ex)
         {
-            _app.Session = null;
+            _app.Auth.SignOut();
             RestoreLoginWindow();
-            Ui.LogError($"LoginForm.LoginAsync [{stage}]", ex);
-
-            var errorMsg = Ui.IsDatabaseException(ex)
-                ? "Không thể kết nối cơ sở dữ liệu SQL Server. Vui lòng kiểm tra dịch vụ SQL và thử lại."
-                : Ui.FormatRuntimeError(stage, ex);
+            var errorMsg = Ui.ReportError("LoginForm.LoginAsync", ex);
 
             ShowError(errorMsg);
             _password.Focus();
         }
         finally
         {
+            _app.Auth.SignOut();
             _isAuthenticating = false;
             if (!IsDisposed)
             {

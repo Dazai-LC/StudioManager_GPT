@@ -868,7 +868,7 @@ public sealed class CrudPage : UserControl
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("CrudPage", ex));
         }
     }
 
@@ -1104,7 +1104,7 @@ public sealed class CrudPage : UserControl
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("CrudPage", ex));
         }
     }
 

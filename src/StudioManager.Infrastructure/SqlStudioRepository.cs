@@ -25,7 +25,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     public async Task<TaiKhoan?> FindAccountAsync(string username, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT tk.TaiKhoanId,tk.NhanVienId,tk.TenDangNhap,tk.MatKhauHash,tk.VaiTro,tk.TrangThai,tk.PhaiDoiMatKhau,
+            SELECT tk.TaiKhoanId,tk.NhanVienId,tk.TenDangNhap,tk.MatKhauHash,tk.VaiTro,CASE WHEN tk.TrangThai='HOAT_DONG' AND (nv.NhanVienId IS NULL OR nv.TrangThai='DANG_LAM') THEN 'HOAT_DONG' ELSE 'BI_KHOA' END,tk.PhaiDoiMatKhau,
                    COALESCE(nv.HoTen,tk.TenDangNhap) HoTen
             FROM TaiKhoan tk LEFT JOIN NhanVien nv ON nv.NhanVienId=tk.NhanVienId
             WHERE tk.TenDangNhap=@Username
@@ -40,7 +40,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     public async Task<TaiKhoan?> GetAccountByIdAsync(int accountId, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT tk.TaiKhoanId,tk.NhanVienId,tk.TenDangNhap,tk.MatKhauHash,tk.VaiTro,tk.TrangThai,tk.PhaiDoiMatKhau,
+            SELECT tk.TaiKhoanId,tk.NhanVienId,tk.TenDangNhap,tk.MatKhauHash,tk.VaiTro,CASE WHEN tk.TrangThai='HOAT_DONG' AND (nv.NhanVienId IS NULL OR nv.TrangThai='DANG_LAM') THEN 'HOAT_DONG' ELSE 'BI_KHOA' END,tk.PhaiDoiMatKhau,
                    COALESCE(nv.HoTen,tk.TenDangNhap) HoTen
             FROM TaiKhoan tk LEFT JOIN NhanVien nv ON nv.NhanVienId=tk.NhanVienId
             WHERE tk.TaiKhoanId=@Id";
@@ -61,14 +61,15 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await tx.CommitAsync(ct);
     }
 
-    public async Task<Result> ChangeOwnPasswordAsync(int accountId, string passwordHash, CancellationToken ct = default)
+    public async Task<Result> ChangeOwnPasswordAsync(int accountId, string expectedPasswordHash, string passwordHash, CancellationToken ct = default)
     {
         try
         {
             await using var cn = Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
-            await using var cmd = new SqlCommand("UPDATE TaiKhoan SET MatKhauHash=@Hash,PhaiDoiMatKhau=0,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id AND TrangThai='HOAT_DONG'", cn,tx);
+            await using var cmd = new SqlCommand("UPDATE tk SET MatKhauHash=@Hash,PhaiDoiMatKhau=0,UpdatedAt=GETDATE() FROM TaiKhoan tk WHERE TaiKhoanId=@Id AND TrangThai='HOAT_DONG' AND MatKhauHash COLLATE Latin1_General_100_BIN2=@ExpectedHash COLLATE Latin1_General_100_BIN2 AND NOT EXISTS(SELECT 1 FROM NhanVien nv WHERE nv.NhanVienId=tk.NhanVienId AND nv.TrangThai<>'DANG_LAM')", cn,tx);
             cmd.Parameters.Add("@Hash", SqlDbType.VarChar, 500).Value = passwordHash; cmd.Parameters.AddWithValue("@Id", accountId);
-            if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("NOT_FOUND", "Tài khoản không tồn tại hoặc đã bị khóa.");
+            cmd.Parameters.Add("@ExpectedHash", SqlDbType.NVarChar, 255).Value = expectedPasswordHash;
+            if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("SESSION_INVALID", "Tài khoản đã thay đổi hoặc không còn hoạt động. Vui lòng đăng nhập lại.");
             await AuditAsync(cn,tx,new UserSession(accountId,"", "",VaiTro.NhanVien),"DOI_MAT_KHAU","TaiKhoan",accountId.ToString(),null,"PhaiDoiMatKhau=0",null,ct);
             await tx.CommitAsync(ct);return Result.Ok("Đổi mật khẩu thành công.");
         }
@@ -135,6 +136,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+            await RequireBookingAllocationAsync(cn, tx, input, ct);
+
             const string conflict="SELECT COUNT(1) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE TrangThai<>'DA_HUY' AND BatDau<@End AND KetThuc>@Start AND (NhiepAnhGiaId=@N OR PhongChupId=@P)";
             await using(var c=new SqlCommand(conflict,cn,tx)){c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);if(Convert.ToInt32(await c.ExecuteScalarAsync(ct))>0)throw new InvalidOperationException("Lịch bị trùng.");}
             var code=$"LC{DateTime.Now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
@@ -153,8 +157,47 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
-            const string oldSql="SELECT CONCAT(KhachHangId,'|',GoiChupId,'|',CONVERT(varchar(19),BatDau,126),'|',CONVERT(varchar(19),KetThuc,126),'|',NhiepAnhGiaId,'|',PhongChupId) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id";
-            var old=await ScalarAsync<string>(cn,tx,oldSql,id,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+            await RequireBookingAllocationAsync(cn, tx, input, ct);
+            BookingPackageSnapshot originalSnapshot;
+            string old;
+            string currentState;
+            const string oldSql = "SELECT GoiChupId,TenGoiChot,GiaGoiChot,TrangThai,KhachHangId,BatDau,KetThuc,NhiepAnhGiaId,PhongChupId FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id";
+            await using (var read = new SqlCommand(oldSql, cn, tx))
+            {
+                read.Parameters.AddWithValue("@Id", id);
+                await using var reader = await read.ExecuteReaderAsync(ct);
+                if (!await reader.ReadAsync(ct)) return Result.Fail("NOT_FOUND", "Không tìm thấy lịch.");
+                originalSnapshot = new(reader.GetInt32(0), reader.GetString(1), reader.GetDecimal(2));
+                currentState = reader.GetString(3);
+                old = JsonSerializer.Serialize(new
+                {
+                    GoiChupId = originalSnapshot.PackageId, TenGoiChot = originalSnapshot.Name, GiaGoiChot = originalSnapshot.Price,
+                    TrangThai = currentState, KhachHangId = reader.GetInt64(4), BatDau = reader.GetDateTime(5), KetThuc = reader.GetDateTime(6),
+                    NhiepAnhGiaId = reader.GetInt32(7), PhongChupId = reader.GetInt32(8)
+                });
+            }
+            if (currentState is "HOAN_THANH" or "DA_HUY") return Result.Fail("FINAL", "Không thể sửa lịch đã hoàn thành hoặc đã hủy.");
+            if (currentState != "DA_DAT_LICH" && user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Nhân viên chỉ được sửa lịch đang ở trạng thái Đã đặt lịch.");
+            if (currentState != "DA_DAT_LICH" && string.IsNullOrWhiteSpace(reason)) return Result.Fail("REASON_REQUIRED", "Quản trị viên phải nhập lý do hiệu chỉnh ngoại lệ.");
+            if (!BusinessRules.KhoangThoiGianHopLe(input.BatDau, input.KetThuc)) return Result.Fail("INVALID_TIME", "Giờ kết thúc phải lớn hơn giờ bắt đầu.");
+
+            BookingPackageSnapshot? catalogQuote = null;
+            var packageActive = false;
+            if (input.PackageQuote is not null)
+            {
+                await using var quoteCommand = new SqlCommand("SELECT GoiChupId,TenGoiChup,GiaGoi,TrangThai FROM GoiChup WITH(UPDLOCK,HOLDLOCK) WHERE GoiChupId=@G", cn, tx);
+                quoteCommand.Parameters.AddWithValue("@G", input.GoiChupId);
+                await using var quoteReader = await quoteCommand.ExecuteReaderAsync(ct);
+                if (await quoteReader.ReadAsync(ct))
+                {
+                    catalogQuote = new(quoteReader.GetInt32(0), quoteReader.GetString(1), quoteReader.GetDecimal(2));
+                    packageActive = quoteReader.GetString(3) == "DANG_AP_DUNG";
+                }
+            }
+            var selectedSnapshot = BookingPackageSnapshotPolicy.Resolve(originalSnapshot, input.GoiChupId, input.PackageQuote, catalogQuote, packageActive);
+            if (!selectedSnapshot.Success || selectedSnapshot.Data is null) return Result.Fail(selectedSnapshot.Code, selectedSnapshot.Message);
+            var snapshot = selectedSnapshot.Data;
             const string conflict="SELECT COUNT(1) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId<>@Id AND TrangThai<>'DA_HUY' AND BatDau<@End AND KetThuc>@Start AND (NhiepAnhGiaId=@N OR PhongChupId=@P)";
             await using(var c=new SqlCommand(conflict,cn,tx)){c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);if(Convert.ToInt32(await c.ExecuteScalarAsync(ct))>0)return Result.Fail("CONFLICT","Nhiếp ảnh gia hoặc phòng chụp đã có lịch.");}
             const string resourceConflict=@";WITH Mine AS (
@@ -169,10 +212,12 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
                       AND other.BatDauSuDung<@End AND other.KetThucSuDung>@Start) used
                 WHERE m.SoLuong+COALESCE(used.DaDung,0)>t.TongSoLuong";
             await using(var checkResources=new SqlCommand(resourceConflict,cn,tx)){checkResources.Parameters.AddWithValue("@Id",id);checkResources.Parameters.AddWithValue("@Start",input.BatDau);checkResources.Parameters.AddWithValue("@End",input.KetThuc);var resource=(string?)await checkResources.ExecuteScalarAsync(ct);if(resource is not null)return Result.Fail("RESOURCE_CONFLICT",$"Tài nguyên '{resource}' không đủ cho thời gian lịch mới.");}
-            const string update=@"UPDATE l SET KhachHangId=@K,GoiChupId=g.GoiChupId,TenGoiChot=g.TenGoiChup,GiaGoiChot=g.GiaGoi,BatDau=@Start,KetThuc=@End,NhiepAnhGiaId=@N,PhongChupId=@P,GhiChu=@Note,UpdatedBy=@User,UpdatedAt=GETDATE() FROM LichChup l JOIN GoiChup g ON g.GoiChupId=@G WHERE l.LichChupId=@Id AND g.TrangThai='DANG_AP_DUNG' AND g.GiaGoi+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam>=COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)";
-            await using(var c=new SqlCommand(update,cn,tx)){c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@K",input.KhachHangId);c.Parameters.AddWithValue("@G",input.GoiChupId);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);c.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);c.Parameters.AddWithValue("@User",user.TaiKhoanId);if(await c.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("LIMIT","Gói không khả dụng hoặc tổng mới thấp hơn tiền đã thu.");}
+            const string update=@"UPDATE l SET KhachHangId=@K,GoiChupId=@G,TenGoiChot=@SnapshotName,GiaGoiChot=@SnapshotPrice,BatDau=@Start,KetThuc=@End,NhiepAnhGiaId=@N,PhongChupId=@P,GhiChu=@Note,UpdatedBy=@User,UpdatedAt=GETDATE() FROM LichChup l WHERE l.LichChupId=@Id AND @SnapshotPrice+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam>=COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)";
+            await using(var c=new SqlCommand(update,cn,tx)){c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@K",input.KhachHangId);c.Parameters.AddWithValue("@G",snapshot.PackageId);c.Parameters.AddWithValue("@SnapshotName",snapshot.Name);c.Parameters.AddWithValue("@SnapshotPrice",snapshot.Price);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);c.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);c.Parameters.AddWithValue("@User",user.TaiKhoanId);if(await c.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("LIMIT","Tổng thanh toán mới thấp hơn tiền đã thu.");}
             await using(var syncResources=new SqlCommand("UPDATE PhanCongTaiNguyen SET BatDauSuDung=@Start,KetThucSuDung=@End,UpdatedBy=@User,UpdatedAt=GETDATE() WHERE LichChupId=@Id AND TrangThai='DA_PHAN_CONG'",cn,tx)){syncResources.Parameters.AddWithValue("@Start",input.BatDau);syncResources.Parameters.AddWithValue("@End",input.KetThuc);syncResources.Parameters.AddWithValue("@User",user.TaiKhoanId);syncResources.Parameters.AddWithValue("@Id",id);await syncResources.ExecuteNonQueryAsync(ct);}
-            await AuditAsync(cn,tx,user,"CAP_NHAT_LICH","LichChup",id.ToString(),old,JsonSerializer.Serialize(input),reason,ct);await AuditAsync(cn,tx,user,"DONG_BO_TAI_NGUYEN","LichChup",id.ToString(),null,$"{input.BatDau:O}|{input.KetThuc:O}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật lịch chụp.");
+            if (input.PackageQuote is not null)
+                await AuditAsync(cn, tx, user, originalSnapshot.PackageId == snapshot.PackageId ? "CHAP_NHAN_BAO_GIA" : "DOI_GOI_CHUP", "LichChup", id.ToString(), JsonSerializer.Serialize(originalSnapshot), JsonSerializer.Serialize(snapshot), input.PackageQuote.Reason.Trim(), ct);
+            await AuditAsync(cn,tx,user,"CAP_NHAT_LICH","LichChup",id.ToString(),old,JsonSerializer.Serialize(new { Input = input, AgreedPackage = snapshot }),reason,ct);await AuditAsync(cn,tx,user,"DONG_BO_TAI_NGUYEN","LichChup",id.ToString(),null,$"{input.BatDau:O}|{input.KetThuc:O}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật lịch chụp.");
         }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
@@ -181,12 +226,14 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+
             var current=await ScalarAsync<string>(cn,tx,"SELECT TrangThai FROM LichChup WITH(UPDLOCK) WHERE LichChupId=@Id",id,ct);
             if(current is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch chụp.");
             var from=DomainStatus(current); if(!BusinessRules.DuocChuyen(from,next))return Result.Fail("INVALID_STATE","Không thể bỏ qua hoặc quay lại bước tiến độ.");
             await ExecuteAsync(cn,tx,"UPDATE LichChup SET TrangThai=@Value,HoanThanhLuc=CASE WHEN @Value='HOAN_THANH' THEN GETDATE() ELSE HoanThanhLuc END,UpdatedBy=@User,UpdatedAt=GETDATE() WHERE LichChupId=@Id",id,user.TaiKhoanId,DbStatus(next),ct);
             await AuditAsync(cn,tx,user,"DOI_TRANG_THAI","LichChup",id.ToString(),current,DbStatus(next),reason,ct); await tx.CommitAsync(ct); return Result.Ok("Đã cập nhật tiến độ.");
-        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",ex.Message);}
+        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> CancelBookingAsync(long id, string reason, UserSession user, CancellationToken ct = default)
@@ -194,10 +241,18 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+
             var current=await ScalarAsync<string>(cn,tx,"SELECT TrangThai FROM LichChup WITH(UPDLOCK) WHERE LichChupId=@Id",id,ct); if(current is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");
+            if (string.IsNullOrWhiteSpace(reason)) return Result.Fail("REASON_REQUIRED", "Vui lòng nhập lý do hủy.");
+            var eligible = await ScalarAsync<int>(cn, tx,
+                user.VaiTro == VaiTro.QuanTriVien
+                    ? "SELECT COUNT(1) FROM LichChup WHERE LichChupId=@Id AND TrangThai NOT IN('HOAN_THANH','DA_HUY')"
+                    : "SELECT COUNT(1) FROM LichChup WHERE LichChupId=@Id AND TrangThai='DA_DAT_LICH' AND BatDau>GETDATE()", id, ct);
+            if (eligible != 1) return Result.Fail("INVALID_STATE", "Không thể hủy lịch ở trạng thái hoặc thời điểm hiện tại.");
             await ExecuteAsync(cn,tx,"UPDATE LichChup SET TrangThai='DA_HUY',LyDoHuy=@Value,HuyBoiTaiKhoanId=@User,HuyLuc=GETDATE(),UpdatedBy=@User,UpdatedAt=GETDATE() WHERE LichChupId=@Id; UPDATE PhanCongTaiNguyen SET TrangThai='DA_HUY',UpdatedBy=@User,UpdatedAt=GETDATE() WHERE LichChupId=@Id AND TrangThai='DA_PHAN_CONG'",id,user.TaiKhoanId,reason,ct);
             await AuditAsync(cn,tx,user,"HUY_LICH","LichChup",id.ToString(),current,"DA_HUY",reason,ct); await tx.CommitAsync(ct);return Result.Ok("Đã hủy lịch chụp.");
-        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",ex.Message);}
+        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> AddPaymentAsync(PaymentInput input, UserSession user, CancellationToken ct = default)
@@ -205,6 +260,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+
             const string q=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam-COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) ConLai FROM LichChup l WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@Id";
             await using var c=new SqlCommand(q,cn,tx);c.Parameters.AddWithValue("@Id",input.LichChupId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");var state=r.GetString(0);var remain=r.GetDecimal(1);await r.CloseAsync();
             if(state=="DA_HUY")return Result.Fail("CANCELLED","Lịch đã hủy không được thu thêm."); if(input.SoTien>remain)return Result.Fail("LIMIT",$"Số tiền tối đa có thể thu là {remain:N0} đ.");
@@ -212,7 +269,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             const string ins="INSERT ThanhToan(MaThanhToan,LichChupId,LoaiThu,SoTien,NgayGiaoDich,TaiKhoanThucHienId,GhiChu) VALUES(@Code,@Id,@Type,@Amount,GETDATE(),@User,@Note)";
             await using(var x=new SqlCommand(ins,cn,tx)){x.Parameters.AddWithValue("@Code",code);x.Parameters.AddWithValue("@Id",input.LichChupId);x.Parameters.AddWithValue("@Type",input.LoaiThu);x.Parameters.AddWithValue("@Amount",input.SoTien);x.Parameters.AddWithValue("@User",user.TaiKhoanId);x.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);await x.ExecuteNonQueryAsync(ct);}
             await AuditAsync(cn,tx,user,"THU_TIEN","LichChup",input.LichChupId.ToString(),null,$"{input.SoTien:0.##}",null,ct);await tx.CommitAsync(ct);return Result.Ok($"Đã ghi nhận {input.SoTien:N0} đ.");
-        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",ex.Message);}
+        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> AddRefundAsync(RefundInput input, UserSession user, CancellationToken ct = default)
@@ -221,6 +278,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, true, ct);
+
             const string q="SELECT l.TrangThai,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)-COALESCE((SELECT SUM(SoTien) FROM HoanTien WHERE LichChupId=l.LichChupId),0) FROM LichChup l WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@Id";
             await using var c=new SqlCommand(q,cn,tx);c.Parameters.AddWithValue("@Id",input.LichChupId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");var state=r.GetString(0);var max=r.GetDecimal(1);await r.CloseAsync();
             if(state!="DA_HUY")return Result.Fail("INVALID_STATE","Chỉ hoàn tiền cho lịch đã hủy.");if(input.SoTien>max)return Result.Fail("LIMIT",$"Số tiền tối đa có thể hoàn là {max:N0} đ.");
@@ -228,7 +287,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             const string ins="INSERT HoanTien(MaHoanTien,LichChupId,SoTien,NgayGiaoDich,TaiKhoanThucHienId,LyDo,GhiChu) VALUES(@Code,@Id,@Amount,GETDATE(),@User,@Reason,@Note)";
             await using(var x=new SqlCommand(ins,cn,tx)){x.Parameters.AddWithValue("@Code",code);x.Parameters.AddWithValue("@Id",input.LichChupId);x.Parameters.AddWithValue("@Amount",input.SoTien);x.Parameters.AddWithValue("@User",user.TaiKhoanId);x.Parameters.AddWithValue("@Reason",input.LyDo);x.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);await x.ExecuteNonQueryAsync(ct);}
             await AuditAsync(cn,tx,user,"HOAN_TIEN","LichChup",input.LichChupId.ToString(),null,$"{input.SoTien:0.##}",input.LyDo,ct);await tx.CommitAsync(ct);return Result.Ok("Đã ghi nhận hoàn tiền.");
-        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",ex.Message);}
+        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<DashboardData> GetDashboardAsync(CancellationToken ct = default)
@@ -336,6 +395,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         {
             if(user.VaiTro!=VaiTro.QuanTriVien&&entity!="KhachHang")return Result.Fail("FORBIDDEN","Bạn không có quyền thay đổi danh mục này.");
             var spec=SimpleEntitySpec.For(entity);await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            user = await RequireActorAsync(cn, tx, user, entity != "KhachHang", ct);
+
             var columns=spec.Columns.Where(c=>v.ContainsKey(c)).ToList();string sql;string? oldValue=null;long saved;
             if(id is null)
             {
@@ -359,22 +420,31 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         if(user.VaiTro!=VaiTro.QuanTriVien&&entity!="KhachHang")return Result.Fail("FORBIDDEN","Không đủ quyền.");
         if(entity=="KhachHang")
         {
-            try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);string? old;await using(var oldCmd=new SqlCommand("SELECT * FROM KhachHang WHERE KhachHangId=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id);old=(string?)await oldCmd.ExecuteScalarAsync(ct);}if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy khách hàng.");await using var customerCmd=new SqlCommand("DELETE FROM KhachHang WHERE KhachHangId=@Id AND NOT EXISTS(SELECT 1 FROM LichChup WHERE KhachHangId=@Id)",cn,tx);customerCmd.Parameters.AddWithValue("@Id",id);if(await customerCmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("HAS_HISTORY","Khách hàng đã có lịch sử nên không thể xóa.");await AuditAsync(cn,tx,user,"XOA_KHACH_HANG","KhachHang",id.ToString(),old,null,null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã xóa khách hàng.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+            try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            user = await RequireActorAsync(cn, tx, user, entity != "KhachHang", ct);
+            string? old;await using(var oldCmd=new SqlCommand("SELECT * FROM KhachHang WHERE KhachHangId=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id);old=(string?)await oldCmd.ExecuteScalarAsync(ct);}if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy khách hàng.");await using var customerCmd=new SqlCommand("DELETE FROM KhachHang WHERE KhachHangId=@Id AND NOT EXISTS(SELECT 1 FROM LichChup WHERE KhachHangId=@Id)",cn,tx);customerCmd.Parameters.AddWithValue("@Id",id);if(await customerCmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("HAS_HISTORY","Khách hàng đã có lịch sử nên không thể xóa.");await AuditAsync(cn,tx,user,"XOA_KHACH_HANG","KhachHang",id.ToString(),old,null,null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã xóa khách hàng.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
         }
         if(entity=="TaiKhoan") return Result.Fail("USE_ACCOUNT_ACTION", "Hãy dùng thao tác khóa/mở khóa tài khoản.");
         var map=entity switch{"NhanVien"=>("NhanVienId","TrangThai","NGUNG_LAM"),"GoiChup"=>("GoiChupId","TrangThai","NGUNG_AP_DUNG"),"DichVu"=>("DichVuId","TrangThai","NGUNG_CUNG_CAP"),"PhongChup"=>("PhongChupId","TrangThai","NGUNG_SU_DUNG"),"TaiNguyen"=>("TaiNguyenId","TrangThai","NGUNG_SU_DUNG"),_=>throw new ArgumentOutOfRangeException(nameof(entity))};
-        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);string? old;await using(var oldCmd=new SqlCommand($"SELECT * FROM {entity} WHERE {map.Item1}=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id);old=(string?)await oldCmd.ExecuteScalarAsync(ct);}if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu.");await using var cmd=new SqlCommand($"UPDATE {entity} SET {map.Item2}=@S,UpdatedAt=GETDATE() WHERE {map.Item1}=@Id AND {map.Item2}<>@S",cn,tx);cmd.Parameters.AddWithValue("@S",map.Item3);cmd.Parameters.AddWithValue("@Id",id);if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("ALREADY_INACTIVE","Dữ liệu này đã ngừng sử dụng.");await AuditAsync(cn,tx,user,"NGUNG_SU_DUNG_DANH_MUC",entity,id.ToString(),old,map.Item3,null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã ngừng sử dụng dữ liệu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            user = await RequireActorAsync(cn, tx, user, entity != "KhachHang", ct);
+            string? old;await using(var oldCmd=new SqlCommand($"SELECT * FROM {entity} WHERE {map.Item1}=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id);old=(string?)await oldCmd.ExecuteScalarAsync(ct);}if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu.");await using var cmd=new SqlCommand($"UPDATE {entity} SET {map.Item2}=@S,UpdatedAt=GETDATE() WHERE {map.Item1}=@Id AND {map.Item2}<>@S",cn,tx);cmd.Parameters.AddWithValue("@S",map.Item3);cmd.Parameters.AddWithValue("@Id",id);if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("ALREADY_INACTIVE","Dữ liệu này đã ngừng sử dụng.");await AuditAsync(cn,tx,user,"NGUNG_SU_DUNG_DANH_MUC",entity,id.ToString(),old,map.Item3,null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã ngừng sử dụng dữ liệu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> CreateAccountAsync(string username,string passwordHash,int? employeeId,VaiTro role,UserSession user,CancellationToken ct=default)
     {
         if(user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Không đủ quyền.");
-        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);await using var cmd=new SqlCommand("INSERT TaiKhoan(NhanVienId,TenDangNhap,MatKhauHash,VaiTro,TrangThai,PhaiDoiMatKhau,CreatedAt,UpdatedAt) VALUES(@N,@U,@H,@R,'HOAT_DONG',1,GETDATE(),GETDATE()); SELECT CAST(SCOPE_IDENTITY() AS int)",cn,tx);AddNullable(cmd,"@N",employeeId);cmd.Parameters.AddWithValue("@U",username);cmd.Parameters.AddWithValue("@H",passwordHash);cmd.Parameters.AddWithValue("@R",role==VaiTro.QuanTriVien?"QUAN_TRI_VIEN":"NHAN_VIEN");var accountId=Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));await AuditAsync(cn,tx,user,"TAO_TAI_KHOAN","TaiKhoan",accountId.ToString(),null,JsonSerializer.Serialize(new{username,employeeId,role}),null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã tạo tài khoản.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            user = await RequireActorAsync(cn, tx, user, true, ct);
+            await using var cmd=new SqlCommand("INSERT TaiKhoan(NhanVienId,TenDangNhap,MatKhauHash,VaiTro,TrangThai,PhaiDoiMatKhau,CreatedAt,UpdatedAt) VALUES(@N,@U,@H,@R,'HOAT_DONG',1,GETDATE(),GETDATE()); SELECT CAST(SCOPE_IDENTITY() AS int)",cn,tx);AddNullable(cmd,"@N",employeeId);cmd.Parameters.AddWithValue("@U",username);cmd.Parameters.AddWithValue("@H",passwordHash);cmd.Parameters.AddWithValue("@R",role==VaiTro.QuanTriVien?"QUAN_TRI_VIEN":"NHAN_VIEN");var accountId=Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));await AuditAsync(cn,tx,user,"TAO_TAI_KHOAN","TaiKhoan",accountId.ToString(),null,JsonSerializer.Serialize(new{username,employeeId,role}),null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã tạo tài khoản.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
     public async Task<Result> ResetPasswordAsync(int accountId,string passwordHash,UserSession user,CancellationToken ct=default)
     {
+        if (accountId == user.TaiKhoanId) return Result.Fail("SELF_RESET", "Hãy dùng chức năng đổi mật khẩu của bạn.");
         if(user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Không đủ quyền.");
-        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);await using var cmd=new SqlCommand("UPDATE TaiKhoan SET MatKhauHash=@H,PhaiDoiMatKhau=1,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id",cn,tx);cmd.Parameters.AddWithValue("@H",passwordHash);cmd.Parameters.AddWithValue("@Id",accountId);if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("NOT_FOUND","Không tìm thấy tài khoản.");await AuditAsync(cn,tx,user,"RESET_MAT_KHAU","TaiKhoan",accountId.ToString(),null,"PhaiDoiMatKhau=1",null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã đặt lại mật khẩu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
+        try{await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            user = await RequireActorAsync(cn, tx, user, true, ct);
+            await using var cmd=new SqlCommand("UPDATE TaiKhoan SET MatKhauHash=@H,PhaiDoiMatKhau=1,UpdatedAt=GETDATE() WHERE TaiKhoanId=@Id",cn,tx);cmd.Parameters.AddWithValue("@H",passwordHash);cmd.Parameters.AddWithValue("@Id",accountId);if(await cmd.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("NOT_FOUND","Không tìm thấy tài khoản.");await AuditAsync(cn,tx,user,"RESET_MAT_KHAU","TaiKhoan",accountId.ToString(),null,"PhaiDoiMatKhau=1",null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã đặt lại mật khẩu.");}catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> ToggleAccountLockAsync(int accountId,UserSession user,CancellationToken ct=default)
@@ -384,6 +454,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         try
         {
             await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
+            user = await RequireActorAsync(cn, tx, user, true, ct);
+
             string? current;
             await using (var read=new SqlCommand("SELECT TrangThai FROM TaiKhoan WITH(UPDLOCK,HOLDLOCK) WHERE TaiKhoanId=@Id",cn,tx))
             {
@@ -421,6 +493,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+
             const string precheck=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(x.SoLuong*x.DonGiaChot) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId<>@D),0)+@Q*COALESCE((SELECT x.DonGiaChot FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D),d.DonGia)-l.TienGiam,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),d.TrangThai,CASE WHEN EXISTS(SELECT 1 FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D) THEN 1 ELSE 0 END FROM LichChup l WITH(UPDLOCK,HOLDLOCK) CROSS JOIN DichVu d WHERE l.LichChupId=@L AND d.DichVuId=@D";
             await using(var pre=new SqlCommand(precheck,cn,tx)){pre.Parameters.AddWithValue("@L",bookingId);pre.Parameters.AddWithValue("@D",serviceId);pre.Parameters.AddWithValue("@Q",quantity);await using var reader=await pre.ExecuteReaderAsync(ct);if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch hoặc dịch vụ.");var state=reader.GetString(0);var proposed=reader.GetDecimal(1);var paid=reader.GetDecimal(2);var active=reader.GetString(3)=="DANG_CUNG_CAP";var exists=reader.GetInt32(4)==1;if(state is "DA_HUY" or "HOAN_THANH")return Result.Fail("INVALID_STATE","Không thể thêm dịch vụ cho lịch đã kết thúc.");if(!exists&&!active)return Result.Fail("INACTIVE_SERVICE","Dịch vụ đã ngừng cung cấp, không thể thêm mới.");if(proposed<paid)return Result.Fail("LIMIT","Thao tác làm tổng thanh toán thấp hơn số tiền đã thu.");}
             const string sql=@"IF EXISTS(SELECT 1 FROM LichChupDichVu WHERE LichChupId=@L AND DichVuId=@D)
@@ -436,6 +510,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+
             const string check=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(x.SoLuong*x.DonGiaChot) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.LichChupDichVuId<>@Line),0)-l.TienGiam,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),CONCAT(s.DichVuId,'|',s.SoLuong,'|',s.DonGiaChot) FROM LichChup l JOIN LichChupDichVu s WITH(UPDLOCK,HOLDLOCK) ON s.LichChupId=l.LichChupId WHERE l.LichChupId=@Booking AND s.LichChupDichVuId=@Line";
             await using var cmd=new SqlCommand(check,cn,tx);cmd.Parameters.AddWithValue("@Booking",bookingId);cmd.Parameters.AddWithValue("@Line",bookingServiceId);await using var reader=await cmd.ExecuteReaderAsync(ct);
             if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy dòng dịch vụ.");var state=reader.GetString(0);var proposed=reader.GetDecimal(1);var paid=reader.GetDecimal(2);var old=reader.GetString(3);await reader.CloseAsync();
@@ -450,7 +526,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     {
         if(amount<0||amount>0&&string.IsNullOrWhiteSpace(reason))return Result.Fail("INVALID","Giảm giá phải hợp lệ và có lý do.");
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
-        try{var old=await ScalarAsync<string>(cn,tx,"SELECT CONCAT(TienGiam,'|',COALESCE(LyDoGiam,'')) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id",bookingId,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");const string sql=@"UPDATE l SET TienGiam=@A,LyDoGiam=@R,UpdatedBy=@U,UpdatedAt=GETDATE() FROM LichChup l CROSS APPLY(SELECT l.GiaGoiChot+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0) TamTinh) x CROSS APPLY(SELECT COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) DaThu) y WHERE l.LichChupId=@Id AND @A BETWEEN 0 AND x.TamTinh AND x.TamTinh-@A>=y.DaThu AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@A",amount);AddNullable(cmd,"@R",reason);cmd.Parameters.AddWithValue("@U",user.TaiKhoanId);cmd.Parameters.AddWithValue("@Id",bookingId);var n=await cmd.ExecuteNonQueryAsync(ct);if(n!=1)return Result.Fail("LIMIT","Giảm giá không hợp lệ, làm tổng tiền thấp hơn đã thu hoặc lịch đã kết thúc.");await AuditAsync(cn,tx,user,"CAP_NHAT_GIAM_GIA","LichChup",bookingId.ToString(),old,$"{amount}|{reason}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật giảm giá.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
+        try{
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+            var old=await ScalarAsync<string>(cn,tx,"SELECT CONCAT(TienGiam,'|',COALESCE(LyDoGiam,'')) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id",bookingId,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");const string sql=@"UPDATE l SET TienGiam=@A,LyDoGiam=@R,UpdatedBy=@U,UpdatedAt=GETDATE() FROM LichChup l CROSS APPLY(SELECT l.GiaGoiChot+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0) TamTinh) x CROSS APPLY(SELECT COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) DaThu) y WHERE l.LichChupId=@Id AND @A BETWEEN 0 AND x.TamTinh AND x.TamTinh-@A>=y.DaThu AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@A",amount);AddNullable(cmd,"@R",reason);cmd.Parameters.AddWithValue("@U",user.TaiKhoanId);cmd.Parameters.AddWithValue("@Id",bookingId);var n=await cmd.ExecuteNonQueryAsync(ct);if(n!=1)return Result.Fail("LIMIT","Giảm giá không hợp lệ, làm tổng tiền thấp hơn đã thu hoặc lịch đã kết thúc.");await AuditAsync(cn,tx,user,"CAP_NHAT_GIAM_GIA","LichChup",bookingId.ToString(),old,$"{amount}|{reason}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật giảm giá.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> AssignResourceAsync(long bookingId,int resourceId,int quantity,bool addRentalService,UserSession user,CancellationToken ct=default)
@@ -458,6 +536,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         if(quantity<=0)return Result.Fail("INVALID_QUANTITY","Số lượng phải lớn hơn 0.");await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+
             const string q=@"SELECT l.BatDau,l.KetThuc,t.TongSoLuong-COALESCE((SELECT SUM(p.SoLuong) FROM PhanCongTaiNguyen p WHERE p.TaiNguyenId=t.TaiNguyenId AND p.TrangThai='DA_PHAN_CONG' AND p.BatDauSuDung<l.KetThuc AND p.KetThucSuDung>l.BatDau),0) ConLai,t.DichVuThueId FROM LichChup l CROSS JOIN TaiNguyen t WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@L AND t.TaiNguyenId=@T AND t.TrangThai='HOAT_DONG' AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";
             DateTime start,end;int available;int? rentalServiceId;await using(var c=new SqlCommand(q,cn,tx)){c.Parameters.AddWithValue("@L",bookingId);c.Parameters.AddWithValue("@T",resourceId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Lịch hoặc tài nguyên không khả dụng.");start=r.GetDateTime(0);end=r.GetDateTime(1);available=r.GetInt32(2);rentalServiceId=r.IsDBNull(3)?null:r.GetInt32(3);}if(quantity>available)return Result.Fail("RESOURCE_LIMIT",$"Chỉ còn {available} tài nguyên khả dụng.");
             if(addRentalService)
@@ -478,12 +558,16 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         if(next==TrangThaiPhanCong.DaPhanCong)return Result.Fail("INVALID_STATE","Chỉ có thể trả hoặc hủy phân công.");
         var dbNext=next==TrangThaiPhanCong.DaTra?"DA_TRA":"DA_HUY";
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
-        try{const string q="SELECT LichChupId,TrangThai FROM PhanCongTaiNguyen WITH(UPDLOCK,HOLDLOCK) WHERE PhanCongId=@Id";await using var read=new SqlCommand(q,cn,tx);read.Parameters.AddWithValue("@Id",assignmentId);await using var reader=await read.ExecuteReaderAsync(ct);if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy phân công tài nguyên.");var bookingId=reader.GetInt64(0);var current=reader.GetString(1);await reader.CloseAsync();if(current!="DA_PHAN_CONG")return Result.Fail("INVALID_STATE","Phân công này đã được xử lý.");await ExecuteAsync(cn,tx,"UPDATE PhanCongTaiNguyen SET TrangThai=@Value,UpdatedBy=@User,UpdatedAt=GETDATE() WHERE PhanCongId=@Id",assignmentId,user.TaiKhoanId,dbNext,ct);await AuditAsync(cn,tx,user,dbNext=="DA_TRA"?"TRA_TAI_NGUYEN":"HUY_PHAN_CONG","PhanCongTaiNguyen",assignmentId.ToString(),current,dbNext,null,ct);await tx.CommitAsync(ct);return Result.Ok(dbNext=="DA_TRA"?"Đã trả tài nguyên.":"Đã hủy phân công tài nguyên.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
+        try{
+            user = await RequireActorAsync(cn, tx, user, false, ct);
+            const string q="SELECT LichChupId,TrangThai FROM PhanCongTaiNguyen WITH(UPDLOCK,HOLDLOCK) WHERE PhanCongId=@Id";await using var read=new SqlCommand(q,cn,tx);read.Parameters.AddWithValue("@Id",assignmentId);await using var reader=await read.ExecuteReaderAsync(ct);if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy phân công tài nguyên.");var bookingId=reader.GetInt64(0);var current=reader.GetString(1);await reader.CloseAsync();if(current!="DA_PHAN_CONG")return Result.Fail("INVALID_STATE","Phân công này đã được xử lý.");await ExecuteAsync(cn,tx,"UPDATE PhanCongTaiNguyen SET TrangThai=@Value,UpdatedBy=@User,UpdatedAt=GETDATE() WHERE PhanCongId=@Id",assignmentId,user.TaiKhoanId,dbNext,ct);await AuditAsync(cn,tx,user,dbNext=="DA_TRA"?"TRA_TAI_NGUYEN":"HUY_PHAN_CONG","PhanCongTaiNguyen",assignmentId.ToString(),current,dbNext,null,ct);await tx.CommitAsync(ct);return Result.Ok(dbNext=="DA_TRA"?"Đã trả tài nguyên.":"Đã hủy phân công tài nguyên.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> BackupAsync(string path,UserSession user,CancellationToken ct=default)
     {
         if(user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Chỉ Quản trị viên được sao lưu dữ liệu.");
+        var access = await ValidateDatabaseAdminAsync(user, ct);
+        if (!access.Success) return access;
         var db=new SqlConnectionStringBuilder(connectionString).InitialCatalog;
         if(string.IsNullOrWhiteSpace(db))return Result.Fail("CONFIG","Chuỗi kết nối chưa có tên cơ sở dữ liệu.");
         var safeDb=db.Replace("]","]]",StringComparison.Ordinal);
@@ -496,6 +580,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     public async Task<Result> RestoreAsync(string path,UserSession user,CancellationToken ct=default)
     {
         if(user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Chỉ Quản trị viên được phục hồi dữ liệu.");
+        // Validate against the application DB before connecting to master or attempting recovery.
+        var access = await ValidateDatabaseAdminAsync(user, ct);
+        if (!access.Success) return access;
         var builder=new SqlConnectionStringBuilder(connectionString);var db=builder.InitialCatalog;if(string.IsNullOrWhiteSpace(db))return Result.Fail("CONFIG","Chuỗi kết nối chưa có tên cơ sở dữ liệu.");builder.InitialCatalog="master";var safeDb=db.Replace("]","]]",StringComparison.Ordinal);
         try
         {
@@ -522,6 +609,20 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand("SELECT CONVERT(nvarchar(4000), SERVERPROPERTY('InstanceDefaultBackupPath'))",cn);var value=await cmd.ExecuteScalarAsync(ct);return value is null or DBNull?null:value.ToString();
     }
 
+    private async Task<Result> ValidateDatabaseAdminAsync(UserSession user, CancellationToken ct)
+    {
+        try
+        {
+            await using var cn = Connection();
+            await cn.OpenAsync(ct);
+            await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(ct);
+            await RequireActorAsync(cn, tx, user, true, ct);
+            await tx.CommitAsync(ct);
+            return Result.Ok();
+        }
+        catch (Exception ex) { return Result.Fail(ex is UnauthorizedAccessException ? "SESSION_INVALID" : "DB_ERROR", Friendly(ex)); }
+    }
+
     private async Task<Result> AdminDatabaseAsync(string sql,string path,CancellationToken ct)
     {try{await using var cn=Connection();await cn.OpenAsync(ct);await using var cmd=new SqlCommand(sql,cn){CommandTimeout=300};cmd.Parameters.AddWithValue("@Path",path);await cmd.ExecuteNonQueryAsync(ct);return Result.Ok("Thao tác cơ sở dữ liệu đã hoàn tất.");}catch(SqlException ex) when(ex.Number==3201){return Result.Fail("BACKUP_PATH_DENIED","Dịch vụ SQL Server không có quyền ghi vào thư mục đã chọn. Hãy lưu tại thư mục Backup mặc định được mở sẵn, hoặc cấp quyền ghi cho tài khoản dịch vụ SQL Server.");}catch(Exception ex){return Result.Fail("DB_ADMIN",Friendly(ex));}}
     private async Task LogBackupAsync(string action,string path,Result result,UserSession user,CancellationToken ct)
@@ -533,7 +634,50 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     private static async Task AuditAsync(SqlConnection cn,SqlTransaction tx,UserSession u,string action,string type,string id,string? oldValue,string? newValue,string? reason,CancellationToken ct){await using var c=new SqlCommand("INSERT NhatKyHeThong(TaiKhoanId,HanhDong,LoaiDoiTuong,DoiTuongId,GiaTriCu,GiaTriMoi,LyDo,ThoiDiem) VALUES(@U,@A,@T,@I,@O,@N,@R,GETDATE())",cn,tx);c.Parameters.AddWithValue("@U",u.TaiKhoanId);c.Parameters.AddWithValue("@A",action);c.Parameters.AddWithValue("@T",type);c.Parameters.AddWithValue("@I",id);c.Parameters.AddWithValue("@O",(object?)oldValue??DBNull.Value);c.Parameters.AddWithValue("@N",(object?)newValue??DBNull.Value);c.Parameters.AddWithValue("@R",(object?)reason??DBNull.Value);await c.ExecuteNonQueryAsync(ct);}
     private static async Task<T?> ScalarAsync<T>(SqlConnection cn,SqlTransaction tx,string sql,long id,CancellationToken ct){await using var c=new SqlCommand(sql,cn,tx);c.Parameters.AddWithValue("@Id",id);var v=await c.ExecuteScalarAsync(ct);return v is null or DBNull?default:(T)v;}
     private static async Task ExecuteAsync(SqlConnection cn,SqlTransaction tx,string sql,long id,int user,string value,CancellationToken ct){await using var c=new SqlCommand(sql,cn,tx);c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@User",user);c.Parameters.AddWithValue("@Value",value);await c.ExecuteNonQueryAsync(ct);}
-    private static string Friendly(Exception ex)=>ex is SqlException s&&s.Number is 2601 or 2627?"Mã hoặc thông tin duy nhất đã tồn tại.":"Không thể lưu dữ liệu. "+ex.Message;
+    private static string Friendly(Exception ex)
+    {
+        var report = SafeDiagnostics.Capture(ex, "SqlStudioRepository", ex is SqlException sql ? sql.Number : null);
+        if (ex is SqlException duplicate && duplicate.Number is 2601 or 2627)
+            return $"Mã hoặc thông tin duy nhất đã tồn tại. Mã tra cứu: {report.CorrelationId}.";
+        if (ex is UnauthorizedAccessException)
+            return $"Phiên đăng nhập hoặc quyền truy cập đã thay đổi. Vui lòng đăng nhập lại. Mã tra cứu: {report.CorrelationId}.";
+        return report.Message;
+    }
+
+    private static async Task<UserSession> RequireActorAsync(SqlConnection cn, SqlTransaction tx, UserSession user, bool adminOnly, CancellationToken ct)
+    {
+        if (user.SessionToken == Guid.Empty || string.IsNullOrEmpty(user.CredentialStamp))
+            throw new UnauthorizedAccessException();
+        const string sql = @"SELECT tk.VaiTro,tk.MatKhauHash,tk.TenDangNhap
+            FROM TaiKhoan tk WITH(UPDLOCK,HOLDLOCK)
+            WHERE tk.TaiKhoanId=@Id AND tk.TrangThai='HOAT_DONG' AND tk.PhaiDoiMatKhau=0
+              AND NOT EXISTS(SELECT 1 FROM NhanVien nv WITH(HOLDLOCK) WHERE nv.NhanVienId=tk.NhanVienId AND nv.TrangThai<>'DANG_LAM')";
+        await using var command = new SqlCommand(sql, cn, tx);
+        command.Parameters.AddWithValue("@Id", user.TaiKhoanId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) throw new UnauthorizedAccessException();
+        var role = reader.GetString(0) switch
+        {
+            "QUAN_TRI_VIEN" => VaiTro.QuanTriVien,
+            "NHAN_VIEN" => VaiTro.NhanVien,
+            _ => throw new UnauthorizedAccessException()
+        };
+        if (role != user.VaiTro || (adminOnly && role != VaiTro.QuanTriVien) ||
+            InternalAuthorization.Stamp(reader.GetString(1)) != user.CredentialStamp)
+            throw new UnauthorizedAccessException();
+        return user with { TenDangNhap = reader.GetString(2), VaiTro = role };
+    }
+
+    private static async Task RequireBookingAllocationAsync(SqlConnection cn, SqlTransaction tx, BookingInput input, CancellationToken ct)
+    {
+        const string sql = @"SELECT CASE WHEN EXISTS(SELECT 1 FROM NhanVien WITH(UPDLOCK,HOLDLOCK) WHERE NhanVienId=@N AND ChucVu='NHIEP_ANH_GIA' AND TrangThai='DANG_LAM')
+            AND EXISTS(SELECT 1 FROM PhongChup WITH(UPDLOCK,HOLDLOCK) WHERE PhongChupId=@P AND TrangThai='HOAT_DONG') THEN 1 ELSE 0 END";
+        await using var command = new SqlCommand(sql, cn, tx);
+        command.Parameters.AddWithValue("@N", input.NhiepAnhGiaId);
+        command.Parameters.AddWithValue("@P", input.PhongChupId);
+        if (Convert.ToInt32(await command.ExecuteScalarAsync(ct)) != 1)
+            throw new InvalidOperationException("ALLOCATION_UNAVAILABLE");
+    }
 
     private sealed record SimpleEntitySpec(string IdColumn,string CodeColumn,string Prefix,string[] Columns)
     {

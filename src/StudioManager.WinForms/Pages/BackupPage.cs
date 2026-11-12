@@ -311,7 +311,7 @@ public sealed class BackupPage : UserControl
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("BackupPage", ex));
         }
     }
 }

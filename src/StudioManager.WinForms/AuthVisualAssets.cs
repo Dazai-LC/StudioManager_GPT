@@ -58,7 +58,7 @@ public static class AuthVisualAssets
                     candidatePath,
                     expectedRelative,
                     IsFallbackArtwork: true,
-                    DiagnosticMessage: $"Failed to decode '{candidatePath}': {ex.Message}");
+                    DiagnosticMessage: Controls.Ui.ReportError("AuthVisualAssets.Decode", ex));
             }
         }
 

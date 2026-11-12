@@ -9,6 +9,12 @@ public sealed class ChangePasswordForm : Form
     private readonly AppFacade _app;
     private readonly UserSession _session;
     private readonly ToolTip _toolTip = new();
+    private readonly TextBox _currentPassword = new()
+    {
+        PlaceholderText = "Nhập mật khẩu hiện tại", UseSystemPasswordChar = true,
+        Font = Theme.Font(10.0f), BorderStyle = BorderStyle.None,
+        BackColor = Theme.Primitives.Alabaster50, ForeColor = Theme.Text
+    };
 
     private readonly TextBox _password = new()
     {
@@ -97,6 +103,18 @@ public sealed class ChangePasswordForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56)); // 4: Policy Card
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // 5: Error Banner
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // 6: Save Button
+        var passwordRowOffset = _session.PhaiDoiMatKhau ? 0 : 1;
+        if (passwordRowOffset == 1)
+        {
+            ClientSize = new Size(556, 606);
+            MinimumSize = new Size(520, 590);
+            layout.RowCount++;
+            layout.RowStyles.Insert(2, new RowStyle(SizeType.Absolute, 64));
+            // Keep the extra credential field within the existing small desktop window.
+            var compactHeights = new[] { 44, 64, 64, 64, 64, 48, 40, 44 };
+            for (var row = 0; row < compactHeights.Length; row++) layout.RowStyles[row].Height = compactHeights[row];
+            layout.Controls.Add(PasswordField("MẬT KHẨU HIỆN TẠI", _currentPassword), 0, 2);
+        }
 
         var headerPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
         headerPanel.Paint += (_, e) =>
@@ -185,11 +203,11 @@ public sealed class ChangePasswordForm : Form
 
         layout.Controls.Add(headerPanel, 0, 0);
         layout.Controls.Add(introLabel, 0, 1);
-        layout.Controls.Add(PasswordField("MẬT KHẨU MỚI", _password), 0, 2);
-        layout.Controls.Add(PasswordField("XÁC NHẬN MẬT KHẨU MỚI", _confirmation), 0, 3);
-        layout.Controls.Add(policyCard, 0, 4);
-        layout.Controls.Add(_errorPanel, 0, 5);
-        layout.Controls.Add(_save, 0, 6);
+        layout.Controls.Add(PasswordField("MẬT KHẨU MỚI", _password), 0, 2 + passwordRowOffset);
+        layout.Controls.Add(PasswordField("XÁC NHẬN MẬT KHẨU MỚI", _confirmation), 0, 3 + passwordRowOffset);
+        layout.Controls.Add(policyCard, 0, 4 + passwordRowOffset);
+        layout.Controls.Add(_errorPanel, 0, 5 + passwordRowOffset);
+        layout.Controls.Add(_save, 0, 6 + passwordRowOffset);
 
         card.Controls.Add(layout);
         Controls.Add(card);
@@ -212,7 +230,9 @@ public sealed class ChangePasswordForm : Form
 
         try
         {
-            var result = await _app.Auth.ChangePasswordAsync(_session.TaiKhoanId, _password.Text, _confirmation.Text);
+            var result = _session.PhaiDoiMatKhau
+                ? await _app.Auth.CompleteRequiredPasswordChangeAsync(_password.Text, _confirmation.Text)
+                : await _app.Auth.ChangePasswordAsync(_currentPassword.Text, _password.Text, _confirmation.Text);
             if (!result.Success)
             {
                 ShowError(result.Message);
@@ -225,7 +245,7 @@ public sealed class ChangePasswordForm : Form
         }
         catch (Exception ex)
         {
-            ShowError("Không thể đổi mật khẩu: " + ex.Message);
+            ShowError(Ui.ReportError("ChangePasswordForm.Save", ex));
         }
         finally
         {

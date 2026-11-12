@@ -6,7 +6,13 @@ public enum ChucVu { TiepNhan, NhiepAnhGia, Khac }
 public enum LoaiTaiNguyen { ThietBi, TrangPhuc }
 public enum TrangThaiPhanCong { DaPhanCong, DaTra, DaHuy }
 
-public sealed record UserSession(int TaiKhoanId, string TenDangNhap, string HoTen, VaiTro VaiTro, bool PhaiDoiMatKhau = false);
+public sealed record UserSession(int TaiKhoanId, string TenDangNhap, string HoTen, VaiTro VaiTro, bool PhaiDoiMatKhau = false)
+{
+    // Issued by the internal backend context. Display fields alone never authenticate a caller.
+    public Guid SessionToken { get; init; }
+    public string CredentialStamp { get; init; } = "";
+    public override string ToString() => $"UserSession {{ AccountId = {TaiKhoanId}, Role = {VaiTro} }}";
+}
 public sealed record TaiKhoan(int Id, int? NhanVienId, string TenDangNhap, string MatKhauHash, VaiTro VaiTro, bool HoatDong, bool PhaiDoiMatKhau, string HoTen);
 public sealed record KhachHang(long Id, string Ma, string HoTen, string SoDienThoai, string? Email, string? DiaChi, string? GhiChu);
 public sealed record NhanVien(int Id, string Ma, string HoTen, string SoDienThoai, ChucVu ChucVu, bool DangLam, string? GhiChu);

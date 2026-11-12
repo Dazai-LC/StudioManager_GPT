@@ -294,7 +294,7 @@ public sealed class ReportsPage : UserControl
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("ReportsPage", ex));
         }
     }
 }

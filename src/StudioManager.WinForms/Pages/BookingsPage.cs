@@ -589,7 +589,7 @@ public sealed class BookingsPage : UserControl
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("BookingsPage", ex));
         }
     }
 
@@ -1537,6 +1537,7 @@ internal sealed class BookingDialog : Form
 {
     private readonly AppFacade _app;
     private readonly LichChup? _existing;
+    private readonly Dictionary<long, BookingPackageSnapshot> _packageQuotes = [];
     private readonly ComboBox _customer = new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
     private readonly ComboBox _package = new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
     private readonly ComboBox _photographer = new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
@@ -1729,7 +1730,7 @@ internal sealed class BookingDialog : Form
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("BookingsPage", ex));
         }
         finally
         {
@@ -1752,11 +1753,21 @@ internal sealed class BookingDialog : Form
                 _package.SelectedValue = (long)_existing.GoiChupId;
                 _photographer.SelectedValue = (long)_existing.NhiepAnhGiaId;
                 _room.SelectedValue = (long)_existing.PhongChupId;
+                // Use typed SQL values, never the culture-formatted price in a lookup label.
+                var rows = await _app.Administration.QueryGridAsync("GoiChup", null, _app.Session!);
+                foreach (var row in rows)
+                {
+                    if (row.TryGetValue("Trạng thái", out var state) && Equals(state, "DANG_AP_DUNG"))
+                    {
+                        var packageId = Convert.ToInt32(row["Id"]);
+                        _packageQuotes[packageId] = new(packageId, Convert.ToString(row["Tên gói"]) ?? "", Convert.ToDecimal(row["Giá"]));
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
-            Ui.Error(this, ex.Message);
+            Ui.Error(this, Ui.ReportError("BookingsPage", ex));
         }
     }
 
@@ -1778,7 +1789,29 @@ internal sealed class BookingDialog : Form
             return;
         }
 
-        Input = new(k.Id, (int)g.Id, _start.Value, _end.Value, (int)n.Id, (int)p.Id, string.IsNullOrWhiteSpace(_note.Text) ? null : _note.Text.Trim());
+        var input = new BookingInput(k.Id, (int)g.Id, _start.Value, _end.Value, (int)n.Id, (int)p.Id, string.IsNullOrWhiteSpace(_note.Text) ? null : _note.Text.Trim());
+        if (_existing is not null && g.Id != _existing.GoiChupId)
+        {
+            if (!_packageQuotes.TryGetValue(g.Id, out var quote))
+            {
+                Ui.Error(this, "Gói được chọn không còn áp dụng hoặc chưa tải được báo giá. Vui lòng mở lại lịch và chọn gói khác.");
+                return;
+            }
+            if (!AtelierNotificationService.Confirm(this, "Xác nhận đổi gói và báo giá",
+                    $"Gói đã chốt: {_existing.TenGoiChot} — {_existing.GiaGoiChot:N0} đ.\n" +
+                    $"Gói mới: {quote.Name} — {quote.Price:N0} đ.\n\n" +
+                    "Xác nhận áp dụng báo giá mới? Các dịch vụ bổ sung và giảm giá vẫn được kiểm tra theo số tiền đã thu.",
+                    confirmText: "Chấp nhận báo giá", cancelText: "Giữ lịch hiện tại")) return;
+            using var quoteReason = new TextPrompt("Lý do đổi gói chụp", "Nhập lý do đổi gói và chấp nhận báo giá mới:");
+            if (quoteReason.ShowDialog(this) != DialogResult.OK) return;
+            if (quoteReason.Value.Length > 500)
+            {
+                Ui.Error(this, "Lý do đổi gói dài tối đa 500 ký tự.");
+                return;
+            }
+            input = input with { PackageQuote = new(_existing.GoiChupId, _existing.GiaGoiChot, quote.Price, quoteReason.Value) };
+        }
+        Input = input;
         DialogResult = DialogResult.OK;
         Close();
     }
