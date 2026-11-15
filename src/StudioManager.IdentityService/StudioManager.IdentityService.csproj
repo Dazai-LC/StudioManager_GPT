@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../StudioManager.Application/StudioManager.Application.csproj" />
+    <ProjectReference Include="../StudioManager.Infrastructure/StudioManager.Infrastructure.csproj" />
+    <ProjectReference Include="../StudioManager.CustomerApi/StudioManager.CustomerApi.csproj" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
+  </ItemGroup>
+</Project>
