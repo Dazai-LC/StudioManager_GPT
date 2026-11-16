@@ -6,7 +6,7 @@ using StudioManager.Domain;
 
 namespace StudioManager.Infrastructure;
 
-public sealed class SqlStudioRepository(string connectionString) : IStudioRepository
+public sealed partial class SqlStudioRepository(string connectionString) : IStudioRepository
 {
     private SqlConnection Connection() => new(connectionString);
     private static string DbStatus(TrangThaiLich s) => s switch
@@ -84,9 +84,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
               COALESCE(dv.TienDV,0),COALESCE(tt.DaThu,0),COALESCE(ht.DaHoan,0)
             FROM LichChup l JOIN KhachHang kh ON kh.KhachHangId=l.KhachHangId JOIN NhanVien nv ON nv.NhanVienId=l.NhiepAnhGiaId
               JOIN PhongChup p ON p.PhongChupId=l.PhongChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoLuong*DonGiaChot) TienDV FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaHoan FROM HoanTien GROUP BY LichChupId) ht ON ht.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoLuong*DonGiaChot) AS decimal(32,4)) TienDV FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoTien) AS decimal(28,2)) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoTien) AS decimal(28,2)) DaHoan FROM HoanTien GROUP BY LichChupId) ht ON ht.LichChupId=l.LichChupId
             WHERE (@Q IS NULL OR l.MaLichChup LIKE '%'+@Q+'%' OR kh.HoTen LIKE N'%'+@Q+'%' OR kh.SoDienThoai LIKE '%'+@Q+'%')
               AND (@From IS NULL OR l.BatDau>=@From) AND (@To IS NULL OR l.BatDau<DATEADD(day,1,@To))
               AND (@Status IS NULL OR l.TrangThai=@Status) AND (@Photographer IS NULL OR l.NhiepAnhGiaId=@Photographer)
@@ -109,9 +109,9 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
               COALESCE(dv.TienDV,0),COALESCE(tt.DaThu,0),COALESCE(ht.DaHoan,0)
             FROM LichChup l JOIN KhachHang kh ON kh.KhachHangId=l.KhachHangId
               JOIN NhanVien nv ON nv.NhanVienId=l.NhiepAnhGiaId JOIN PhongChup p ON p.PhongChupId=l.PhongChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoLuong*DonGiaChot) TienDV FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaHoan FROM HoanTien GROUP BY LichChupId) ht ON ht.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoLuong*DonGiaChot) AS decimal(32,4)) TienDV FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoTien) AS decimal(28,2)) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoTien) AS decimal(28,2)) DaHoan FROM HoanTien GROUP BY LichChupId) ht ON ht.LichChupId=l.LichChupId
             WHERE l.LichChupId=@Id";
         await using var cn = Connection(); await cn.OpenAsync(ct); await using var cmd = new SqlCommand(sql, cn);
         cmd.Parameters.AddWithValue("@Id", id); await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -136,19 +136,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
-            user = await RequireActorAsync(cn, tx, user, false, ct);
-            await RequireBookingAllocationAsync(cn, tx, input, ct);
-
-            const string conflict="SELECT COUNT(1) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE TrangThai<>'DA_HUY' AND BatDau<@End AND KetThuc>@Start AND (NhiepAnhGiaId=@N OR PhongChupId=@P)";
-            await using(var c=new SqlCommand(conflict,cn,tx)){c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);if(Convert.ToInt32(await c.ExecuteScalarAsync(ct))>0)throw new InvalidOperationException("Lịch bị trùng.");}
-            var code=$"LC{DateTime.Now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
-            const string insert=@"
-              INSERT LichChup(MaLichChup,KhachHangId,GoiChupId,TenGoiChot,GiaGoiChot,BatDau,KetThuc,NhiepAnhGiaId,PhongChupId,TrangThai,TienGiam,GhiChu,CreatedBy,CreatedAt,UpdatedBy,UpdatedAt)
-              SELECT @Code,@K,g.GoiChupId,g.TenGoiChup,g.GiaGoi,@Start,@End,@N,@P,'DA_DAT_LICH',0,@Note,@User,GETDATE(),@User,GETDATE() FROM GoiChup g WHERE g.GoiChupId=@G AND g.TrangThai='DANG_AP_DUNG';
-              SELECT CAST(SCOPE_IDENTITY() AS bigint);
-              ";
-            long id; await using(var c=new SqlCommand(insert,cn,tx)){c.Parameters.AddWithValue("@Code",code);c.Parameters.AddWithValue("@K",input.KhachHangId);c.Parameters.AddWithValue("@G",input.GoiChupId);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);c.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);c.Parameters.AddWithValue("@User",user.TaiKhoanId);id=Convert.ToInt64(await c.ExecuteScalarAsync(ct));}
-            await AuditAsync(cn,tx,user,"TAO_LICH","LichChup",id.ToString(),null,JsonSerializer.Serialize(input),null,ct); await tx.CommitAsync(ct); return id;
+            var id = await CreateBookingWithinTransactionAsync(cn, tx, input, user, null, ct);
+            await tx.CommitAsync(ct); return id;
         } catch { await tx.RollbackAsync(ct); throw; }
     }
 
@@ -212,7 +201,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
                       AND other.BatDauSuDung<@End AND other.KetThucSuDung>@Start) used
                 WHERE m.SoLuong+COALESCE(used.DaDung,0)>t.TongSoLuong";
             await using(var checkResources=new SqlCommand(resourceConflict,cn,tx)){checkResources.Parameters.AddWithValue("@Id",id);checkResources.Parameters.AddWithValue("@Start",input.BatDau);checkResources.Parameters.AddWithValue("@End",input.KetThuc);var resource=(string?)await checkResources.ExecuteScalarAsync(ct);if(resource is not null)return Result.Fail("RESOURCE_CONFLICT",$"Tài nguyên '{resource}' không đủ cho thời gian lịch mới.");}
-            const string update=@"UPDATE l SET KhachHangId=@K,GoiChupId=@G,TenGoiChot=@SnapshotName,GiaGoiChot=@SnapshotPrice,BatDau=@Start,KetThuc=@End,NhiepAnhGiaId=@N,PhongChupId=@P,GhiChu=@Note,UpdatedBy=@User,UpdatedAt=GETDATE() FROM LichChup l WHERE l.LichChupId=@Id AND @SnapshotPrice+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam>=COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)";
+            const string update=@"UPDATE l SET KhachHangId=@K,GoiChupId=@G,TenGoiChot=@SnapshotName,GiaGoiChot=@SnapshotPrice,BatDau=@Start,KetThuc=@End,NhiepAnhGiaId=@N,PhongChupId=@P,GhiChu=@Note,UpdatedBy=@User,UpdatedAt=GETDATE() FROM LichChup l WHERE l.LichChupId=@Id AND @SnapshotPrice+COALESCE((SELECT CAST(SUM(SoLuong*DonGiaChot) AS decimal(32,4)) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam>=COALESCE((SELECT CAST(SUM(SoTien) AS decimal(28,2)) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)";
             await using(var c=new SqlCommand(update,cn,tx)){c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@K",input.KhachHangId);c.Parameters.AddWithValue("@G",snapshot.PackageId);c.Parameters.AddWithValue("@SnapshotName",snapshot.Name);c.Parameters.AddWithValue("@SnapshotPrice",snapshot.Price);c.Parameters.AddWithValue("@Start",input.BatDau);c.Parameters.AddWithValue("@End",input.KetThuc);c.Parameters.AddWithValue("@N",input.NhiepAnhGiaId);c.Parameters.AddWithValue("@P",input.PhongChupId);c.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);c.Parameters.AddWithValue("@User",user.TaiKhoanId);if(await c.ExecuteNonQueryAsync(ct)!=1)return Result.Fail("LIMIT","Tổng thanh toán mới thấp hơn tiền đã thu.");}
             await using(var syncResources=new SqlCommand("UPDATE PhanCongTaiNguyen SET BatDauSuDung=@Start,KetThucSuDung=@End,UpdatedBy=@User,UpdatedAt=GETDATE() WHERE LichChupId=@Id AND TrangThai='DA_PHAN_CONG'",cn,tx)){syncResources.Parameters.AddWithValue("@Start",input.BatDau);syncResources.Parameters.AddWithValue("@End",input.KetThuc);syncResources.Parameters.AddWithValue("@User",user.TaiKhoanId);syncResources.Parameters.AddWithValue("@Id",id);await syncResources.ExecuteNonQueryAsync(ct);}
             if (input.PackageQuote is not null)
@@ -257,32 +246,23 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
 
     public async Task<Result> AddPaymentAsync(PaymentInput input, UserSession user, CancellationToken ct = default)
     {
-        await using var cn=Connection(); await cn.OpenAsync(ct); await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
-        try
-        {
-            user = await RequireActorAsync(cn, tx, user, false, ct);
-
-            const string q=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0)-l.TienGiam-COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) ConLai FROM LichChup l WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@Id";
-            await using var c=new SqlCommand(q,cn,tx);c.Parameters.AddWithValue("@Id",input.LichChupId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");var state=r.GetString(0);var remain=r.GetDecimal(1);await r.CloseAsync();
-            if(state=="DA_HUY")return Result.Fail("CANCELLED","Lịch đã hủy không được thu thêm."); if(input.SoTien>remain)return Result.Fail("LIMIT",$"Số tiền tối đa có thể thu là {remain:N0} đ.");
-            var code=$"TT{DateTime.Now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
-            const string ins="INSERT ThanhToan(MaThanhToan,LichChupId,LoaiThu,SoTien,NgayGiaoDich,TaiKhoanThucHienId,GhiChu) VALUES(@Code,@Id,@Type,@Amount,GETDATE(),@User,@Note)";
-            await using(var x=new SqlCommand(ins,cn,tx)){x.Parameters.AddWithValue("@Code",code);x.Parameters.AddWithValue("@Id",input.LichChupId);x.Parameters.AddWithValue("@Type",input.LoaiThu);x.Parameters.AddWithValue("@Amount",input.SoTien);x.Parameters.AddWithValue("@User",user.TaiKhoanId);x.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);await x.ExecuteNonQueryAsync(ct);}
-            await AuditAsync(cn,tx,user,"THU_TIEN","LichChup",input.LichChupId.ToString(),null,$"{input.SoTien:0.##}",null,ct);await tx.CommitAsync(ct);return Result.Ok($"Đã ghi nhận {input.SoTien:N0} đ.");
-        }catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
+        // Existing callers keep the same ledger/API. Explicit methods use the receipt-aware path.
+        var result=await PostPaymentCoreAsync(input,user,input.PhuongThucThu is not null || input.YeuCauThuId!=Guid.Empty,ct);
+        return new(result.Success,result.Code,result.Message);
     }
 
     public async Task<Result> AddRefundAsync(RefundInput input, UserSession user, CancellationToken ct = default)
     {
         if(user.VaiTro!=VaiTro.QuanTriVien)return Result.Fail("FORBIDDEN","Không đủ quyền.");
+        if (input.SoTien <= 0 || !BookingMoneyPolicy.FitsLedger(input.SoTien)) return Result.Fail("INVALID_PRECISION", "Khoản hoàn phải dương, chính xác đến 0,01 đ và trong giới hạn sổ thu.");
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
             user = await RequireActorAsync(cn, tx, user, true, ct);
 
-            const string q="SELECT l.TrangThai,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)-COALESCE((SELECT SUM(SoTien) FROM HoanTien WHERE LichChupId=l.LichChupId),0) FROM LichChup l WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@Id";
+            const string q="SELECT l.TrangThai,COALESCE((SELECT CAST(SUM(SoTien) AS decimal(28,2)) FROM ThanhToan WHERE LichChupId=l.LichChupId),0)-COALESCE((SELECT CAST(SUM(SoTien) AS decimal(28,2)) FROM HoanTien WHERE LichChupId=l.LichChupId),0) FROM LichChup l WITH(UPDLOCK,HOLDLOCK) WHERE l.LichChupId=@Id";
             await using var c=new SqlCommand(q,cn,tx);c.Parameters.AddWithValue("@Id",input.LichChupId);await using var r=await c.ExecuteReaderAsync(ct);if(!await r.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");var state=r.GetString(0);var max=r.GetDecimal(1);await r.CloseAsync();
-            if(state!="DA_HUY")return Result.Fail("INVALID_STATE","Chỉ hoàn tiền cho lịch đã hủy.");if(input.SoTien>max)return Result.Fail("LIMIT",$"Số tiền tối đa có thể hoàn là {max:N0} đ.");
+            if(state!="DA_HUY")return Result.Fail("INVALID_STATE","Chỉ hoàn tiền cho lịch đã hủy.");if(input.SoTien>max)return Result.Fail("LIMIT",$"Số tiền tối đa có thể hoàn là {max:#,0.####} đ.");
             var code=$"HT{DateTime.Now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
             const string ins="INSERT HoanTien(MaHoanTien,LichChupId,SoTien,NgayGiaoDich,TaiKhoanThucHienId,LyDo,GhiChu) VALUES(@Code,@Id,@Amount,GETDATE(),@User,@Reason,@Note)";
             await using(var x=new SqlCommand(ins,cn,tx)){x.Parameters.AddWithValue("@Code",code);x.Parameters.AddWithValue("@Id",input.LichChupId);x.Parameters.AddWithValue("@Amount",input.SoTien);x.Parameters.AddWithValue("@User",user.TaiKhoanId);x.Parameters.AddWithValue("@Reason",input.LyDo);x.Parameters.AddWithValue("@Note",(object?)input.GhiChu??DBNull.Value);await x.ExecuteNonQueryAsync(ct);}
@@ -300,7 +280,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         var debt=bookings.Where(x=>x.TrangThai!=TrangThaiLich.DaHuy).Sum(x=>x.ConLai);
         var statuses=bookings.GroupBy(x=>x.TrangThai.HienThi()).ToDictionary(x=>x.Key,x=>x.Count());
         await using var cn=Connection();await cn.OpenAsync(ct);var revenue=new List<(string,decimal)>();
-        const string sql=@"SELECT FORMAT(NgayGiaoDich,'MM/yyyy'),SUM(SoTien)
+        const string sql=@"SELECT FORMAT(NgayGiaoDich,'MM/yyyy'),CAST(SUM(SoTien) AS decimal(28,2))
             FROM (
                 SELECT NgayGiaoDich,SoTien FROM ThanhToan
                 UNION ALL
@@ -317,13 +297,13 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     {
         const string sql = @"
             SELECT COALESCE(SUM(l.GiaGoiChot + COALESCE(dv.TienDichVu, 0) - l.TienGiam), 0)
-            FROM LichChup l LEFT JOIN (SELECT LichChupId, SUM(SoLuong * DonGiaChot) TienDichVu FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
+            FROM LichChup l LEFT JOIN (SELECT LichChupId, CAST(SUM(SoLuong * DonGiaChot) AS decimal(32,4)) TienDichVu FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
             WHERE l.TrangThai='HOAN_THANH' AND l.HoanThanhLuc>=@F AND l.HoanThanhLuc<DATEADD(day,1,@T);
-            SELECT COALESCE(SUM(SoTien),0) FROM ThanhToan WHERE NgayGiaoDich>=@F AND NgayGiaoDich<DATEADD(day,1,@T);
-            SELECT COALESCE(SUM(SoTien),0) FROM HoanTien WHERE NgayGiaoDich>=@F AND NgayGiaoDich<DATEADD(day,1,@T);
+            SELECT COALESCE(CAST(SUM(SoTien) AS decimal(28,2)),0) FROM ThanhToan WHERE NgayGiaoDich>=@F AND NgayGiaoDich<DATEADD(day,1,@T);
+            SELECT COALESCE(CAST(SUM(SoTien) AS decimal(28,2)),0) FROM HoanTien WHERE NgayGiaoDich>=@F AND NgayGiaoDich<DATEADD(day,1,@T);
             SELECT COALESCE(SUM(l.GiaGoiChot + COALESCE(dv.TienDichVu,0) - l.TienGiam - COALESCE(tt.DaThu,0)),0)
-            FROM LichChup l LEFT JOIN (SELECT LichChupId,SUM(SoLuong*DonGiaChot) TienDichVu FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
-              LEFT JOIN (SELECT LichChupId,SUM(SoTien) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId WHERE l.TrangThai<>'DA_HUY';
+            FROM LichChup l LEFT JOIN (SELECT LichChupId,CAST(SUM(SoLuong*DonGiaChot) AS decimal(32,4)) TienDichVu FROM LichChupDichVu GROUP BY LichChupId) dv ON dv.LichChupId=l.LichChupId
+              LEFT JOIN (SELECT LichChupId,CAST(SUM(SoTien) AS decimal(28,2)) DaThu FROM ThanhToan GROUP BY LichChupId) tt ON tt.LichChupId=l.LichChupId WHERE l.TrangThai<>'DA_HUY';
             SELECT COUNT(1) FROM LichChup WHERE BatDau>=@F AND BatDau<DATEADD(day,1,@T);
             SELECT COUNT(1) FROM LichChup WHERE TrangThai='HOAN_THANH' AND HoanThanhLuc>=@F AND HoanThanhLuc<DATEADD(day,1,@T);
             SELECT COUNT(1) FROM LichChup WHERE TrangThai='DA_HUY' AND HuyLuc>=@F AND HuyLuc<DATEADD(day,1,@T);
@@ -394,6 +374,8 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         try
         {
             if(user.VaiTro!=VaiTro.QuanTriVien&&entity!="KhachHang")return Result.Fail("FORBIDDEN","Bạn không có quyền thay đổi danh mục này.");
+            var priceValidation = CatalogPricePolicy.Validate(entity, v);
+            if (!priceValidation.Success) return priceValidation;
             var spec=SimpleEntitySpec.For(entity);await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(ct);
             user = await RequireActorAsync(cn, tx, user, entity != "KhachHang", ct);
 
@@ -402,14 +384,14 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
             {
                 var code=spec.Prefix+Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
                 sql=$"INSERT {entity}({spec.CodeColumn},{string.Join(',',columns)},CreatedAt,UpdatedAt) VALUES(@Code,{string.Join(',',columns.Select(x=>"@"+x))},GETDATE(),GETDATE()); SELECT CAST(SCOPE_IDENTITY() AS bigint)";
-                await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@Code",code);foreach(var col in columns)cmd.Parameters.AddWithValue("@"+col,v[col]??DBNull.Value);saved=Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
+                await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@Code",code);foreach(var col in columns)AddCatalogValue(cmd,entity,col,v[col]);saved=Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
             }
             else
             {
                 await using(var oldCmd=new SqlCommand($"SELECT * FROM {entity} WHERE {spec.IdColumn}=@Id FOR JSON PATH,WITHOUT_ARRAY_WRAPPER",cn,tx)){oldCmd.Parameters.AddWithValue("@Id",id.Value);oldValue=(string?)await oldCmd.ExecuteScalarAsync(ct);}
                 if(oldValue is null)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu cần cập nhật.");
                 sql=$"UPDATE {entity} SET {string.Join(',',columns.Select(x=>$"{x}=@{x}"))},UpdatedAt=GETDATE() WHERE {spec.IdColumn}=@Id; SELECT @@ROWCOUNT";
-                await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@Id",id.Value);foreach(var col in columns)cmd.Parameters.AddWithValue("@"+col,v[col]??DBNull.Value);if(Convert.ToInt32(await cmd.ExecuteScalarAsync(ct))!=1)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu cần cập nhật.");saved=id.Value;
+                await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@Id",id.Value);foreach(var col in columns)AddCatalogValue(cmd,entity,col,v[col]);if(Convert.ToInt32(await cmd.ExecuteScalarAsync(ct))!=1)return Result.Fail("NOT_FOUND","Không tìm thấy dữ liệu cần cập nhật.");saved=id.Value;
             }
             await AuditAsync(cn,tx,user,id is null?"THEM_DANH_MUC":"SUA_DANH_MUC",entity,saved.ToString(),oldValue,JsonSerializer.Serialize(v),null,ct);await tx.CommitAsync(ct);return Result.Ok("Đã lưu dữ liệu.");
         }catch(Exception ex){return Result.Fail("DB_ERROR",Friendly(ex));}
@@ -489,14 +471,15 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
 
     public async Task<Result> AddBookingServiceAsync(long bookingId,int serviceId,decimal quantity,UserSession user,CancellationToken ct=default)
     {
+        if (quantity <= 0 || quantity > 99_999_999.99m || decimal.Round(quantity, 2) != quantity) return Result.Fail("INVALID_QUANTITY", "Số lượng phải dương, tối đa hai số lẻ và trong giới hạn lưu trữ.");
         if(quantity<=0)return Result.Fail("INVALID_QUANTITY","Số lượng phải lớn hơn 0.");
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try
         {
             user = await RequireActorAsync(cn, tx, user, false, ct);
 
-            const string precheck=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(x.SoLuong*x.DonGiaChot) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId<>@D),0)+@Q*COALESCE((SELECT x.DonGiaChot FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D),d.DonGia)-l.TienGiam,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),d.TrangThai,CASE WHEN EXISTS(SELECT 1 FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D) THEN 1 ELSE 0 END FROM LichChup l WITH(UPDLOCK,HOLDLOCK) CROSS JOIN DichVu d WHERE l.LichChupId=@L AND d.DichVuId=@D";
-            await using(var pre=new SqlCommand(precheck,cn,tx)){pre.Parameters.AddWithValue("@L",bookingId);pre.Parameters.AddWithValue("@D",serviceId);pre.Parameters.AddWithValue("@Q",quantity);await using var reader=await pre.ExecuteReaderAsync(ct);if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch hoặc dịch vụ.");var state=reader.GetString(0);var proposed=reader.GetDecimal(1);var paid=reader.GetDecimal(2);var active=reader.GetString(3)=="DANG_CUNG_CAP";var exists=reader.GetInt32(4)==1;if(state is "DA_HUY" or "HOAN_THANH")return Result.Fail("INVALID_STATE","Không thể thêm dịch vụ cho lịch đã kết thúc.");if(!exists&&!active)return Result.Fail("INACTIVE_SERVICE","Dịch vụ đã ngừng cung cấp, không thể thêm mới.");if(proposed<paid)return Result.Fail("LIMIT","Thao tác làm tổng thanh toán thấp hơn số tiền đã thu.");}
+            const string precheck=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT CAST(SUM(x.SoLuong*x.DonGiaChot) AS decimal(32,4)) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId<>@D),0)+@Q*COALESCE((SELECT x.DonGiaChot FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D),d.DonGia)-l.TienGiam,COALESCE((SELECT CAST(SUM(SoTien) AS decimal(28,2)) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),d.TrangThai,CASE WHEN EXISTS(SELECT 1 FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D) THEN 1 ELSE 0 END,COALESCE((SELECT x.DonGiaChot FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.DichVuId=@D),d.DonGia) FROM LichChup l WITH(UPDLOCK,HOLDLOCK) CROSS JOIN DichVu d WHERE l.LichChupId=@L AND d.DichVuId=@D";
+            await using(var pre=new SqlCommand(precheck,cn,tx)){pre.Parameters.AddWithValue("@L",bookingId);pre.Parameters.AddWithValue("@D",serviceId);pre.Parameters.AddWithValue("@Q",quantity);await using var reader=await pre.ExecuteReaderAsync(ct);if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy lịch hoặc dịch vụ.");var state=reader.GetString(0);var proposed=reader.GetDecimal(1);var paid=reader.GetDecimal(2);var active=reader.GetString(3)=="DANG_CUNG_CAP";var exists=reader.GetInt32(4)==1;var unitPrice=reader.GetDecimal(5);if(!BookingMoneyPolicy.IsExactCent(unitPrice*quantity))return BookingRequestErrors.Fail("PRICE_PRECISION");if(state is "DA_HUY" or "HOAN_THANH")return Result.Fail("INVALID_STATE","Không thể thêm dịch vụ cho lịch đã kết thúc.");if(!exists&&!active)return Result.Fail("INACTIVE_SERVICE","Dịch vụ đã ngừng cung cấp, không thể thêm mới.");if(proposed<paid)return Result.Fail("LIMIT","Thao tác làm tổng thanh toán thấp hơn số tiền đã thu.");}
             const string sql=@"IF EXISTS(SELECT 1 FROM LichChupDichVu WHERE LichChupId=@L AND DichVuId=@D)
               UPDATE LichChupDichVu SET SoLuong=@Q,UpdatedBy=@U,UpdatedAt=GETDATE() WHERE LichChupId=@L AND DichVuId=@D;
               ELSE INSERT LichChupDichVu(LichChupId,DichVuId,TenDichVuChot,DonViTinhChot,DonGiaChot,SoLuong,CreatedBy,CreatedAt,UpdatedBy,UpdatedAt)
@@ -512,7 +495,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         {
             user = await RequireActorAsync(cn, tx, user, false, ct);
 
-            const string check=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT SUM(x.SoLuong*x.DonGiaChot) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.LichChupDichVuId<>@Line),0)-l.TienGiam,COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),CONCAT(s.DichVuId,'|',s.SoLuong,'|',s.DonGiaChot) FROM LichChup l JOIN LichChupDichVu s WITH(UPDLOCK,HOLDLOCK) ON s.LichChupId=l.LichChupId WHERE l.LichChupId=@Booking AND s.LichChupDichVuId=@Line";
+            const string check=@"SELECT l.TrangThai,l.GiaGoiChot+COALESCE((SELECT CAST(SUM(x.SoLuong*x.DonGiaChot) AS decimal(32,4)) FROM LichChupDichVu x WHERE x.LichChupId=l.LichChupId AND x.LichChupDichVuId<>@Line),0)-l.TienGiam,COALESCE((SELECT CAST(SUM(SoTien) AS decimal(28,2)) FROM ThanhToan WHERE LichChupId=l.LichChupId),0),CONCAT(s.DichVuId,'|',s.SoLuong,'|',s.DonGiaChot) FROM LichChup l JOIN LichChupDichVu s WITH(UPDLOCK,HOLDLOCK) ON s.LichChupId=l.LichChupId WHERE l.LichChupId=@Booking AND s.LichChupDichVuId=@Line";
             await using var cmd=new SqlCommand(check,cn,tx);cmd.Parameters.AddWithValue("@Booking",bookingId);cmd.Parameters.AddWithValue("@Line",bookingServiceId);await using var reader=await cmd.ExecuteReaderAsync(ct);
             if(!await reader.ReadAsync(ct))return Result.Fail("NOT_FOUND","Không tìm thấy dòng dịch vụ.");var state=reader.GetString(0);var proposed=reader.GetDecimal(1);var paid=reader.GetDecimal(2);var old=reader.GetString(3);await reader.CloseAsync();
             if(state is "DA_HUY" or "HOAN_THANH")return Result.Fail("INVALID_STATE","Không thể sửa dịch vụ của lịch đã kết thúc.");
@@ -525,10 +508,11 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     public async Task<Result> SetDiscountAsync(long bookingId,decimal amount,string? reason,UserSession user,CancellationToken ct=default)
     {
         if(amount<0||amount>0&&string.IsNullOrWhiteSpace(reason))return Result.Fail("INVALID","Giảm giá phải hợp lệ và có lý do.");
+        if (!BookingMoneyPolicy.FitsLedger(amount)) return Result.Fail("INVALID_PRECISION", "Giảm giá phải chính xác đến 0,01 đ và trong giới hạn sổ thu.");
         await using var cn=Connection();await cn.OpenAsync(ct);await using var tx=(SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable,ct);
         try{
             user = await RequireActorAsync(cn, tx, user, false, ct);
-            var old=await ScalarAsync<string>(cn,tx,"SELECT CONCAT(TienGiam,'|',COALESCE(LyDoGiam,'')) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id",bookingId,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");const string sql=@"UPDATE l SET TienGiam=@A,LyDoGiam=@R,UpdatedBy=@U,UpdatedAt=GETDATE() FROM LichChup l CROSS APPLY(SELECT l.GiaGoiChot+COALESCE((SELECT SUM(SoLuong*DonGiaChot) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0) TamTinh) x CROSS APPLY(SELECT COALESCE((SELECT SUM(SoTien) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) DaThu) y WHERE l.LichChupId=@Id AND @A BETWEEN 0 AND x.TamTinh AND x.TamTinh-@A>=y.DaThu AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@A",amount);AddNullable(cmd,"@R",reason);cmd.Parameters.AddWithValue("@U",user.TaiKhoanId);cmd.Parameters.AddWithValue("@Id",bookingId);var n=await cmd.ExecuteNonQueryAsync(ct);if(n!=1)return Result.Fail("LIMIT","Giảm giá không hợp lệ, làm tổng tiền thấp hơn đã thu hoặc lịch đã kết thúc.");await AuditAsync(cn,tx,user,"CAP_NHAT_GIAM_GIA","LichChup",bookingId.ToString(),old,$"{amount}|{reason}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật giảm giá.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
+            var old=await ScalarAsync<string>(cn,tx,"SELECT CONCAT(TienGiam,'|',COALESCE(LyDoGiam,'')) FROM LichChup WITH(UPDLOCK,HOLDLOCK) WHERE LichChupId=@Id",bookingId,ct);if(old is null)return Result.Fail("NOT_FOUND","Không tìm thấy lịch.");const string sql=@"UPDATE l SET TienGiam=@A,LyDoGiam=@R,UpdatedBy=@U,UpdatedAt=GETDATE() FROM LichChup l CROSS APPLY(SELECT l.GiaGoiChot+COALESCE((SELECT CAST(SUM(SoLuong*DonGiaChot) AS decimal(32,4)) FROM LichChupDichVu WHERE LichChupId=l.LichChupId),0) TamTinh) x CROSS APPLY(SELECT COALESCE((SELECT CAST(SUM(SoTien) AS decimal(28,2)) FROM ThanhToan WHERE LichChupId=l.LichChupId),0) DaThu) y WHERE l.LichChupId=@Id AND @A BETWEEN 0 AND x.TamTinh AND x.TamTinh-@A>=y.DaThu AND l.TrangThai NOT IN('DA_HUY','HOAN_THANH')";await using var cmd=new SqlCommand(sql,cn,tx);cmd.Parameters.AddWithValue("@A",amount);AddNullable(cmd,"@R",reason);cmd.Parameters.AddWithValue("@U",user.TaiKhoanId);cmd.Parameters.AddWithValue("@Id",bookingId);var n=await cmd.ExecuteNonQueryAsync(ct);if(n!=1)return Result.Fail("LIMIT","Giảm giá không hợp lệ, làm tổng tiền thấp hơn đã thu hoặc lịch đã kết thúc.");await AuditAsync(cn,tx,user,"CAP_NHAT_GIAM_GIA","LichChup",bookingId.ToString(),old,$"{amount}|{reason}",reason,ct);await tx.CommitAsync(ct);return Result.Ok("Đã cập nhật giảm giá.");}catch(Exception ex){await tx.RollbackAsync(ct);return Result.Fail("DB_ERROR",Friendly(ex));}
     }
 
     public async Task<Result> AssignResourceAsync(long bookingId,int resourceId,int quantity,bool addRentalService,UserSession user,CancellationToken ct=default)
@@ -631,6 +615,18 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
     }
     private static LichChup MapBooking(SqlDataReader r)=>new(r.GetInt64(0),r.GetString(1),r.GetInt64(2),r.GetString(3),r.GetInt32(4),r.GetString(5),r.GetDecimal(6),r.GetDateTime(7),r.GetDateTime(8),r.GetInt32(9),r.GetString(10),r.GetInt32(11),r.GetString(12),DomainStatus(r.GetString(13)),r.GetDecimal(14),r.IsDBNull(15)?null:r.GetString(15),r.IsDBNull(16)?null:r.GetString(16),r.GetDecimal(17),r.GetDecimal(18),r.GetDecimal(19));
     private static void AddNullable(SqlCommand c,string n,object? value)=>c.Parameters.AddWithValue(n,value??DBNull.Value);
+    private static void AddCatalogValue(SqlCommand command, string entity, string column, object? value)
+    {
+        if (column != CatalogPricePolicy.PriceColumn(entity))
+        {
+            command.Parameters.AddWithValue("@" + column, value ?? DBNull.Value);
+            return;
+        }
+        var price = CatalogPricePolicy.Read(value);
+        if (!price.Success) throw new InvalidOperationException("INVALID_PRICE");
+        var parameter = command.Parameters.Add("@" + column, SqlDbType.Decimal);
+        parameter.Precision = 18; parameter.Scale = 2; parameter.Value = price.Data;
+    }
     private static async Task AuditAsync(SqlConnection cn,SqlTransaction tx,UserSession u,string action,string type,string id,string? oldValue,string? newValue,string? reason,CancellationToken ct){await using var c=new SqlCommand("INSERT NhatKyHeThong(TaiKhoanId,HanhDong,LoaiDoiTuong,DoiTuongId,GiaTriCu,GiaTriMoi,LyDo,ThoiDiem) VALUES(@U,@A,@T,@I,@O,@N,@R,GETDATE())",cn,tx);c.Parameters.AddWithValue("@U",u.TaiKhoanId);c.Parameters.AddWithValue("@A",action);c.Parameters.AddWithValue("@T",type);c.Parameters.AddWithValue("@I",id);c.Parameters.AddWithValue("@O",(object?)oldValue??DBNull.Value);c.Parameters.AddWithValue("@N",(object?)newValue??DBNull.Value);c.Parameters.AddWithValue("@R",(object?)reason??DBNull.Value);await c.ExecuteNonQueryAsync(ct);}
     private static async Task<T?> ScalarAsync<T>(SqlConnection cn,SqlTransaction tx,string sql,long id,CancellationToken ct){await using var c=new SqlCommand(sql,cn,tx);c.Parameters.AddWithValue("@Id",id);var v=await c.ExecuteScalarAsync(ct);return v is null or DBNull?default:(T)v;}
     private static async Task ExecuteAsync(SqlConnection cn,SqlTransaction tx,string sql,long id,int user,string value,CancellationToken ct){await using var c=new SqlCommand(sql,cn,tx);c.Parameters.AddWithValue("@Id",id);c.Parameters.AddWithValue("@User",user);c.Parameters.AddWithValue("@Value",value);await c.ExecuteNonQueryAsync(ct);}
@@ -644,7 +640,7 @@ public sealed class SqlStudioRepository(string connectionString) : IStudioReposi
         return report.Message;
     }
 
-    private static async Task<UserSession> RequireActorAsync(SqlConnection cn, SqlTransaction tx, UserSession user, bool adminOnly, CancellationToken ct)
+    internal static async Task<UserSession> RequireActorAsync(SqlConnection cn, SqlTransaction tx, UserSession user, bool adminOnly, CancellationToken ct)
     {
         if (user.SessionToken == Guid.Empty || string.IsNullOrEmpty(user.CredentialStamp))
             throw new UnauthorizedAccessException();

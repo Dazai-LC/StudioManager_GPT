@@ -141,12 +141,13 @@ public sealed class BookingService(IStudioRepository repo, IClock clock, Interna
     }
 }
 
-public sealed class FinanceService(IStudioRepository repo, InternalAuthorization? authorization = null)
+public sealed partial class FinanceService(IStudioRepository repo, InternalAuthorization? authorization = null)
 {
     private readonly InternalAuthorization Access = authorization ?? new(repo, new SystemClock());
     public async Task<Result> ReceiveAsync(PaymentInput input, UserSession user, CancellationToken ct = default)
     {
         if (input.SoTien <= 0) return Result.Fail("INVALID_AMOUNT", "Số tiền thu phải lớn hơn 0.");
+        if (!BookingMoneyPolicy.FitsLedger(input.SoTien)) return Result.Fail("INVALID_PRECISION", "Số tiền phải chính xác đến 0,01 đ và nằm trong giới hạn sổ thu; không tự làm tròn.");
         if (input.LoaiThu is not ("DAT_COC" or "BO_SUNG" or "CON_LAI"))
             return Result.Fail("INVALID_TYPE", "Loại thu không hợp lệ.");
         var access = await Access.RequireAsync(user, ct);
@@ -158,6 +159,7 @@ public sealed class FinanceService(IStudioRepository repo, InternalAuthorization
     {
         if (user.VaiTro != VaiTro.QuanTriVien) return Result.Fail("FORBIDDEN", "Chỉ Quản trị viên được hoàn tiền.");
         if (input.SoTien <= 0 || string.IsNullOrWhiteSpace(input.LyDo)) return Result.Fail("INVALID", "Số tiền và lý do hoàn là bắt buộc.");
+        if (!BookingMoneyPolicy.FitsLedger(input.SoTien)) return Result.Fail("INVALID_PRECISION", "Số tiền hoàn phải chính xác đến 0,01 đ và nằm trong giới hạn sổ thu; không tự làm tròn.");
         var access = await Access.RequireAsync(user, ct, adminOnly: true);
         if (!access.Success) return Result.Fail(access.Code, access.Message);
         user = access.Data!;
@@ -186,6 +188,8 @@ public sealed class AdministrationService(IStudioRepository repo, IPasswordHashe
     {
         if (!CanWrite(entity, user)) return Result.Fail("FORBIDDEN", "Bạn không có quyền thay đổi dữ liệu này.");
         if (!ValidateEntity(entity, values, out var message)) return Result.Fail("INVALID", message);
+        var price = CatalogPricePolicy.Validate(entity, values);
+        if (!price.Success) return price;
         var access = await Access.RequireAsync(user, ct, adminOnly: entity != "KhachHang");
         if (!access.Success) return Result.Fail(access.Code, access.Message);
         user = access.Data!;
@@ -303,7 +307,8 @@ public sealed class BookingSupportService(IStudioRepository repo, InternalAuthor
     public Task<Result> RemoveServiceAsync(long bookingId, long bookingServiceId, UserSession user, CancellationToken ct = default)
         => ExecuteAuthorizedAsync(user, actor => repo.RemoveBookingServiceAsync(bookingId, bookingServiceId, actor, ct), ct);
     public Task<Result> SetDiscountAsync(long bookingId, decimal amount, string? reason, UserSession user, CancellationToken ct = default)
-        => ExecuteAuthorizedAsync(user, actor => repo.SetDiscountAsync(bookingId, amount, reason, actor, ct), ct);
+        => !BookingMoneyPolicy.FitsLedger(amount) ? Task.FromResult(Result.Fail("INVALID_PRECISION", "Giảm giá phải không âm, chính xác đến 0,01 đ và trong giới hạn sổ thu."))
+            : ExecuteAuthorizedAsync(user, actor => repo.SetDiscountAsync(bookingId, amount, reason, actor, ct), ct);
     public Task<Result> AssignResourceAsync(long bookingId, int resourceId, int quantity, bool addRentalService, UserSession user, CancellationToken ct = default)
         => quantity <= 0
             ? Task.FromResult(Result.Fail("INVALID_QUANTITY", "Số lượng tài nguyên phải lớn hơn 0."))

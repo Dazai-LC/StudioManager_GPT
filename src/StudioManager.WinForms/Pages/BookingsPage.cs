@@ -3,7 +3,6 @@ using System.Drawing.Text;
 using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.Domain;
-using StudioManager.WinForms.Contracts;
 using StudioManager.WinForms.Controls;
 using StudioManager.WinForms.Simulation;
 
@@ -12,6 +11,7 @@ namespace StudioManager.WinForms.Pages;
 public sealed class BookingsPage : UserControl
 {
     private readonly AppFacade _app;
+    private bool _paymentPending;
     private readonly DataGridView _grid = Theme.Grid();
     private readonly SearchInput _search = Ui.SearchBox("Tìm mã lịch, tên khách hàng, số điện thoại...");
     private readonly DateTimePicker _from = new() { Format = DateTimePickerFormat.Short, ShowCheckBox = true, Checked = false, Font = Theme.Font(9.2f) };
@@ -573,7 +573,7 @@ public sealed class BookingsPage : UserControl
             {
                 if (_grid.Columns.Contains(c))
                 {
-                    _grid.Columns[c].DefaultCellStyle.Format = "N0";
+                    _grid.Columns[c].DefaultCellStyle.Format = "#,0.####";
                     _grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
                 }
             }
@@ -638,12 +638,12 @@ public sealed class BookingsPage : UserControl
         _progress.Text = nextStep is not null ? $"→ {nextStep.Value.HienThi()}" : "Đã kết thúc";
 
         _dossierFields.SetRows([
-            ("Gói chụp chốt", $"{b.TenGoiChot} ({b.GiaGoiChot:N0} đ)", Theme.Primary, true),
+            ("Gói chụp chốt", $"{b.TenGoiChot} ({b.GiaGoiChot:#,0.####} đ)", Theme.Primary, true),
             ("Thời gian chụp", $"{b.BatDau:dd/MM/yyyy HH:mm} - {b.KetThuc:HH:mm}", null, false),
             ("Nhiếp ảnh gia", b.NhiepAnhGia, RoleVisualResolver.ForPhotographer().Accent, true),
             ("Phòng chụp", b.Phong, null, false),
-            ("Dịch vụ bổ sung", $"{b.TienDichVu:N0} đ", null, false),
-            ("Giảm giá", b.TienGiam > 0 ? $"-{b.TienGiam:N0} đ ({b.LyDoGiam})" : "0 đ", b.TienGiam > 0 ? Theme.Warning : Theme.Muted, false),
+            ("Dịch vụ bổ sung", $"{b.TienDichVu:#,0.####} đ", null, false),
+            ("Giảm giá", b.TienGiam > 0 ? $"-{b.TienGiam:#,0.####} đ ({b.LyDoGiam})" : "0 đ", b.TienGiam > 0 ? Theme.Warning : Theme.Muted, false),
             ("Ghi chú", string.IsNullOrWhiteSpace(b.GhiChu) ? "Không có ghi chú" : b.GhiChu, Theme.TextSecondary, false)
         ]);
 
@@ -783,8 +783,16 @@ public sealed class BookingsPage : UserControl
 
     private async Task PaymentAsync(bool refund)
     {
+        if(_paymentPending)return;
         var b = Selected();
         if (b is null) return;
+        if(!refund)
+        {
+            _paymentPending=true;
+            try{using var payments=new PaymentWorkspaceForm(_app,b.Id);payments.ShowDialog(this);await LoadAsync();}
+            finally{_paymentPending=false;}
+            return;
+        }
         var maximum = refund ? Math.Max(0, b.DaThu - b.DaHoan) : b.ConLai;
         if (maximum <= 0)
         {
@@ -792,21 +800,24 @@ public sealed class BookingsPage : UserControl
             return;
         }
 
+        if (!BookingMoneyPolicy.FitsLedger(maximum))
+        {
+            Ui.Error(this, "Số dư có phần lẻ hoặc vượt giới hạn sổ thu. Cần kiểm tra dữ liệu cũ; ứng dụng không tự làm tròn.");
+            return;
+        }
         using var d = new MoneyDialog(refund ? "Hoàn tiền lịch chụp" : "Ghi nhận thanh toán", maximum, refund);
         if (d.ShowDialog(this) != DialogResult.OK) return;
 
-        Result r = refund
-            ? await _app.Finance.RefundAsync(new(b.Id, d.Amount, d.Note, d.Note), _app.Session!)
-            : await _app.Finance.ReceiveAsync(new(b.Id, d.PaymentType, d.Amount, d.Note), _app.Session!);
-
-        if (!r.Success) Ui.Error(this, r.Message);
-        else
+        _paymentPending=true;
+        try
         {
-            var updated = await _app.Bookings.GetAsync(b.Id) ?? b;
+            var r=await _app.Finance.RefundAsync(new(b.Id,d.Amount,d.Note,d.Note),_app.Session!);
+            if(!r.Success)Ui.Error(this,r.Code=="DB_ERROR"?"Chưa xác định kết quả hoàn tiền. Kiểm tra lịch sử trước khi thao tác tiếp; không gửi lại.":r.Message);
+            else Ui.Info(this,r.Message+" Có thể xem phiếu hoàn đã lưu trong lịch sử giao dịch.");
             await LoadAsync();
-            using var receipt = new ReceiptPreviewForm(updated, d.Amount, refund, _app.Session!.HoTen, d.Note);
-            receipt.ShowDialog(this);
         }
+        catch{Ui.Error(this,"Không xác định kết quả hoàn tiền. Tải lại lịch sử trước khi thao tác tiếp.");}
+        finally{_paymentPending=false;}
     }
 }
 
@@ -962,10 +973,10 @@ internal sealed class BookingFinancialGaugeControl : Control
         var midY = 8 + headH + 1;
         var halfW = Math.Max(60, (Width - 28) / 2);
 
-        TextRenderer.DrawText(g, $"Thực thu: {netPaid:N0} đ", subFont, new Rectangle(12, midY, halfW, midH),
+        TextRenderer.DrawText(g, $"Thực thu: {netPaid:#,0.####} đ", subFont, new Rectangle(12, midY, halfW, midH),
             Theme.Success, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
-        TextRenderer.DrawText(g, $"Tổng: {total:N0} đ", totalFont, new Rectangle(12 + halfW, midY, Width - 24 - halfW, midH),
+        TextRenderer.DrawText(g, $"Tổng: {total:#,0.####} đ", totalFont, new Rectangle(12 + halfW, midY, Width - 24 - halfW, midH),
             Theme.Text, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
         // Progress Bar
@@ -986,7 +997,7 @@ internal sealed class BookingFinancialGaugeControl : Control
             g.FillPath(fBrush, fPath);
         }
 
-        var remainStr = remain > 0 ? $"Còn phải thu: {remain:N0} đ" : "Đã thanh toán hoàn tất (0 đ)";
+        var remainStr = remain > 0 ? $"Còn phải thu: {remain:#,0.####} đ" : "Đã thanh toán hoàn tất (0 đ)";
         TextRenderer.DrawText(g, remainStr, subFont, new Rectangle(12, barY + 11, Width - 24, botH),
             remain > 0 ? Theme.Danger : Theme.Success,
             TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
@@ -1082,9 +1093,9 @@ internal sealed class BookingDetailDialog : Form
         Controls.Add(layout);
 
         _payments.SelectionChanged += (_, _) => UpdateReprintState();
-        _payments.CellDoubleClick += (_, e) =>
+        _payments.CellDoubleClick += async (_, e) =>
         {
-            if (e.RowIndex >= 0) OpenHistoricalReceipt();
+            if (e.RowIndex >= 0) await OpenHistoricalReceipt();
         };
 
         SwitchDetailSection("services");
@@ -1160,7 +1171,11 @@ internal sealed class BookingDetailDialog : Form
 
         _reprintReceiptBtn = Theme.OutlineButton("Xem / In lại biên nhận", Theme.BorderStrong, IconKind.Printer);
         _reprintReceiptBtn.Enabled = false;
-        _reprintReceiptBtn.Click += (_, _) => OpenHistoricalReceipt();
+        _reprintReceiptBtn.Click += async (_, _) => await OpenHistoricalReceipt();
+
+        var collect=Theme.Button("Thu mô phỏng / số dư",Theme.Primary,IconKind.Wallet);
+        collect.Click+=async(_,_)=>{using var payment=new PaymentWorkspaceForm(_app,_booking.Id);payment.ShowDialog(this);await ReloadAsync();};
+        bar.Controls.Add(collect);
 
         bar.Controls.Add(_reprintReceiptBtn);
 
@@ -1236,7 +1251,7 @@ internal sealed class BookingDetailDialog : Form
         if (grid.Columns.Contains("Số tiền"))
         {
             grid.Columns["Số tiền"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            grid.Columns["Số tiền"].DefaultCellStyle.Format = "N0";
+            grid.Columns["Số tiền"].DefaultCellStyle.Format = "#,0.####";
         }
         if (grid.Columns.Contains("Ngày"))
         {
@@ -1271,7 +1286,7 @@ internal sealed class BookingDetailDialog : Form
         return string.Equals(type, "Hoàn tiền", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void OpenHistoricalReceipt()
+    private async Task OpenHistoricalReceipt()
     {
         var row = _payments.CurrentRow;
         if (row is null || row.Index < 0)
@@ -1281,6 +1296,18 @@ internal sealed class BookingDetailDialog : Form
         }
 
         var isRefund = IsRefundRow(row);
+        if(!isRefund)
+        {
+            if(row.Cells["Id"].Value is not long id){Ui.Error(this,"Giao dịch thiếu ID đã lưu.");return;}
+            try
+            {
+                var result=await _app.Finance.ReceiptAsync(_booking.Id,id);
+                if(!result.Success){Ui.Error(this,result.Message);return;}
+                using var persisted=new StudioManager.CustomerDesktop.PersistedReceiptForm(PaymentPresentation.Receipt(result.Data!));persisted.ShowDialog(this);
+            }
+            catch{Ui.Error(this,"Không tải được biên nhận đã lưu. Không thực hiện thu lại khoản tiền này.");}
+            return;
+        }
         if (isRefund && _app.Session!.VaiTro != VaiTro.QuanTriVien)
         {
             Ui.Error(this, "Chỉ Quản trị viên mới có quyền xem hoặc in lại phiếu hoàn tiền.");
@@ -1300,6 +1327,8 @@ internal sealed class BookingDetailDialog : Form
         else if (dateVal is not null && DateTime.TryParse(dateVal.ToString(), out var parsedDate)) date = parsedDate;
 
         var note = row.Cells["Ghi chú"].Value?.ToString() ?? "";
+        if(string.IsNullOrWhiteSpace(code) || code=="[Chưa cấp mã]" || date is null || amount<=0)
+        {Ui.Error(this,"Giao dịch lịch sử thiếu dữ liệu; không tạo phiếu thay thế.");return;}
 
         using var receipt = new ReceiptPreviewForm(
             _booking,
@@ -1406,11 +1435,11 @@ internal sealed class BookingDetailDialog : Form
         ]);
 
         _rightSummary.SetRows([
-            ("Tạm tính (Gói + Dịch vụ)", $"{_booking.TamTinh:N0} đ", null, false),
-            ("Chiết khấu / Giảm giá", $"{_booking.TienGiam:N0} đ", _booking.TienGiam > 0 ? Theme.Warning : null, false),
-            ("Tổng phải thanh toán", $"{_booking.TongThanhToan:N0} đ", Theme.Primary, true),
-            ("Đã thu / Đã hoàn", $"{_booking.DaThu:N0} đ  /  {_booking.DaHoan:N0} đ", Theme.Success, false),
-            ("Công nợ còn lại", $"{_booking.ConLai:N0} đ", _booking.ConLai > 0 ? Theme.Danger : Theme.Success, false)
+            ("Tạm tính (Gói + Dịch vụ)", $"{_booking.TamTinh:#,0.####} đ", null, false),
+            ("Chiết khấu / Giảm giá", $"{_booking.TienGiam:#,0.####} đ", _booking.TienGiam > 0 ? Theme.Warning : null, false),
+            ("Tổng phải thanh toán", $"{_booking.TongThanhToan:#,0.####} đ", Theme.Primary, true),
+            ("Đã thu / Đã hoàn", $"{_booking.DaThu:#,0.####} đ  /  {_booking.DaHoan:#,0.####} đ", Theme.Success, false),
+            ("Công nợ còn lại", $"{_booking.ConLai:#,0.####} đ", _booking.ConLai > 0 ? Theme.Danger : Theme.Success, false)
         ]);
     }
 }
@@ -1798,8 +1827,8 @@ internal sealed class BookingDialog : Form
                 return;
             }
             if (!AtelierNotificationService.Confirm(this, "Xác nhận đổi gói và báo giá",
-                    $"Gói đã chốt: {_existing.TenGoiChot} — {_existing.GiaGoiChot:N0} đ.\n" +
-                    $"Gói mới: {quote.Name} — {quote.Price:N0} đ.\n\n" +
+                    $"Gói đã chốt: {_existing.TenGoiChot} — {_existing.GiaGoiChot:#,0.####} đ.\n" +
+                    $"Gói mới: {quote.Name} — {quote.Price:#,0.####} đ.\n\n" +
                     "Xác nhận áp dụng báo giá mới? Các dịch vụ bổ sung và giảm giá vẫn được kiểm tra theo số tiền đã thu.",
                     confirmText: "Chấp nhận báo giá", cancelText: "Giữ lịch hiện tại")) return;
             using var quoteReason = new TextPrompt("Lý do đổi gói chụp", "Nhập lý do đổi gói và chấp nhận báo giá mới:");
@@ -1881,7 +1910,7 @@ internal sealed class TextPrompt : Form
 
 internal sealed class MoneyDialog : Form
 {
-    private readonly NumericUpDown _amount = new() { DecimalPlaces = 0, ThousandsSeparator = true, Maximum = 10_000_000_000, Font = Theme.Font(10.5f, FontStyle.Bold) };
+    private readonly NumericUpDown _amount = new() { DecimalPlaces = 2, Minimum = 0.01m, ThousandsSeparator = true, Maximum = 10_000_000_000, Font = Theme.Font(10.5f, FontStyle.Bold) };
     private readonly TextBox _note = new() { Font = Theme.Font(9.5f) };
     private readonly ComboBox _type = new() { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(9.5f) };
 
@@ -1901,8 +1930,8 @@ internal sealed class MoneyDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
 
-        _amount.Maximum = Math.Max(1, max);
-        _amount.Value = Math.Max(1, max);
+        _amount.Maximum = max;
+        _amount.Value = max;
         _type.Items.AddRange(["DAT_COC", "BO_SUNG", "CON_LAI"]);
         _type.SelectedIndex = refund ? 1 : 0;
 
@@ -1937,7 +1966,7 @@ internal sealed class MoneyDialog : Form
         banner.Controls.Add(new Label
         {
             Dock = DockStyle.Fill,
-            Text = $"Hạn mức giao dịch hợp lệ tối đa: {max:N0} đ",
+            Text = $"Hạn mức giao dịch hợp lệ tối đa: {max:#,0.####} đ",
             Font = Theme.Font(9.0f, FontStyle.Bold),
             ForeColor = refund ? Theme.Warning : Theme.Success,
             TextAlign = ContentAlignment.MiddleLeft
@@ -2005,8 +2034,9 @@ internal sealed class ReceiptPreviewForm : Form
         var separator = new string('═', 54);
         var subSep = new string('─', 54);
 
-        var timeDisplay = (transactionDate ?? DateTime.Now).ToString("dd/MM/yyyy HH:mm:ss");
-        var codeDisplay = !string.IsNullOrWhiteSpace(transactionCode) ? transactionCode : "[Chưa cấp mã]";
+        if(string.IsNullOrWhiteSpace(transactionCode) || transactionDate is null)throw new ArgumentException("Cần giao dịch đã lưu để in phiếu.");
+        var timeDisplay = transactionDate.Value.ToString("dd/MM/yyyy HH:mm:ss");
+        var codeDisplay = transactionCode;
         var transTypeDisplay = !string.IsNullOrWhiteSpace(transactionType) ? transactionType : (refund ? "Hoàn tiền" : "Thanh toán");
         var noteDisplay = !string.IsNullOrWhiteSpace(note) ? note : "—";
         var staffDisplay = !string.IsNullOrWhiteSpace(employee) ? employee : "[Không có trong dữ liệu lịch sử]";
@@ -2027,12 +2057,12 @@ internal sealed class ReceiptPreviewForm : Form
         sb.AppendLine($"Phân loại GD   : {transTypeDisplay}");
         sb.AppendLine($"Thời điểm GD   : {timeDisplay}");
         sb.AppendLine(subSep);
-        sb.AppendLine($"SỐ TIỀN GD     : {amount:N0} VNĐ");
-        sb.AppendLine($"Tổng dịch vụ   : {booking.TongThanhToan:N0} VNĐ");
+        sb.AppendLine($"SỐ TIỀN GD     : {amount:#,0.####} VNĐ");
+        sb.AppendLine($"Giá lịch hiện tại: {booking.TongThanhToan:#,0.####} VNĐ (không suy ra giá lúc hoàn)");
         if (!isReprint)
         {
-            sb.AppendLine($"Đã thu lũy kế  : {booking.DaThu:N0} VNĐ");
-            sb.AppendLine($"Còn lại        : {booking.ConLai:N0} VNĐ");
+            sb.AppendLine($"Đã thu lũy kế  : {booking.DaThu:#,0.####} VNĐ");
+            sb.AppendLine($"Còn lại        : {booking.ConLai:#,0.####} VNĐ");
         }
         sb.AppendLine(subSep);
         sb.AppendLine($"{(refund ? "Lý do hoàn" : "Ghi chú")}        : {noteDisplay}");
@@ -2083,32 +2113,7 @@ internal sealed class ReceiptPreviewForm : Form
         close.Width = 100;
         close.Click += (_, _) => Close();
 
-        var multiFmt = Theme.OutlineButton("Xem đa khổ (A4 / K80 / K58)", Theme.Primary, IconKind.Eye);
-        multiFmt.Width = 216;
-        multiFmt.Click += (_, _) =>
-        {
-            var services = booking.TienDichVu > 0
-                ? new[] { new BookingRequestServiceLineDto("DV_BO_SUNG", "Dịch vụ bổ sung theo lịch chụp", "Gói", booking.TienDichVu, 1) }
-                : Array.Empty<BookingRequestServiceLineDto>();
-
-            var doc = DesktopDemoSessionStore.BuildReceiptPreview(
-                ReceiptFormatKind.A4Invoice,
-                booking.Ma,
-                booking.KhachHang,
-                "Khách hàng studio",
-                booking.TenGoiChot,
-                booking.Phong,
-                services,
-                booking.GiaGoiChot,
-                refund ? Math.Max(0, booking.DaThu) : amount,
-                string.IsNullOrWhiteSpace(transTypeDisplay) ? "Thanh toán tại studio" : transTypeDisplay,
-                staffDisplay);
-            using var ext = new ExtendedReceiptPreviewForm(doc);
-            ext.ShowDialog(this);
-        };
-
         actions.Controls.Add(print);
-        actions.Controls.Add(multiFmt);
         actions.Controls.Add(close);
 
         _document.PrintPage += (_, e) =>

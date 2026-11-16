@@ -15,6 +15,11 @@ public sealed class CustomerIdentityService(ICustomerIdentityRepository repo, IC
 
     public void Logout() { _customer = null; _reviewer = null; _expires = default; }
 
+    internal async Task<CustomerCredential?> BookingCustomerAsync(CancellationToken ct)
+        => await CustomerAsync(ct) is null ? null : _customer;
+    internal async Task<CustomerReviewer?> BookingReviewerAsync(CancellationToken ct)
+        => await ReviewerAsync(ct) ? _reviewer : null;
+
     public async Task<Result> RegisterAsync(string email, string password, string confirmation, CustomerContact contact, CancellationToken ct = default)
     {
         var normalized = NormalizeEmail(email);

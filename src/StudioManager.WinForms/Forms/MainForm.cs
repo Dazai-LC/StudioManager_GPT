@@ -439,13 +439,13 @@ public sealed class MainForm : Form
                 case "YeuCauDatLich":
                     _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  ĐIỀU PHỐI VẬN HÀNH  /  YÊU CẦU ĐẶT LỊCH";
                     _hubTitle.Text = "Hộp thư Tiếp nhận Yêu cầu Đặt lịch Trực tuyến";
-                    MountPage(new BookingRequestsPlaceholderPage(_app));
+                    MountPage(new BookingRequestsPage(_app));
                     break;
 
                 case "DoiSoatThanhToan":
                     _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  ĐIỀU PHỐI VẬN HÀNH  /  ĐỐI SOÁT & THANH TOÁN";
                     _hubTitle.Text = "Trung tâm Đối soát & Cổng Thanh toán Số";
-                    MountPage(new PaymentWorkspacePlaceholderPage(_app));
+                    MountPage(new PaymentWorkspacePage(_app));
                     break;
 
                 case "LichChup":
@@ -497,10 +497,16 @@ public sealed class MainForm : Form
     private void MountPage(Control page)
     {
         _content.SuspendLayout();
-        _content.Controls.Clear();
-        page.Dock = DockStyle.Fill;
-        _content.Controls.Add(page);
-        _content.ResumeLayout(true);
+        try
+        {
+            // This page owns a pipe session/timer. Other pages keep their existing navigation lifetime.
+            var connectionPages = _content.Controls.OfType<BookingRequestsPage>().ToArray();
+            _content.Controls.Clear();
+            foreach (var previous in connectionPages) previous.Dispose();
+            page.Dock = DockStyle.Fill;
+            _content.Controls.Add(page);
+        }
+        finally { _content.ResumeLayout(true); }
     }
 
     private DashboardPage CreateDashboard()

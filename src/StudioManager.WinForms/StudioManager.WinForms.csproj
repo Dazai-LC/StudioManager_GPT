@@ -8,9 +8,15 @@
   <ItemGroup>
     <ProjectReference Include="..\StudioManager.Application\StudioManager.Application.csproj" />
     <ProjectReference Include="..\StudioManager.Infrastructure\StudioManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\StudioManager.CustomerApi\StudioManager.CustomerApi.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="appsettings.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
     <Content Include="Assets\**\*"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\StudioManager.CustomerClient\BookingWorkspaceControl.cs" Link="Pages\BookingWorkspaceControl.cs" />
+    <Compile Include="..\StudioManager.CustomerClient\PersistedReceiptForm.cs" Link="Controls\PersistedReceiptForm.cs" />
+    <Compile Include="..\StudioManager.CustomerClient\PaymentUi.cs" Link="Controls\PaymentUi.cs" />
   </ItemGroup>
 </Project>

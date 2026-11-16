@@ -1401,6 +1401,8 @@ internal sealed class SimpleEditDialog : Form
             return c;
         }
 
+        if (f.Name is "GiaGoi" or "DonGia")
+            return new CatalogPriceInput { Font = Theme.Font(9.5f) };
         if (f.Number)
             return new NumericUpDown { Maximum = 1_000_000_000, ThousandsSeparator = true, Font = Theme.Font(9.5f) };
 
@@ -1431,6 +1433,12 @@ internal sealed class SimpleEditDialog : Form
 
     private bool ValidateFields()
     {
+        if (_inputs.Values.OfType<CatalogPriceInput>().FirstOrDefault(input => !input.ReadAmount().Success) is { } invalidPrice)
+        {
+            AtelierNotificationService.ShowWarning(this, invalidPrice.ReadAmount().Message, "Giá không hợp lệ");
+            invalidPrice.Focus();
+            return false;
+        }
         foreach (var p in _inputs.Where(x => x.Key is "HoTen" or "SoDienThoai" or "TenGoiChup" or "TenDichVu" or "DonViTinh" or "TenPhong" or "TenTaiNguyen"))
         {
             if (string.IsNullOrWhiteSpace(p.Value.Text))
@@ -1445,6 +1453,7 @@ internal sealed class SimpleEditDialog : Form
 
     private static object? Read(Control c) => c switch
     {
+        CatalogPriceInput price => price.ReadAmount().Success ? (object)price.ReadAmount().Data : price.Text,
         NumericUpDown n => n.Value,
         ComboBox { SelectedItem: LookupItem item } => item.Id == 0 ? null : item.Id,
         ComboBox cb => cb.SelectedItem?.ToString(),

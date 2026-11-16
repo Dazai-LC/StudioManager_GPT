@@ -11,7 +11,11 @@ public sealed record BookingInput(long KhachHangId, int GoiChupId, DateTime BatD
 }
 public sealed record PackageQuoteAcceptance(int ExpectedOriginalPackageId, decimal ExpectedOriginalPrice, decimal AcceptedCatalogPrice, string Reason);
 public sealed record BookingSearchFilter(string? Keyword, DateTime? From, DateTime? To, int? PhotographerId = null, int? RoomId = null, int? PackageId = null, string? Status = null);
-public sealed record PaymentInput(long LichChupId, string LoaiThu, decimal SoTien, string? GhiChu);
+public sealed record PaymentInput(long LichChupId, string LoaiThu, decimal SoTien, string? GhiChu)
+{
+    public string? PhuongThucThu { get; init; }
+    public Guid YeuCauThuId { get; init; }
+}
 public sealed record RefundInput(long LichChupId, decimal SoTien, string LyDo, string? GhiChu);
 public sealed record LookupItem(long Id, string Code, string Name, string? Extra = null);
 public sealed record ReportData(decimal DoanhThu, decimal TongThu, decimal TongHoan, decimal ThucThu, decimal CongNo,
@@ -31,6 +35,9 @@ public interface IStudioRepository
     Task<Result> UpdateBookingStatusAsync(long id, TrangThaiLich next, string? reason, UserSession user, CancellationToken ct = default);
     Task<Result> CancelBookingAsync(long id, string reason, UserSession user, CancellationToken ct = default);
     Task<Result> AddPaymentAsync(PaymentInput input, UserSession user, CancellationToken ct = default);
+    Task<Result<PaymentReceipt>> PostPaymentAsync(PaymentInput input, UserSession user, CancellationToken ct = default);
+    Task<BookingPaymentSummary?> GetPaymentSummaryAsync(long bookingId, long? beforeId, UserSession user, CancellationToken ct = default);
+    Task<PaymentReceipt?> GetPaymentReceiptAsync(long bookingId, long paymentId, UserSession user, CancellationToken ct = default);
     Task<Result> AddRefundAsync(RefundInput input, UserSession user, CancellationToken ct = default);
     Task<DashboardData> GetDashboardAsync(CancellationToken ct = default);
     Task<ReportData> GetReportAsync(DateTime from, DateTime to, CancellationToken ct = default);

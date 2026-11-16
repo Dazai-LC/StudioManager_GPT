@@ -4,12 +4,15 @@ using System.Runtime.Versioning;
 using System.Security.Principal;
 using StudioManager.CustomerApi;
 using StudioManager.IdentityService;
+using StudioManager.Application;
+using StudioManager.Application.Services;
 
 namespace StudioManager.Tests;
 
 /// <summary>Unique real local pipes, production handler/client, in-memory repositories. Never uses SQL or SCM services.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed class LocalIdentityPipe(CustomerIdentityTests.Fixture fixture, TimeProvider? time = null, TimeSpan? idleTimeout = null) : IAsyncDisposable
+internal sealed class LocalIdentityPipe(CustomerIdentityTests.Fixture fixture, TimeProvider? time = null, TimeSpan? idleTimeout = null,
+    IBookingRequestRepository? bookingRepository = null) : IAsyncDisposable
 {
     private static readonly FieldInfo PipeField = typeof(CustomerPipeClient).GetField("_pipe", BindingFlags.Instance | BindingFlags.NonPublic)!;
     private readonly CancellationTokenSource _stop = new(TimeSpan.FromSeconds(30));
@@ -37,7 +40,8 @@ internal sealed class LocalIdentityPipe(CustomerIdentityTests.Fixture fixture, T
             var stream = await CustomerPipeClient.ConnectLocalPipeAsync(name, _stop.Token);
             await accept;
             Attach(Client, stream); LastStream = stream;
-            var dispatcher = new IdentityDispatcher(fixture.Connection());
+            var authority = fixture.Connection();
+            var dispatcher = new IdentityDispatcher(authority, bookingRepository is null ? null : new BookingRequestService(authority, bookingRepository, fixture.Clock));
             var server = new IdentityPipeServer(current.User!, () => new IdentityDispatcher(fixture.Connection()));
             _handlers.Add(server.HandleAsync(pipe, dispatcher, _stop.Token, idleTimeout));
         }

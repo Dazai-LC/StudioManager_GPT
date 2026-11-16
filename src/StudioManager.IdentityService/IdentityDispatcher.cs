@@ -7,10 +7,10 @@ using StudioManager.Domain;
 namespace StudioManager.IdentityService;
 
 /// <summary>Only P03 commands are exposed, with no caller-supplied principal or repository entry point.</summary>
-public sealed class IdentityDispatcher(CustomerIdentityService authority)
+public sealed partial class IdentityDispatcher(CustomerIdentityService authority, BookingRequestService? booking = null)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    public void Disconnect() => authority.Logout();
+    public void Disconnect() { authority.Logout(); booking?.ClearPreview(); }
 
     public async Task<IdentityResponse> DispatchAsync(IdentityRequest request, CancellationToken ct = default)
     {
@@ -20,9 +20,13 @@ public sealed class IdentityDispatcher(CustomerIdentityService authority)
             if (request.Command is not (IdentityCommand.CustomerLogin or IdentityCommand.StaffLogin or IdentityCommand.Register or IdentityCommand.Logout)
                 && authority.IsSessionExpired)
             {
-                authority.Logout();
+                Disconnect();
                 return new(false, "SESSION_EXPIRED", "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại; yêu cầu chưa được xử lý.");
             }
+            if (request.Command is IdentityCommand.CustomerLogin or IdentityCommand.StaffLogin or IdentityCommand.Logout or IdentityCommand.ChangePassword)
+                booking?.ClearPreview();
+            if (IsBookingCommand(request.Command))
+                return booking is null ? new(false, "P04_UNAVAILABLE", "Dịch vụ chưa có P04. Cần triển khai gói đã được duyệt.") : await DispatchBookingAsync(request, ct);
             switch (request.Command)
             {
                 case IdentityCommand.Register:
@@ -68,7 +72,7 @@ public sealed class IdentityDispatcher(CustomerIdentityService authority)
         }
         catch (Exception error)
         {
-            authority.Logout();
+            Disconnect();
             // Fixed identifiers only; never reflect SQL messages or request data into the response.
             var ownership = request.Command is IdentityCommand.RequestLink or IdentityCommand.GetMyLink or IdentityCommand.GetMyLinkedCustomer or
                 IdentityCommand.ListLinkReviews or IdentityCommand.ApproveLink or IdentityCommand.RejectLink or IdentityCommand.RevokeLink;
@@ -80,7 +84,13 @@ public sealed class IdentityDispatcher(CustomerIdentityService authority)
                 UnauthorizedAccessException => "OWNERSHIP_ACTOR_REVALIDATION",
                 _ => "OWNERSHIP_REQUEST_HANDLER"
             } : "P03.IdentityCommand";
+            if (IsBookingCommand(request.Command)) stage = "P04.BookingRequest";
             var report = SafeDiagnostics.Capture(error, stage, error is SqlException sql ? sql.Number : null);
+            // A failed commit acknowledgement cannot prove rollback. Reuse the existing uncertain-outcome
+            // contract for every unexpected booking mutation failure; the connection is already signed out.
+            if (request.Command is IdentityCommand.SubmitBookingRequest or IdentityCommand.CancelBookingRequest or
+                IdentityCommand.ApproveBookingRequest or IdentityCommand.RejectBookingRequest)
+                return new(false, "OUTCOME_UNKNOWN", "Chưa xác định được kết quả thao tác. Vui lòng đăng nhập lại và tải trạng thái trước khi thực hiện tiếp; ứng dụng không tự gửi lại yêu cầu. Mã tra cứu: " + report.CorrelationId + ".");
             return new(false, "SERVICE_ERROR", ownership
                 ? $"{report.Message} Mã bước: {stage}." : report.Message);
         }

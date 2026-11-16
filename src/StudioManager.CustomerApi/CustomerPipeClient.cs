@@ -64,6 +64,9 @@ public sealed class CustomerPipeClient : IAsyncDisposable
                 IdentityCommand.RevokeLink => "OWNERSHIP_REVOKE",
                 IdentityCommand.ListLinkReviews => "OWNERSHIP_REVIEW_LIST",
                 IdentityCommand.GetMyLinkedCustomer => "OWNERSHIP_READ",
+                IdentityCommand.SubmitBookingRequest or IdentityCommand.CancelBookingRequest or
+                    IdentityCommand.ApproveBookingRequest or IdentityCommand.RejectBookingRequest => "BOOKING_MUTATION",
+                IdentityCommand.PreviewBookingRequest or IdentityCommand.CheckBookingAvailability => "BOOKING_PREVIEW",
                 _ => "IDENTITY_COMMAND"
             };
             var reason = error switch
@@ -77,7 +80,8 @@ public sealed class CustomerPipeClient : IAsyncDisposable
             var exchanged = stage is "REQUEST_WRITE" or "RESPONSE_READ";
             var uncertainWrite = exchanged && (request.Command is IdentityCommand.Register or IdentityCommand.UpdateMyProfile or
                 IdentityCommand.ChangePassword or IdentityCommand.RequestLink or IdentityCommand.ApproveLink or
-                IdentityCommand.RejectLink or IdentityCommand.RevokeLink);
+                IdentityCommand.RejectLink or IdentityCommand.RevokeLink or IdentityCommand.SubmitBookingRequest or
+                IdentityCommand.CancelBookingRequest or IdentityCommand.ApproveBookingRequest or IdentityCommand.RejectBookingRequest);
             var code = uncertainWrite ? "OUTCOME_UNKNOWN" : exchanged ? "CONNECTION_LOST" : "SERVICE_UNAVAILABLE";
             var message = uncertainWrite
                 ? "Chưa xác định được kết quả thao tác. Vui lòng đăng nhập lại và tải trạng thái trước khi thực hiện tiếp; ứng dụng không tự gửi lại yêu cầu."

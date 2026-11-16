@@ -60,7 +60,12 @@ internal sealed class IdentityWindowsService : ServiceBase
             var staff = new SqlCustomerStaffDirectory(new SqlStudioRepository(connection.ConnectionString));
             var hasher = new Pbkdf2PasswordHasher();
             var clock = new UtcClock();
-            var server = new IdentityPipeServer(clients, () => new IdentityDispatcher(new CustomerIdentityService(repository, staff, hasher, clock)));
+            var bookingRepository = new SqlBookingRequestRepository(connection.ConnectionString);
+            var server = new IdentityPipeServer(clients, () =>
+            {
+                var authority = new CustomerIdentityService(repository, staff, hasher, clock);
+                return new IdentityDispatcher(authority, new BookingRequestService(authority, bookingRepository, clock));
+            });
             _worker = server.RunAsync(_stop.Token);
             if (_worker.IsCompleted) _worker.GetAwaiter().GetResult();
             _ = _worker.ContinueWith(task =>

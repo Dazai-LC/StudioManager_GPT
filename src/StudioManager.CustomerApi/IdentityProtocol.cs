@@ -7,7 +7,11 @@ namespace StudioManager.CustomerApi;
 public enum IdentityCommand
 {
     Register, CustomerLogin, StaffLogin, Logout, GetMyProfile, UpdateMyProfile, ChangePassword,
-    RequestLink, GetMyLink, GetMyLinkedCustomer, ListLinkReviews, ApproveLink, RejectLink, RevokeLink
+    RequestLink, GetMyLink, GetMyLinkedCustomer, ListLinkReviews, ApproveLink, RejectLink, RevokeLink,
+    GetBookingCatalog, GetBookingStaffCatalog, PreviewBookingRequest, SubmitBookingRequest, CancelBookingRequest,
+    GetMyBookingRequests, GetMyBookingRequest, GetBookingReviewQueue, GetBookingReview, CheckBookingAvailability,
+    ApproveBookingRequest, RejectBookingRequest, GetMyRequestBooking, GetReviewedRequestBooking,
+    GetMyBookingPayments, GetMyBookingReceipt
 }
 public sealed record ContactDto(string FullName, string Phone, string Email, string Address);
 public sealed record ProfileDto(string LoginEmail, ContactDto Contact);
@@ -28,6 +32,22 @@ public sealed record IdentityRequest(IdentityCommand Command)
     public long? BeforeLinkId { get; init; }
     public long? CustomerId { get; init; } // A staff selection only; never a customer actor/owner.
     public string? Reason { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingCatalogQueryDto? BookingCatalogQuery { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingDraftDto? BookingDraft { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingApprovalDto? BookingApproval { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingFilterDto? BookingFilter { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? BookingRequestId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? BookingSubmissionKey { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? PaymentId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? BeforePaymentId { get; init; }
     public override string ToString() => $"IdentityRequest {{ Command = {Command}, Payload = [private] }}";
 }
 public sealed record IdentityResponse(bool Success, string Code, string Message)
@@ -36,6 +56,22 @@ public sealed record IdentityResponse(bool Success, string Code, string Message)
     public LinkDto? Link { get; init; }
     public LinkedCustomerDto? LinkedCustomer { get; init; }
     public IReadOnlyList<LinkReviewDto>? Reviews { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingCatalogPageDto? BookingCatalog { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingQuoteDto? BookingQuote { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<BookingRequestRowDto>? BookingRequests { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingDetailDto? BookingDetail { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OfficialBookingDto? OfficialBooking { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? CreatedRequestId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BookingPaymentsDto? Payments { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PaymentReceiptDto? Receipt { get; init; }
     public override string ToString() => $"IdentityResponse {{ Success = {Success}, Code = {Code} }}";
 }
 

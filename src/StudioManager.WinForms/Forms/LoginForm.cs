@@ -386,7 +386,7 @@ public sealed class LoginForm : Form
         {
             Dock = DockStyle.Top,
             Height = 18,
-            Text = "XEM TRƯỚC CỔNG KHÁCH HÀNG (FRONTEND DEMO • CHƯA NỐI SQL AUTH)",
+            Text = "GIAO DIỆN MẪU — KHÔNG LƯU SQL. ĐĂNG KÝ THẬT: DÙNG STUDIOMANAGER.CUSTOMERCLIENT.",
             Font = Theme.MonoFont(7.2f, FontStyle.Bold),
             ForeColor = Theme.Muted,
             UseMnemonic = false,
@@ -413,7 +413,7 @@ public sealed class LoginForm : Form
         var footer = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "Phím tắt: Enter để xác thực nhanh  •  Điều phối tự động Admin / Nhân viên / Nhiếp ảnh gia / Khách hàng",
+            Text = "Enter để đăng nhập nhân sự  •  Khách hàng đăng ký / đăng nhập thật bằng StudioManager.CustomerClient",
             TextAlign = ContentAlignment.BottomLeft,
             ForeColor = Theme.Muted,
             BackColor = Color.Transparent,
