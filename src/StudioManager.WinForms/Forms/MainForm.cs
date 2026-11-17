@@ -13,6 +13,8 @@ public sealed class MainForm : Form
     private const int RailWidth = 112;
 
     private readonly AppFacade _app;
+    private readonly StaffServiceSession _staffSession;
+    private Task? _serviceShutdown;
     private DashboardData? _initialDashboardData;
 
     private readonly Panel _content = new()
@@ -73,8 +75,12 @@ public sealed class MainForm : Form
     private WorkspaceHostPanel _workspaceHost = null!;
 
     public MainForm(AppFacade app, DashboardData? initialDashboardData = null)
+        : this(app, initialDashboardData, new StaffServiceSession(app)) { }
+
+    internal MainForm(AppFacade app, DashboardData? initialDashboardData, StaffServiceSession staffSession)
     {
         _app = app;
+        _staffSession = staffSession;
         _initialDashboardData = initialDashboardData;
         Text = "StudioManager — Atelier Lumière Command Suite";
         WindowState = FormWindowState.Maximized;
@@ -100,6 +106,26 @@ public sealed class MainForm : Form
             BringToFront();
         };
         NavigateTo("dashboard");
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        EndServiceSession();
+        base.OnFormClosed(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { EndServiceSession(); _toolTip.Dispose(); }
+        base.Dispose(disposing);
+    }
+
+    private void EndServiceSession()
+    {
+        if (_serviceShutdown is not null) return;
+        _serviceShutdown = _staffSession.DisposeAsync().AsTask();
+        _ = _serviceShutdown.ContinueWith(task => { _ = task.Exception; }, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
     }
 
     protected override void OnLayout(LayoutEventArgs levent)
@@ -439,7 +465,7 @@ public sealed class MainForm : Form
                 case "YeuCauDatLich":
                     _hubBreadcrumb.Text = "ATELIER LUMIÈRE  //  ĐIỀU PHỐI VẬN HÀNH  /  YÊU CẦU ĐẶT LỊCH";
                     _hubTitle.Text = "Hộp thư Tiếp nhận Yêu cầu Đặt lịch Trực tuyến";
-                    MountPage(new BookingRequestsPage(_app));
+                    MountPage(new BookingRequestsPage(_app, _staffSession));
                     break;
 
                 case "DoiSoatThanhToan":
@@ -499,12 +525,13 @@ public sealed class MainForm : Form
         _content.SuspendLayout();
         try
         {
-            // This page owns a pipe session/timer. Other pages keep their existing navigation lifetime.
+            // Dispose view data/callbacks; the authenticated connection remains owned by MainForm.
             var connectionPages = _content.Controls.OfType<BookingRequestsPage>().ToArray();
             _content.Controls.Clear();
             foreach (var previous in connectionPages) previous.Dispose();
             page.Dock = DockStyle.Fill;
             _content.Controls.Add(page);
+            if (page is BookingRequestsPage requests) requests.ActivateSession();
         }
         finally { _content.ResumeLayout(true); }
     }

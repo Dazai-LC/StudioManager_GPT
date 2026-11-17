@@ -8,6 +8,7 @@ public sealed class ChangePasswordForm : Form
 {
     private readonly AppFacade _app;
     private readonly UserSession _session;
+    private bool _passwordChanged;
     private readonly ToolTip _toolTip = new();
     private readonly TextBox _currentPassword = new()
     {
@@ -223,6 +224,7 @@ public sealed class ChangePasswordForm : Form
 
     private async Task SaveAsync()
     {
+        if (_passwordChanged || !_save.Enabled) return;
         _error.Visible = false;
         _errorPanel.Visible = false;
         _save.Enabled = false;
@@ -239,6 +241,7 @@ public sealed class ChangePasswordForm : Form
                 return;
             }
 
+            _passwordChanged = true; // Acknowledging success must never issue another password update.
             AtelierNotificationService.ShowSuccess(this, "Mật khẩu đã được cập nhật thành công.", "Đổi mật khẩu hoàn tất");
             DialogResult = DialogResult.OK;
             Close();
@@ -249,8 +252,11 @@ public sealed class ChangePasswordForm : Form
         }
         finally
         {
-            _save.Enabled = true;
-            _save.Text = "Xác nhận đổi mật khẩu";
+            if (!IsDisposed)
+            {
+                _save.Enabled = !_passwordChanged;
+                _save.Text = "Xác nhận đổi mật khẩu";
+            }
         }
     }
 

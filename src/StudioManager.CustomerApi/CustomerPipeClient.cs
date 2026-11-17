@@ -11,13 +11,15 @@ public sealed class CustomerPipeClient : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TimeProvider _time;
+    private readonly LocalDemoProfile? _demo;
     private NamedPipeClientStream? _pipe;
     private long _leaseStarted;
     private bool _leaseActive, _sessionExpired;
     private volatile bool _disposed;
 
-    public CustomerPipeClient() : this(TimeProvider.System) { }
-    internal CustomerPipeClient(TimeProvider time) => _time = time;
+    public CustomerPipeClient() : this(TimeProvider.System, LocalDemoClientRuntime.Current) { }
+    internal CustomerPipeClient(TimeProvider time, LocalDemoProfile? demo = null) { _time = time; _demo = demo; }
+    internal string EndpointName => _demo is null ? IdentityProtocol.PipeName : LocalDemoProfile.PipeName;
 
     public async Task<IdentityResponse> SendAsync(IdentityRequest request, CancellationToken ct = default)
     {
@@ -36,9 +38,11 @@ public sealed class CustomerPipeClient : IAsyncDisposable
             if (_sessionExpired && !startsSession && request.Command != IdentityCommand.Register) return SessionExpired();
             if (_pipe is null)
             {
-                _pipe = await ConnectLocalPipeAsync(IdentityProtocol.PipeName, ct);
+                _pipe = await ConnectLocalPipeAsync(EndpointName, ct);
                 stage = "SERVICE_IDENTITY";
-                VerifyServiceProcess(_pipe.SafePipeHandle); // Before sending any password or profile.
+                // Both profiles verify the expected authority before sending any password or profile.
+                if (_demo is null) VerifyServiceProcess(_pipe.SafePipeHandle);
+                else LocalDemoHostIdentity.VerifyPeer(_demo, _pipe.SafePipeHandle);
             }
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(IdentityProtocol.RequestTimeout);
             // Starts before the outbound request, conservatively before the server's next idle interval.

@@ -1,0 +1,46 @@
+﻿{
+    "Head":  "9b0bcbc",
+    "OriginalScripts":  [
+                            {
+                                "Path":  "database/01_CreateDatabase.sql",
+                                "SHA256":  "5CA8D6AE8B8DE1B4734A1D9ACA9D8A5760764762A8536D0705C9B6CB363E6BE9"
+                            },
+                            {
+                                "Path":  "database/02_CreateSchema.sql",
+                                "SHA256":  "23319684E2D3B5C0EAC1D2FE31DE5741D329FC0D8739E57D8C9C25E8D005DB86"
+                            },
+                            {
+                                "Path":  "database/03_SeedData.sql",
+                                "SHA256":  "F2A4008FCC7AB6F7CF88B1671EB4627118A612810E166EE6C109E3DCBE227036"
+                            },
+                            {
+                                "Path":  "database/04_TestData.sql",
+                                "SHA256":  "0D14D3CE161E74F177AA35BF93235DFC587193B3D72E597FE33D02122EE55BB9"
+                            },
+                            {
+                                "Path":  "database/05_UpgradeToSpec2_1.sql",
+                                "SHA256":  "6F744C7F64AFD2CB90BD7551F14CA0B053F8E6A81F5CFC11EE27C2529D239BE7"
+                            },
+                            {
+                                "Path":  "database/06_P03_CustomerIdentity_REVIEW_ONLY.sql",
+                                "SHA256":  "F7D5954209C01F37F71374E3018F197291F47588E7DE183D9EF323E897EE65D2"
+                            },
+                            {
+                                "Path":  "database/07_P04_BookingRequests_REVIEW_ONLY.sql",
+                                "SHA256":  "598D76A457D5D9CB8584037F17DC923215A83D7B1477FE30492FEB48ECF5F17D"
+                            },
+                            {
+                                "Path":  "database/08_DemoPaymentReceipts_REVIEW_ONLY.sql",
+                                "SHA256":  "C42DF44434B663AA049E030998FC73C6DAEF047F96E43CD8BDB566BC66964DC3"
+                            }
+                        ],
+    "BootstrapSHA256":  "FD1906347E51E864DE2DBDE75629D6C4C183F1C2C50ECE362616E7A65CB13DA5",
+    "OriginalPayloadsRetained":  [
+                                     "02 schema",
+                                     "06 identity DDL",
+                                     "07 booking DDL",
+                                     "08 receipt DDL"
+                                 ],
+    "SeedScope":  "03 staff/catalog/resource subset; no precreated business customers/bookings/payments",
+    "SqlConnections":  0
+}

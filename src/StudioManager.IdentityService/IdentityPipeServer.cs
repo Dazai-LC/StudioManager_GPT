@@ -11,13 +11,23 @@ namespace StudioManager.IdentityService;
 public sealed class IdentityPipeServer(SecurityIdentifier clientGroup, Func<IdentityDispatcher> createDispatcher)
 {
     private readonly LoginBudget _budget = new();
+    private string _pipeName = IdentityProtocol.PipeName;
+    internal string EndpointName => _pipeName;
+
+    public static IdentityPipeServer ForLocalDemo(SecurityIdentifier user, Func<IdentityDispatcher> createDispatcher)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        if (identity.User is not { } current || !user.Equals(current))
+            throw new InvalidOperationException("Local demo pipe must belong to the current Windows user.");
+        return new IdentityPipeServer(user, createDispatcher) { _pipeName = LocalDemoProfile.PipeName };
+    }
 
     public async Task RunAsync(CancellationToken stop)
     {
         using var slots = new SemaphoreSlim(16, 16);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(stop);
         var tasks = new List<Task>();
-        var listener = CreatePipe(IdentityProtocol.PipeName, clientGroup, true);
+        var listener = CreatePipe(_pipeName, clientGroup, true);
         try
         {
             while (!stop.IsCancellationRequested)
@@ -26,7 +36,7 @@ public sealed class IdentityPipeServer(SecurityIdentifier clientGroup, Func<Iden
                 try { await listener.WaitForConnectionAsync(stop); }
                 catch { slots.Release(); throw; }
                 var connected = listener;
-                try { listener = CreatePipe(IdentityProtocol.PipeName, clientGroup, false); }
+                try { listener = CreatePipe(_pipeName, clientGroup, false); }
                 catch { connected.Dispose(); slots.Release(); throw; }
                 tasks.RemoveAll(task => task.IsCompleted);
                 tasks.Add(RunConnectionAsync(connected, slots, lifetime.Token));

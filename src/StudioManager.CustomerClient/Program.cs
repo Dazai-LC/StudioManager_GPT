@@ -6,9 +6,17 @@ namespace StudioManager.CustomerClient;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        try { LocalDemoClientRuntime.Configure(args, LocalDemoComponent.CustomerClient); }
+        catch
+        {
+            using var error = new StudioManager.WinForms.Controls.AtelierDialog(
+                StudioManager.WinForms.Controls.AtelierNotificationKind.Error, "Local demo",
+                "Cấu hình runtime không hợp lệ hoặc host demo chưa sẵn sàng. Kiểm tra --local-demo --runtime và thư mục demo riêng.");
+            error.ShowDialog(); Environment.ExitCode = 1; return;
+        }
         Application.Run(new IdentityForm());
     }
 }
@@ -26,15 +34,13 @@ internal sealed class IdentityForm : Form
     private readonly TabPage _profile = new("Hồ sơ của tôi") { Enabled = false };
     private readonly TabPage _reviews = new("Duyệt liên kết") { Enabled = false };
     private readonly TabPage _booking = new("Đặt lịch & yêu cầu") { Enabled = false };
-    private readonly TabPage _bookingReviews = new("Duyệt đặt lịch") { Enabled = false };
     private readonly BookingWorkspaceControl _customerBooking;
-    private readonly BookingWorkspaceControl _staffBooking;
-    private bool _customerBookingLoaded, _staffBookingLoaded;
+    private bool _customerBookingLoaded;
     private readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 84, AutoEllipsis = true };
     private readonly TextBox _identifier = new(), _password = Password(), _name = new(), _phone = new(), _email = new(), _address = new();
     private readonly TextBox _current = Password(), _next = Password(), _confirm = Password();
     private readonly TextBox _reference = new(), _evidence = new(), _customerId = new(), _reason = new();
-    private readonly CheckBox _staff = new() { Text = "Đăng nhập tài khoản nhân sự để duyệt liên kết", AutoSize = true };
+    private readonly CheckBox _staff = new() { Text = "Nhân sự: chỉ duyệt liên kết hồ sơ (duyệt đặt lịch tại ứng dụng nhân sự)", AutoSize = true };
     private readonly Label _loginEmail = new() { AutoSize = true };
     private readonly DataGridView _grid = new()
     { Dock = DockStyle.Top, Height = 280, ReadOnly = true, AutoGenerateColumns = true, SelectionMode = DataGridViewSelectionMode.FullRowSelect,
@@ -47,7 +53,7 @@ internal sealed class IdentityForm : Form
 
     internal IdentityForm() : this(null) { }
 
-    // Test-only composition uses an internal constructor; production always uses the SCM-verified client.
+    // Test-only composition uses an internal constructor; normal mode uses the SCM-verified client.
     internal IdentityForm(Func<IdentityRequest, CancellationToken, Task<IdentityResponse>>? send)
     {
         _send = send ?? _client.SendAsync;
@@ -55,16 +61,13 @@ internal sealed class IdentityForm : Form
         ClientSize = new Size(900, 770); MinimumSize = new Size(740, 650);
         Font = new Font("Segoe UI", 10);
         _customerBooking = new(false, Send, Show, Execute);
-        _staffBooking = new(true, Send, Show, Execute);
-        _booking.Controls.Add(_customerBooking); _bookingReviews.Controls.Add(_staffBooking);
-        _tabs.TabPages.AddRange([_login, _profile, _reviews, _booking, _bookingReviews]); Controls.Add(_tabs); Controls.Add(_status);
+        _booking.Controls.Add(_customerBooking);
+        SetPages(null); Controls.Add(_tabs); Controls.Add(_status);
         BuildLogin(); BuildProfile(); BuildReviews();
         _tabs.Selected += async (_, _) =>
         {
             if (_tabs.SelectedTab == _booking && _booking.Enabled && !_customerBookingLoaded)
                 await Execute(async () => { _customerBookingLoaded = true; await _customerBooking.InitializeAsync(); });
-            if (_tabs.SelectedTab == _bookingReviews && _bookingReviews.Enabled && !_staffBookingLoaded)
-                await Execute(async () => { _staffBookingLoaded = true; await _staffBooking.InitializeAsync(); });
         };
         var logout = new Button { Text = "Đăng xuất", Dock = DockStyle.Bottom, Height = 36 };
         logout.Click += async (_, _) => await Execute(async () => { SignedOut(); Show(await Send(new(IdentityCommand.Logout))); });
@@ -108,6 +111,8 @@ internal sealed class IdentityForm : Form
             _ = _shutdown.ContinueWith(task => { _ = task.Exception; }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
             _lifetime.Dispose();
+            // Role-specific pages may be detached from the tab control; the form still owns them.
+            _profile.Dispose(); _reviews.Dispose(); _booking.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -129,8 +134,7 @@ internal sealed class IdentityForm : Form
             if (IsDisposed || Disposing) return;
             _password.Clear(); Show(response);
             if (!response.Success) { SignedOut(); return; }
-            _profile.Enabled = !staff; _reviews.Enabled = staff;
-            _booking.Enabled = !staff; _bookingReviews.Enabled = staff;
+            SetPages(staff);
             _idleTimer.Start();
             if (staff) { _tabs.SelectedTab = _reviews; await LoadReviews(); }
             else { _tabs.SelectedTab = _profile; SetProfile(response.Profile!); await RefreshLink(); }
@@ -240,13 +244,25 @@ internal sealed class IdentityForm : Form
         Interlocked.Increment(ref _viewGeneration);
         if (_closed || IsDisposed || Disposing) return;
         _idleTimer.Stop();
-        _booking.Enabled = false; _bookingReviews.Enabled = false;
-        _customerBooking.ResetSession(); _staffBooking.ResetSession();
-        _customerBookingLoaded = false; _staffBookingLoaded = false;
-        _profile.Enabled = false; _reviews.Enabled = false; _tabs.SelectedTab = _login; _grid.DataSource = null;
+        _customerBooking.ResetSession();
+        _customerBookingLoaded = false;
+        SetPages(null); _tabs.SelectedTab = _login; _grid.DataSource = null;
         foreach (var box in new[] { _name, _phone, _email, _address, _reference, _evidence, _reason, _customerId, _current, _next, _confirm }) box.Clear();
         _loginEmail.Text = "";
         _beforeLink = null; _reviewHistory.Clear();
+    }
+    private void SetPages(bool? staff)
+    {
+        _profile.Enabled = staff == false; _booking.Enabled = staff == false; _reviews.Enabled = staff == true;
+        _tabs.SuspendLayout();
+        try
+        {
+            _tabs.TabPages.Clear(); _tabs.TabPages.Add(_login);
+            if (staff == true) _tabs.TabPages.Add(_reviews);
+            else if (staff == false) _tabs.TabPages.AddRange([_profile, _booking]);
+            Text = staff == true ? "StudioManager — Duyệt liên kết hồ sơ (nhân sự)" : "StudioManager — Tài khoản khách hàng";
+        }
+        finally { _tabs.ResumeLayout(); }
     }
     private void Show(IdentityResponse response)
     {

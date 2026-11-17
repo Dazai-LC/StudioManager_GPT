@@ -998,6 +998,13 @@ public sealed class ModernButton : Control, IButtonControl
 
     public DialogResult DialogResult { get => _dialogResult; set => _dialogResult = value; }
     public void NotifyDefault(bool value) { _isDefault = value; Invalidate(); }
+    protected override void OnClick(EventArgs e)
+    {
+        // IButtonControl does not apply DialogResult automatically for an owner-drawn Control.
+        if (_dialogResult != DialogResult.None && FindForm() is { } form)
+            form.DialogResult = _dialogResult;
+        base.OnClick(e);
+    }
     public void PerformClick()
     {
         if (Enabled) OnClick(EventArgs.Empty);

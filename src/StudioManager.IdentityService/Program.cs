@@ -13,16 +13,28 @@ namespace StudioManager.IdentityService;
 [SupportedOSPlatform("windows")]
 internal static class Program
 {
-    private static void Main()
+    private static void Main(string[] args)
     {
         try
         {
+            var demo = LocalDemoProfile.SelectForProcess(args, Environment.ProcessPath, LocalDemoComponent.IdentityService);
+            if (demo is not null)
+            {
+                using var stop = new CancellationTokenSource();
+                ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; stop.Cancel(); };
+                Console.CancelKeyPress += cancel;
+                try { LocalDemoConsoleHost.RunAsync(demo, stop.Token).GetAwaiter().GetResult(); }
+                finally { Console.CancelKeyPress -= cancel; }
+                return;
+            }
             if (Environment.UserInteractive) throw new InvalidOperationException("Run only through the reviewed Windows Service installation.");
             ServiceBase.Run(new IdentityWindowsService());
         }
         catch (Exception error)
         {
             SafeDiagnostics.Capture(error, "P03.ServiceStartup");
+            if (Environment.UserInteractive || args.Length > 0)
+                Console.Error.WriteLine("Identity host startup failed. Interactive demo requires --local-demo --runtime, the matching separate profile folder and appsettings.json. Check any occupied host lease. No production fallback was attempted.");
             Environment.ExitCode = 1;
         }
     }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using StudioManager.Application;
 using StudioManager.Application.Services;
 using StudioManager.Infrastructure;
+using StudioManager.CustomerApi;
 using StudioManager.WinForms.Forms;
 
 namespace StudioManager.WinForms;
@@ -9,7 +10,7 @@ namespace StudioManager.WinForms;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
         System.Windows.Forms.Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -22,8 +23,20 @@ internal static class Program
                 e.Exception,
                 Controls.Ui.FormatRuntimeError("Runtime", e.Exception));
         };
-        var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) ?? new();
-        var facade = new AppFacade(new SqlStudioRepository(settings.ConnectionString), new Pbkdf2PasswordHasher(), new SystemClock());
+        string connection;
+        try
+        {
+            var demo = LocalDemoClientRuntime.Configure(args, LocalDemoComponent.Staff);
+            connection = demo is not null ? LocalDemoSqlSettings.Load(AppContext.BaseDirectory) :
+                (JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) ?? new()).ConnectionString;
+        }
+        catch
+        {
+            using var error = new Controls.AtelierDialog(Controls.AtelierNotificationKind.Error, "Runtime",
+                "Không thể đọc cấu hình runtime. Với local demo, hãy kiểm tra host, --local-demo --runtime và appsettings.json của bản Staff riêng.");
+            error.ShowDialog(); Environment.ExitCode = 1; return;
+        }
+        var facade = new AppFacade(new SqlStudioRepository(connection), new Pbkdf2PasswordHasher(), new SystemClock());
         System.Windows.Forms.Application.Run(new LoginForm(facade));
     }
     private sealed class AppSettings { public string ConnectionString { get; set; } = ""; }
