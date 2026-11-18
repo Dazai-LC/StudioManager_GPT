@@ -4,12 +4,15 @@ using StudioManager.Application.Services;
 using StudioManager.Domain;
 using StudioManager.WinForms.Contracts;
 using StudioManager.WinForms.Controls;
+using StudioManager.CustomerApi;
+using System.Diagnostics;
 
 namespace StudioManager.WinForms.Forms;
 
 public sealed class LoginForm : Form
 {
     private readonly AppFacade _app;
+    private readonly LocalDemoProfile? _demoProfile;
     private bool _isAuthenticating;
 
     private readonly TextBox _username = new()
@@ -59,9 +62,10 @@ public sealed class LoginForm : Form
         Visible = false
     };
 
-    public LoginForm(AppFacade app)
+    public LoginForm(AppFacade app, LocalDemoProfile? demoProfile = null)
     {
         _app = app;
+        _demoProfile = demoProfile;
         Text = "StudioManager — Atelier Lumière Edition";
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(1220, 740);
@@ -316,7 +320,7 @@ public sealed class LoginForm : Form
         {
             Dock = DockStyle.Fill,
             UseMnemonic = false,
-            Text = "Một cửa vào duy nhất: Quản trị / Nhân viên dùng tài khoản SQL nội bộ; tài khoản Khách hàng sẽ tự động mở Cổng Khách hàng khi kết nối Backend.",
+            Text = "Nhân sự đăng nhập không gian làm việc tại đây. Khách hàng dùng cổng riêng bên dưới để đăng ký, đặt lịch và xem biên nhận.",
             Font = Theme.Font(8.4f),
             ForeColor = Theme.Muted,
             TextAlign = ContentAlignment.MiddleLeft
@@ -363,7 +367,7 @@ public sealed class LoginForm : Form
         forgot.LinkClicked += (_, _) => AtelierNotificationService.ShowInfo(
             this,
             "• Đối với Quản trị viên & Nhân viên: Việc đặt lại mật khẩu do Quản trị viên thực hiện tại Trung tâm Hệ thống → Tài khoản & Phân quyền.\n\n" +
-            "• Đối với Khách hàng: Quy trình khôi phục truy cập và đối chiếu hồ sơ cũ đang ở chế độ xem trước Frontend Demo (chưa kết nối SQL/OTP).",
+            "• Đối với Khách hàng: Liên hệ studio để được hỗ trợ khôi phục truy cập. Phiên bản này chưa có xác minh email hoặc OTP.",
             "Chính sách bảo mật & Khôi phục truy cập");
 
         options.Controls.Add(remember, 0, 0);
@@ -372,7 +376,7 @@ public sealed class LoginForm : Form
         ConfigureLoginButton();
         _errorPanel.Controls.Add(_errorLabel);
 
-        // Isolated Frontend Demo / QA preview launcher for Customer Desktop UX
+        // Separate real customer executable; never opens the legacy simulation portal.
         var demoLauncherCard = new CardPanel
         {
             Dock = DockStyle.Fill,
@@ -386,20 +390,20 @@ public sealed class LoginForm : Form
         {
             Dock = DockStyle.Top,
             Height = 18,
-            Text = "GIAO DIỆN MẪU — KHÔNG LƯU SQL. ĐĂNG KÝ THẬT: DÙNG STUDIOMANAGER.CUSTOMERCLIENT.",
+            Text = "CỔNG KHÁCH HÀNG · TÀI KHOẢN, ĐẶT LỊCH VÀ BIÊN NHẬN QUA DỊCH VỤ THẬT",
             Font = Theme.MonoFont(7.2f, FontStyle.Bold),
             ForeColor = Theme.Muted,
             UseMnemonic = false,
             AutoEllipsis = true
         };
         var demoBtns = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent, Padding = new Padding(0, 4, 0, 0) };
-        var customerDemoBtn = Theme.OutlineButton("Cổng Khách hàng (Demo)", Theme.Primitives.Sage600, IconKind.RoleCustomer);
+        var customerDemoBtn = Theme.OutlineButton("Cổng Khách hàng", Theme.Primitives.Sage600, IconKind.RoleCustomer);
         customerDemoBtn.Height = 32;
         customerDemoBtn.Width = 188;
         customerDemoBtn.Margin = new Padding(0, 0, 8, 0);
         customerDemoBtn.Click += (_, _) => OpenCustomerPortalEntry();
 
-        var registerDemoBtn = Theme.OutlineButton("Đăng ký Khách hàng (Demo)", Theme.BorderStrong, IconKind.Plus);
+        var registerDemoBtn = Theme.OutlineButton("Đăng ký Khách hàng", Theme.BorderStrong, IconKind.Plus);
         registerDemoBtn.Height = 32;
         registerDemoBtn.Width = 198;
         registerDemoBtn.Margin = new Padding(0);
@@ -437,37 +441,26 @@ public sealed class LoginForm : Form
 
     private void OpenCustomerPortalEntry()
     {
-        ClearError();
-        Hide();
-        try
-        {
-            using var customerLogin = new CustomerLoginForm(_app);
-            customerLogin.ShowDialog(this);
-        }
-        finally
-        {
-            RestoreLoginWindow();
-        }
+        LaunchRealCustomer(false);
     }
 
     private void OpenCustomerRegistration()
     {
+        LaunchRealCustomer(true);
+    }
+
+    private void LaunchRealCustomer(bool registration)
+    {
         ClearError();
-        using var reg = new CustomerRegistrationForm(_app);
-        if (reg.ShowDialog(this) == DialogResult.OK && reg.CreatedDemoSession is { } session)
+        ProcessStartInfo start;
+        try { start = CustomerPortalLauncher.Prepare(Environment.ProcessPath, _demoProfile, registration); }
+        catch
         {
-            Hide();
-            try
-            {
-                using var portal = new CustomerMainForm(_app, session);
-                portal.ShowDialog(this);
-            }
-            finally
-            {
-                RestoreLoginWindow();
-            }
+            ShowError("Không tìm thấy CustomerClient thật trong bố trí Staff/CustomerClient cùng profile. Kiểm tra bản cài; portal giả lập sẽ không được mở.");
+            return;
         }
-        // Không tự động nạp định danh khách hàng vào ô đăng nhập Quản trị / Nhân viên.
+        try { using var process = Process.Start(start); if (process is null) throw new InvalidOperationException(); }
+        catch { ShowError("Không thể khởi chạy CustomerClient. Kiểm tra quyền chạy và các file của bản cài khách hàng."); }
     }
 
     private void ConfigureLoginButton()

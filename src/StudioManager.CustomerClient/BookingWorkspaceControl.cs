@@ -7,6 +7,8 @@ using StudioManager.WinForms.Controls;
 
 namespace StudioManager.CustomerDesktop;
 
+public enum CustomerWorkspaceSection { Catalog, Compose, Requests, Payments }
+
 /// <summary>Shared native P04 UI. Calls only the reviewed service protocol; no Domain/SQL dependency.</summary>
 public sealed class BookingWorkspaceControl : UserControl
 {
@@ -24,6 +26,7 @@ public sealed class BookingWorkspaceControl : UserControl
     private readonly TextBox _reason = new() { MaxLength = 500, Width = 600 };
     private readonly TextBox _detailText = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 260, Width = 700 };
     private readonly Label _selection = new() { AutoSize = true, MaximumSize = new Size(740, 0), Text = "Chưa chọn gói / phòng ưu tiên." };
+    private readonly Label _catalogSelection = AtelierUi.Copy("Chưa chọn gói chụp.");
     private readonly BindingList<SelectedService> _addons = [];
     private readonly Stack<int?> _catalogHistory = new();
     private readonly Stack<long?> _requestHistory = new();
@@ -35,6 +38,7 @@ public sealed class BookingWorkspaceControl : UserControl
     private long _viewGeneration;
     private bool _closed;
     public Func<long, Task>? OpenInternalBooking { get; set; }
+    public event EventHandler<CustomerWorkspaceSection>? CustomerSectionChanged;
 
     public BookingWorkspaceControl(bool staff, Func<IdentityRequest, Task<IdentityResponse>> send,
         Action<IdentityResponse> report, Func<Func<Task>, Task> execute)
@@ -44,6 +48,15 @@ public sealed class BookingWorkspaceControl : UserControl
         Controls.Add(_tabs);
         if (!staff) BuildCatalog();
         BuildRequests();
+        if (!staff)
+        {
+            Font = Theme.Font(); BackColor = Theme.Background; AtelierUi.HideTabHeaders(_tabs);
+            foreach (var grid in new[] { _catalog, _requests, _selectedServices }) AtelierUi.StyleGrid(grid);
+            _detailText.Font = Theme.Font(9.3f); _detailText.ForeColor = Theme.TextSecondary;
+            _detailText.BackColor = Theme.SurfaceWarm; _detailText.BorderStyle = BorderStyle.FixedSingle;
+            _notes.Font = _reason.Font = Theme.Font(10);
+            foreach (var combo in new[] { _kind, _state }) { combo.Font = Theme.Font(9.5f); combo.BackColor = Theme.Surface; combo.ForeColor = Theme.Text; }
+        }
         _requests.CellDoubleClick += async (_, _) => await _execute(async () => { await LoadDetail(); });
     }
 
@@ -52,6 +65,25 @@ public sealed class BookingWorkspaceControl : UserControl
         if (_staff) await LoadStaffChoices(true);
         else await LoadCatalog();
         await LoadRequests();
+    }
+
+    public async Task NavigateCustomerAsync(CustomerWorkspaceSection section, bool refresh = true)
+    {
+        if (_staff) throw new InvalidOperationException("Customer presentation is unavailable in the staff workspace.");
+        ShowCustomerPane(section);
+        if (section is CustomerWorkspaceSection.Requests or CustomerWorkspaceSection.Payments)
+        {
+            _beforeRequest = null; _requestHistory.Clear();
+            _state.SelectedIndex = section == CustomerWorkspaceSection.Payments ? 2 : 0;
+            await LoadRequests();
+        }
+        else if (refresh && section == CustomerWorkspaceSection.Catalog) await LoadCatalog();
+    }
+
+    private void ShowCustomerPane(CustomerWorkspaceSection section)
+    {
+        _tabs.SelectedIndex = section == CustomerWorkspaceSection.Catalog ? 0 : section == CustomerWorkspaceSection.Compose ? 1 : 2;
+        CustomerSectionChanged?.Invoke(this, section);
     }
 
     public void ResetSession()
@@ -63,6 +95,11 @@ public sealed class BookingWorkspaceControl : UserControl
         _notes.Clear(); _reason.Clear(); _detailText.Clear(); _rooms.Items.Clear(); _photographers.Items.Clear();
         _catalogAfter = _catalogNext = _roomAfter = _photographerAfter = null;
         _beforeRequest = null; _catalogHistory.Clear(); _requestHistory.Clear(); UpdateSelection();
+        if (!_staff)
+        {
+            _kind.SelectedIndex = 0; _state.SelectedIndex = 0; _quantity.Value = 1;
+            _start.Value = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)).Date.AddDays(1).AddHours(9);
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -79,8 +116,9 @@ public sealed class BookingWorkspaceControl : UserControl
 
     private void BuildCatalog()
     {
-        var page = new TabPage("Danh mục & gửi yêu cầu"); _tabs.TabPages.Add(page);
+        var page = new TabPage("Gói chụp & dịch vụ"); _tabs.TabPages.Add(page);
         var panel = Stack(page);
+        panel.Controls.Add(AtelierUi.Copy("Khám phá gói chụp của studio", true));
         panel.Controls.Add(Label("Chọn danh mục để xem gói, dịch vụ bổ sung hoặc phòng. Giá được xác nhận lại khi xem trước."));
         _kind.DisplayMember = nameof(CatalogChoice.Text);
         _kind.Items.AddRange([new CatalogChoice(BookingCatalogType.Packages, "Gói chụp"), new CatalogChoice(BookingCatalogType.Services, "Dịch vụ bổ sung"), new CatalogChoice(BookingCatalogType.Rooms, "Phòng chụp")]);
@@ -90,8 +128,14 @@ public sealed class BookingWorkspaceControl : UserControl
             ("Trang trước", async () => { if (_catalogHistory.TryPop(out var cursor)) { _catalogAfter = cursor; await LoadCatalog(); } }),
             ("Trang tiếp", async () => { if (_catalogNext is { } next) { _catalogHistory.Push(_catalogAfter); _catalogAfter = next; await LoadCatalog(); } }));
         panel.Controls.Add(_catalog);
+        panel.Controls.Add(Label("Số lượng khi chọn dịch vụ bổ sung"));
         panel.Controls.Add(_quantity);
         Buttons(panel, ("Chọn mục đang xem", SelectCatalogItem), ("Bỏ phòng ưu tiên", () => { _room = null; UpdateSelection(); return Task.CompletedTask; }));
+        panel.Controls.Add(_catalogSelection);
+        Buttons(panel, ("Tiếp tục đặt lịch", () => { ShowCustomerPane(CustomerWorkspaceSection.Compose); return Task.CompletedTask; }));
+
+        var compose = new TabPage("Đặt lịch & yêu cầu"); _tabs.TabPages.Add(compose); panel = Stack(compose);
+        panel.Controls.Add(AtelierUi.Copy("Yêu cầu một buổi chụp", true));
         panel.Controls.Add(_selection);
         _selectedServices.DataSource = _addons; panel.Controls.Add(_selectedServices);
         Buttons(panel, ("Bỏ dịch vụ đang chọn", () =>
@@ -102,6 +146,7 @@ public sealed class BookingWorkspaceControl : UserControl
         panel.Controls.Add(Label("Giờ bắt đầu mong muốn (giờ Việt Nam). Thời lượng theo gói. Phòng là ưu tiên; nhân viên sẽ xác nhận khi duyệt."));
         panel.Controls.Add(_start); panel.Controls.Add(Label("Yêu cầu / ghi chú")); panel.Controls.Add(_notes);
         Buttons(panel, ("Xem trước & xác nhận gửi", PreviewAndSubmit));
+        Buttons(panel, ("Quay lại danh mục", () => { ShowCustomerPane(CustomerWorkspaceSection.Catalog); return Task.CompletedTask; }));
     }
 
     private async Task LoadCatalog()
@@ -127,7 +172,11 @@ public sealed class BookingWorkspaceControl : UserControl
         UpdateSelection(); return Task.CompletedTask;
     }
     private void UpdateSelection()
-        => _selection.Text = $"Gói: {_package?.Name ?? "chưa chọn"} — {_package?.DurationMinutes ?? 0} phút — {Money(_package?.Price ?? 0)}. Phòng ưu tiên: {_room?.Name ?? "nhân viên chọn khi duyệt"}.";
+    {
+        _selection.Text = _package is null ? "Chưa chọn gói chụp. Mở danh mục, chọn gói rồi tiếp tục đặt lịch."
+            : $"Gói: {_package.Name} — {_package.DurationMinutes} phút — {Money(_package.Price)}. Phòng ưu tiên: {_room?.Name ?? "nhân viên chọn khi duyệt"}.";
+        _catalogSelection.Text = _selection.Text;
+    }
 
     private async Task PreviewAndSubmit()
     {
@@ -139,12 +188,11 @@ public sealed class BookingWorkspaceControl : UserControl
             _addons.Select(a => new BookingAddonSelectionDto(a.ServiceId, a.Quantity)).ToArray());
         var preview = await Send(new(IdentityCommand.PreviewBookingRequest) { BookingDraft = draft });
         if (!preview.Success || IsDisposed) return;
-        if (MessageBox.Show(this, QuoteText(preview.BookingQuote!) + "\n\nĐây là yêu cầu chờ duyệt, chưa giữ chỗ. Xác nhận gửi?",
-            "Xác nhận yêu cầu", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        if (!AtelierUi.Confirm(this, "Xác nhận yêu cầu", QuoteText(preview.BookingQuote!) + "\n\nĐây là yêu cầu chờ duyệt, chưa giữ chỗ. Xác nhận gửi?")) return;
         var submitted = await Send(new(IdentityCommand.SubmitBookingRequest) { BookingSubmissionKey = draft.SubmissionKey });
         if (!submitted.Success || IsDisposed) return;
         _beforeRequest = null; _requestHistory.Clear();
-        _tabs.SelectedIndex = _tabs.TabPages.Count - 1; await LoadRequests();
+        ShowCustomerPane(CustomerWorkspaceSection.Requests); await LoadRequests();
         if (submitted.CreatedRequestId is { } id) await LoadDetail(id);
     }
 
@@ -152,6 +200,7 @@ public sealed class BookingWorkspaceControl : UserControl
     {
         var page = new TabPage(_staff ? "Duyệt & lịch sử xử lý" : "Yêu cầu của tôi"); _tabs.TabPages.Add(page);
         var panel = Stack(page);
+        if (!_staff) panel.Controls.Add(AtelierUi.Copy("Theo dõi yêu cầu và lịch chính thức", true));
         _state.Items.AddRange(["Tất cả", "PENDING", "APPROVED", "REJECTED", "CANCELLED"]); _state.SelectedIndex = _staff ? 1 : 0;
         panel.Controls.Add(_state);
         Buttons(panel, ("Tải danh sách", async () => { _beforeRequest = null; _requestHistory.Clear(); await LoadRequests(); }),
@@ -185,6 +234,8 @@ public sealed class BookingWorkspaceControl : UserControl
         _requests.DataSource = _requestRows.Select(r => new RequestView(r.Id, r.State, r.CustomerName, r.PackageName,
             Local(r.StartUtc), Local(r.SubmittedAtUtc), Money(r.Estimate), r.BookingCode ?? "")).ToList();
         _detail = null; _detailText.Clear();
+        if (!_staff && _requestRows.Count == 0)
+            _detailText.Text = "Chưa có yêu cầu phù hợp. Bạn có thể đổi bộ lọc hoặc chọn gói chụp để gửi yêu cầu mới. Thanh toán và biên nhận chỉ có sau khi lịch được duyệt và nhân viên ghi nhận khoản thu.";
     }
     private async Task<BookingDetailDto?> LoadDetail(long? requestId = null)
     {
@@ -197,6 +248,7 @@ public sealed class BookingWorkspaceControl : UserControl
         _detailText.Text = $"Yêu cầu #{_detail.Id}: {_detail.State}\r\nGửi lúc: {Local(_detail.SubmittedAtUtc)}\r\n" +
             QuoteText(_detail.Quote) + $"\r\nPhản hồi: {_detail.Feedback ?? "Chưa xử lý"}\r\n" +
             $"Lịch chính thức: {_detail.OfficialBookingCode ?? "Chưa có"} — Giá chốt khi duyệt: {(_detail.ConfirmedTotal is { } total ? Money(total) : "Chưa chốt")}\r\n\r\n{history}";
+        if (!_staff && _detailText.Parent is ScrollableControl viewport) viewport.ScrollControlIntoView(_detailText);
         return _detail;
     }
     private async Task LoadStaffChoices(bool reset)
@@ -247,8 +299,7 @@ public sealed class BookingWorkspaceControl : UserControl
     private async Task Cancel()
     {
         var detail = await LoadDetail(); if (detail is null) return;
-        if (MessageBox.Show(this, $"Rút yêu cầu #{detail.Id} đang chờ?", "Xác nhận rút yêu cầu",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        if (!AtelierUi.Confirm(this, "Xác nhận rút yêu cầu", $"Rút yêu cầu #{detail.Id} đang chờ?\nLý do gửi khách: {_reason.Text}", "Rút yêu cầu")) return;
         var result = await Send(new(IdentityCommand.CancelBookingRequest) { BookingRequestId = detail.Id, Reason = _reason.Text });
         if (result.Success) { await LoadRequests(); await LoadDetail(detail.Id); }
     }
@@ -258,6 +309,10 @@ public sealed class BookingWorkspaceControl : UserControl
         var result = await Send(new(_staff ? IdentityCommand.GetReviewedRequestBooking : IdentityCommand.GetMyRequestBooking) { BookingRequestId = detail.Id });
         if (!result.Success || IsDisposed || result.OfficialBooking is not { } booking) return;
         if (_staff && OpenInternalBooking is { } open) { await open(booking.Id); return; }
+        if (!_staff)
+        {
+            using var official = new OfficialBookingForm(booking, detail.State); official.ShowDialog(this); return;
+        }
         using var dialog = new Form { Text = "Lịch chính thức — " + booking.Code, ClientSize = new Size(650, 380), StartPosition = FormStartPosition.CenterParent };
         dialog.Controls.Add(new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Text = $"Mã lịch: {booking.Code}\r\nTrạng thái lịch (riêng với yêu cầu): {booking.Status}\r\n{Local(booking.StartUtc)} → {Local(booking.EndUtc)}\r\n" +
@@ -289,15 +344,20 @@ public sealed class BookingWorkspaceControl : UserControl
         foreach (var addon in q.Addons) text.AppendLine($"{addon.Name}: {addon.Quantity} {addon.Unit} × {Money(addon.UnitPrice)}");
         return text.AppendLine($"Tổng dự kiến: {Money(q.Estimate)}\r\nGhi chú: {q.Notes}").ToString();
     }
-    private void Info(string message) => MessageBox.Show(this, message, "Đặt lịch", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    private void Info(string message)
+    {
+        if (_staff) MessageBox.Show(this, message, "Đặt lịch", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        else AtelierUi.Info(this, "Đặt lịch & yêu cầu", message);
+    }
     private static string Money(decimal value) => value.ToString("#,0.####", CultureInfo.GetCultureInfo("vi-VN")) + " đ";
     private static string Local(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm:ss");
     private static ComboBox Combo() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 480 };
     private static Label Label(string value) => new() { Text = value, AutoSize = true, MaximumSize = new Size(740, 0), Margin = new Padding(3, 10, 3, 5) };
     private static DataGridView Grid() => new() { Width = 740, Height = 190, ReadOnly = true, AutoGenerateColumns = true,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, AllowUserToAddRows = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells };
-    private static FlowLayoutPanel Stack(Control owner)
+    private FlowLayoutPanel Stack(Control owner)
     {
+        if (!_staff) return AtelierUi.Stack(owner);
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(10) };
         owner.Controls.Add(panel); return panel;
     }
@@ -306,7 +366,8 @@ public sealed class BookingWorkspaceControl : UserControl
         var row = new FlowLayoutPanel { AutoSize = true, Width = 740, WrapContents = true };
         foreach (var (text, action) in commands)
         {
-            var button = new Button { Text = text, AutoSize = true, Height = 34, Margin = new Padding(3) };
+            Control button = _staff ? new Button { Text = text, AutoSize = true, Height = 34, Margin = new Padding(3) }
+                : AtelierUi.Action(text, text == "Xem trước & xác nhận gửi");
             button.Click += async (_, _) => await _execute(action); row.Controls.Add(button);
         }
         parent.Controls.Add(row);
@@ -315,6 +376,25 @@ public sealed class BookingWorkspaceControl : UserControl
     private sealed record Choice(int Id, string Text);
     private sealed record SelectedService([property: Browsable(false)] int ServiceId, string Name, string Unit, decimal UnitPrice, decimal Quantity);
     private sealed record RequestView(long Id, string State, string Customer, string Package, string VietnamTime, string SubmittedVietnam, string Estimate, string OfficialBooking);
+}
+
+internal sealed class OfficialBookingForm : Form
+{
+    internal OfficialBookingForm(OfficialBookingDto booking, string requestState)
+    {
+        Text = "Lịch chụp chính thức · Atelier Lumière"; ClientSize = new Size(860, 620); MinimumSize = new Size(740, 520);
+        StartPosition = FormStartPosition.CenterParent;
+        var layout = PaymentUi.Layout(this, "Lịch chụp " + booking.Code, "Thông tin đã được studio xác nhận · Chỉ xem");
+        var summary = new Label { Text = $"Yêu cầu: {requestState}  ·  Trạng thái lịch: {ReceiptText.BookingStatus(booking.Status)}" };
+        layout.Controls.Add(PaymentUi.Summary(summary), 0, 1);
+        var text = new TextBox { ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None,
+            Font = Theme.Font(10), BackColor = Theme.Surface, ForeColor = Theme.Text, Padding = new Padding(16),
+            Text = $"Mã lịch: {booking.Code}\r\nGiờ Việt Nam: {booking.StartUtc.ToOffset(TimeSpan.FromHours(7)):dd/MM/yyyy HH:mm} → {booking.EndUtc.ToOffset(TimeSpan.FromHours(7)):dd/MM/yyyy HH:mm}\r\n\r\n" +
+                $"Gói: {booking.PackageName}\r\nGiá gói đã chốt: {booking.PackagePrice.ToString("#,0.####", CultureInfo.GetCultureInfo("vi-VN"))} đ\r\nDịch vụ: {booking.ServicesTotal.ToString("#,0.####", CultureInfo.GetCultureInfo("vi-VN"))} đ\r\nTổng hiện tại: {booking.Total.ToString("#,0.####", CultureInfo.GetCultureInfo("vi-VN"))} đ\r\n\r\nPhòng: {booking.Room}\r\nNhiếp ảnh gia: {booking.Photographer}" };
+        layout.Controls.Add(PaymentUi.Data(text), 0, 2);
+        var actions = PaymentUi.Actions(); var close = PaymentUi.Action(actions, "Đóng", IconKind.Close); close.Click += (_, _) => Close();
+        layout.Controls.Add(actions, 0, 3); CancelButton = close;
+    }
 }
 
 internal sealed class CustomerPaymentsForm : Form

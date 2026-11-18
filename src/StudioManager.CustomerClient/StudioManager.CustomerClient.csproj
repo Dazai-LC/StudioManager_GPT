@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><OutputType>WinExe</OutputType>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>../StudioManager.WinForms/app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../StudioManager.CustomerApi/StudioManager.CustomerApi.csproj" /></ItemGroup>
   <ItemGroup>
@@ -8,5 +10,7 @@
     <Compile Include="../StudioManager.WinForms/Theme.cs" Link="Presentation/Theme.cs" />
     <Compile Include="../StudioManager.WinForms/Controls/SurfaceControls.cs" Link="Presentation/SurfaceControls.cs" />
     <Compile Include="../StudioManager.WinForms/Controls/AtelierDialog.cs" Link="Presentation/AtelierDialog.cs" />
+    <Compile Include="../StudioManager.WinForms/Controls/AtelierNavButton.cs" Link="Presentation/AtelierNavButton.cs" />
+    <Compile Include="../StudioManager.WinForms/Forms/AtelierInput.cs" Link="Presentation/AtelierInput.cs" />
   </ItemGroup>
 </Project>

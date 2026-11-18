@@ -18,5 +18,6 @@
     <Compile Include="..\StudioManager.CustomerClient\BookingWorkspaceControl.cs" Link="Pages\BookingWorkspaceControl.cs" />
     <Compile Include="..\StudioManager.CustomerClient\PersistedReceiptForm.cs" Link="Controls\PersistedReceiptForm.cs" />
     <Compile Include="..\StudioManager.CustomerClient\PaymentUi.cs" Link="Controls\PaymentUi.cs" />
+    <Compile Include="..\StudioManager.CustomerClient\AtelierUi.cs" Link="Controls\AtelierCustomerRendering.cs" />
   </ItemGroup>
 </Project>

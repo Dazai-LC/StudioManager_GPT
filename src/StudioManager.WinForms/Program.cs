@@ -24,9 +24,10 @@ internal static class Program
                 Controls.Ui.FormatRuntimeError("Runtime", e.Exception));
         };
         string connection;
+        LocalDemoProfile? demo;
         try
         {
-            var demo = LocalDemoClientRuntime.Configure(args, LocalDemoComponent.Staff);
+            demo = LocalDemoClientRuntime.Configure(args, LocalDemoComponent.Staff);
             connection = demo is not null ? LocalDemoSqlSettings.Load(AppContext.BaseDirectory) :
                 (JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) ?? new()).ConnectionString;
         }
@@ -37,7 +38,7 @@ internal static class Program
             error.ShowDialog(); Environment.ExitCode = 1; return;
         }
         var facade = new AppFacade(new SqlStudioRepository(connection), new Pbkdf2PasswordHasher(), new SystemClock());
-        System.Windows.Forms.Application.Run(new LoginForm(facade));
+        System.Windows.Forms.Application.Run(new LoginForm(facade, demo));
     }
     private sealed class AppSettings { public string ConnectionString { get; set; } = ""; }
 }

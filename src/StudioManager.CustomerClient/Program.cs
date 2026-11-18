@@ -1,5 +1,7 @@
 using StudioManager.CustomerApi;
 using StudioManager.CustomerDesktop;
+using StudioManager.WinForms;
+using StudioManager.WinForms.Controls;
 
 namespace StudioManager.CustomerClient;
 
@@ -9,19 +11,25 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        try { LocalDemoClientRuntime.Configure(args, LocalDemoComponent.CustomerClient); }
+        bool registration;
+        try
+        {
+            registration = args.Contains("--register", StringComparer.Ordinal);
+            if (args.Count(argument => argument == "--register") > 1) throw new InvalidOperationException();
+            LocalDemoClientRuntime.Configure(args.Where(argument => argument != "--register").ToArray(), LocalDemoComponent.CustomerClient);
+        }
         catch
         {
             using var error = new StudioManager.WinForms.Controls.AtelierDialog(
-                StudioManager.WinForms.Controls.AtelierNotificationKind.Error, "Local demo",
-                "Cấu hình runtime không hợp lệ hoặc host demo chưa sẵn sàng. Kiểm tra --local-demo --runtime và thư mục demo riêng.");
+                StudioManager.WinForms.Controls.AtelierNotificationKind.Error, "Khởi chạy cổng khách hàng",
+                "Không thể khởi chạy cổng khách hàng. Kiểm tra tham số và bản cài. Với local demo, hãy kiểm tra host, --local-demo --runtime và thư mục demo riêng.");
             error.ShowDialog(); Environment.ExitCode = 1; return;
         }
-        Application.Run(new IdentityForm());
+        Application.Run(new IdentityForm(registration));
     }
 }
 
-internal sealed class IdentityForm : Form
+internal sealed partial class IdentityForm : Form
 {
     private readonly CustomerPipeClient _client = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -51,27 +59,33 @@ internal sealed class IdentityForm : Form
     private readonly System.Windows.Forms.Timer _idleTimer = new() { Interval = 1000 };
     private bool _busy;
 
-    internal IdentityForm() : this(null) { }
+    internal IdentityForm() : this(null, false) { }
+    internal IdentityForm(bool registration) : this(null, registration) { }
 
     // Test-only composition uses an internal constructor; normal mode uses the SCM-verified client.
-    internal IdentityForm(Func<IdentityRequest, CancellationToken, Task<IdentityResponse>>? send)
+    internal IdentityForm(Func<IdentityRequest, CancellationToken, Task<IdentityResponse>>? send) : this(send, false) { }
+    private IdentityForm(Func<IdentityRequest, CancellationToken, Task<IdentityResponse>>? send, bool registration)
     {
         _send = send ?? _client.SendAsync;
         Text = "StudioManager — Tài khoản khách hàng";
-        ClientSize = new Size(900, 770); MinimumSize = new Size(740, 650);
-        Font = new Font("Segoe UI", 10);
+        ClientSize = new Size(1320, 820); MinimumSize = new Size(1040, 660);
+        AutoScaleDimensions = new SizeF(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
+        Font = Theme.Font(); BackColor = Theme.Background; StartPosition = FormStartPosition.CenterScreen;
         _customerBooking = new(false, Send, Show, Execute);
         _booking.Controls.Add(_customerBooking);
-        SetPages(null); Controls.Add(_tabs); Controls.Add(_status);
+        BuildShell();
         BuildLogin(); BuildProfile(); BuildReviews();
+        SetPages(null); ShowAuth(registration);
+        _customerBooking.CustomerSectionChanged += (_, section) => MarkBookingSection(section);
         _tabs.Selected += async (_, _) =>
         {
             if (_tabs.SelectedTab == _booking && _booking.Enabled && !_customerBookingLoaded)
                 await Execute(async () => { _customerBookingLoaded = true; await _customerBooking.InitializeAsync(); });
         };
-        var logout = new Button { Text = "Đăng xuất", Dock = DockStyle.Bottom, Height = 36 };
+        var logout = Theme.GhostButton("Đăng xuất", IconKind.LogOut);
+        logout.Dock = DockStyle.Bottom; logout.Height = 48; logout.ForeColor = Theme.SidebarText;
         logout.Click += async (_, _) => await Execute(async () => { SignedOut(); Show(await Send(new(IdentityCommand.Logout))); });
-        Controls.Add(logout);
+        _sidebar.Controls.Add(logout); _logout = logout; _logout.Visible = false;
         _idleTimer.Tick += async (_, _) =>
         {
             if (_busy || _closed || IsDisposed || Disposing) return;
@@ -107,6 +121,7 @@ internal sealed class IdentityForm : Form
         {
             _closed = true; Interlocked.Increment(ref _viewGeneration);
             _idleTimer.Stop(); _idleTimer.Dispose(); _lifetime.Cancel();
+            _statusTip.Dispose();
             _shutdown = _client.DisposeAsync().AsTask();
             _ = _shutdown.ContinueWith(task => { _ = task.Exception; }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
@@ -117,46 +132,48 @@ internal sealed class IdentityForm : Form
         base.Dispose(disposing);
     }
 
-    private void BuildLogin()
+    private async Task LoginAsync()
     {
-        var form = Stack(_login);
-        form.Controls.Add(new Label { AutoSize = true, Text = "Khách đăng nhập bằng email. Nhân sự dùng tên đăng nhập nội bộ." });
-        Field(form, "Email / Tên đăng nhập", _identifier); Field(form, "Mật khẩu", _password);
-        form.Controls.Add(_staff);
-        Button(form, "Đăng nhập", async () =>
+        if (string.IsNullOrWhiteSpace(_identifier.Text) || string.IsNullOrEmpty(_password.Text))
+        { Show(new(false, "REQUIRED", "Vui lòng nhập email / tên đăng nhập và mật khẩu.")); return; }
+        var staff = _staff.Checked;
+        var request = new IdentityRequest(staff ? IdentityCommand.StaffLogin : IdentityCommand.CustomerLogin)
+        { Identifier = _identifier.Text.Trim(), Password = _password.Text };
+        SignedOut(); // Clear every old principal's data before any authentication await.
+        var response = await Send(request);
+        if (IsDisposed || Disposing) return;
+        _password.Clear(); Show(response);
+        if (!response.Success) { SignedOut(); return; }
+        SetPages(staff); _idleTimer.Start();
+        if (staff) { _accountSummary.Text = request.Identifier + "\nNhân sự · Duyệt liên kết"; _tabs.SelectedTab = _reviews; await LoadReviews(); }
+        else { _tabs.SelectedTab = _profile; SetProfile(response.Profile!); await RefreshLink(); }
+    }
+
+    private async Task RegisterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_regName.Text) || string.IsNullOrWhiteSpace(_regPhone.Text) ||
+            !System.Net.Mail.MailAddress.TryCreate(_regEmail.Text.Trim(), out var email) ||
+            !string.Equals(email.Address, _regEmail.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+        { Show(new(false, "INVALID_INPUT", "Vui lòng nhập họ tên, số điện thoại và email hợp lệ.")); return; }
+        if (_regPassword.Text != _regConfirm.Text)
+        { Show(new(false, "PASSWORD_CONFIRMATION", "Xác nhận mật khẩu chưa khớp.")); return; }
+        var identifier = _regEmail.Text.Trim();
+        var response = await Send(new(IdentityCommand.Register)
+        { Identifier = identifier, Password = _regPassword.Text, Confirmation = _regConfirm.Text,
+            Contact = new(_regName.Text, _regPhone.Text, identifier, _regAddress.Text) });
+        if (IsDisposed || Disposing) return;
+        _regPassword.Clear(); _regConfirm.Clear(); Show(response);
+        if (response.Success)
         {
-            var staff = _staff.Checked;
-            var request = new IdentityRequest(staff ? IdentityCommand.StaffLogin : IdentityCommand.CustomerLogin)
-            { Identifier = _identifier.Text, Password = _password.Text };
-            SignedOut(); // Clear every old principal's data before any authentication await.
-            _password.Clear();
-            var response = await Send(request);
-            if (IsDisposed || Disposing) return;
-            _password.Clear(); Show(response);
-            if (!response.Success) { SignedOut(); return; }
-            SetPages(staff);
-            _idleTimer.Start();
-            if (staff) { _tabs.SelectedTab = _reviews; await LoadReviews(); }
-            else { _tabs.SelectedTab = _profile; SetProfile(response.Profile!); await RefreshLink(); }
-        });
-        form.Controls.Add(new Label { AutoSize = true, Text = "Đăng ký khách hàng — email đăng nhập không tự liên kết hồ sơ cũ", Padding = new Padding(0, 24, 0, 8) });
-        Field(form, "Họ tên", _regName); Field(form, "Số điện thoại", _regPhone);
-        Field(form, "Email đăng nhập", _regEmail); Field(form, "Địa chỉ", _regAddress);
-        Field(form, "Mật khẩu mới", _regPassword); Field(form, "Xác nhận mật khẩu", _regConfirm);
-        Button(form, "Đăng ký", async () =>
-        {
-            var response = await Send(new(IdentityCommand.Register)
-            { Identifier = _regEmail.Text, Password = _regPassword.Text, Confirmation = _regConfirm.Text,
-                Contact = new(_regName.Text, _regPhone.Text, _regEmail.Text, _regAddress.Text) });
-            if (IsDisposed || Disposing) return;
-            _regPassword.Clear(); _regConfirm.Clear(); Show(response);
-            if (response.Success) _identifier.Text = _regEmail.Text;
-        });
+            ShowAuth(false); _identifier.Text = identifier;
+            _status.Text = "Đăng ký thành công. Đăng nhập bằng email và mật khẩu vừa tạo để bắt đầu.";
+            _status.ForeColor = Theme.Success; _password.Focus();
+        }
     }
 
     private void BuildProfile()
     {
-        var form = Stack(_profile); form.Controls.Add(_loginEmail);
+        var form = Stack(_profile); form.Controls.Add(AtelierUi.Copy("Thông tin liên hệ", true)); form.Controls.Add(_loginEmail);
         Field(form, "Họ tên", _name); Field(form, "Số điện thoại", _phone); Field(form, "Email liên hệ", _email); Field(form, "Địa chỉ", _address);
         Button(form, "Lưu thông tin liên hệ", async () => Show(await Send(new(IdentityCommand.UpdateMyProfile)
             { Contact = new(_name.Text, _phone.Text, _email.Text, _address.Text) })));
@@ -165,6 +182,7 @@ internal sealed class IdentityForm : Form
             var response = await Send(new(IdentityCommand.GetMyProfile)); Show(response);
             if (response.Success) SetProfile(response.Profile!);
         });
+        form.Controls.Add(AtelierUi.Copy("Bảo mật tài khoản", true));
         Field(form, "Mật khẩu hiện tại", _current); Field(form, "Mật khẩu mới", _next); Field(form, "Xác nhận", _confirm);
         Button(form, "Đổi mật khẩu và đăng xuất", async () =>
         {
@@ -174,6 +192,8 @@ internal sealed class IdentityForm : Form
             _current.Clear(); _next.Clear(); _confirm.Clear(); Show(response);
             if (response.Success) SignedOut();
         });
+        form.Controls.Add(AtelierUi.Copy("Liên kết hồ sơ studio", true));
+        form.Controls.Add(AtelierUi.Copy("Hồ sơ cũ chỉ được liên kết khi nhân viên đối chiếu và phê duyệt; hệ thống không tự ghép theo email hay số điện thoại."));
         Field(form, "Mã hồ sơ / lịch chụp cũ", _reference); Field(form, "Thông tin để nhân viên đối chiếu", _evidence);
         Button(form, "Gửi yêu cầu liên kết hồ sơ cũ", async () =>
         {
@@ -186,7 +206,7 @@ internal sealed class IdentityForm : Form
             var response = await Send(new(IdentityCommand.GetMyLinkedCustomer)); Show(response);
             if (IsDisposed || Disposing) return;
             if (response.LinkedCustomer is { } customer)
-                MessageBox.Show(this, $"{customer.Code}\n{customer.FullName}\n{customer.Phone}\n{customer.Email}\n{customer.Address}", "Hồ sơ được liên kết");
+                AtelierUi.Info(this, "Hồ sơ được liên kết", $"{customer.Code}\n{customer.FullName}\n{customer.Phone}\n{customer.Email}\n{customer.Address}");
         });
     }
 
@@ -237,6 +257,7 @@ internal sealed class IdentityForm : Form
     {
         if (IsDisposed || Disposing) return;
         _loginEmail.Text = "Email đăng nhập: " + profile.LoginEmail;
+        _accountSummary.Text = profile.Contact.FullName + Environment.NewLine + profile.LoginEmail;
         _name.Text = profile.Contact.FullName; _phone.Text = profile.Contact.Phone; _email.Text = profile.Contact.Email; _address.Text = profile.Contact.Address;
     }
     private void SignedOut()
@@ -248,6 +269,9 @@ internal sealed class IdentityForm : Form
         _customerBookingLoaded = false;
         SetPages(null); _tabs.SelectedTab = _login; _grid.DataSource = null;
         foreach (var box in new[] { _name, _phone, _email, _address, _reference, _evidence, _reason, _customerId, _current, _next, _confirm }) box.Clear();
+        foreach (var box in new[] { _password, _regName, _regPhone, _regEmail, _regAddress, _regPassword, _regConfirm }) box.Clear();
+        foreach (var box in new[] { _password, _regPassword, _regConfirm, _current, _next, _confirm }) box.UseSystemPasswordChar = true;
+        _accountSummary.Text = "Không gian khách hàng";
         _loginEmail.Text = "";
         _beforeLink = null; _reviewHistory.Clear();
     }
@@ -261,6 +285,7 @@ internal sealed class IdentityForm : Form
             if (staff == true) _tabs.TabPages.Add(_reviews);
             else if (staff == false) _tabs.TabPages.AddRange([_profile, _booking]);
             Text = staff == true ? "StudioManager — Duyệt liên kết hồ sơ (nhân sự)" : "StudioManager — Tài khoản khách hàng";
+            RefreshNavigation(staff);
         }
         finally { _tabs.ResumeLayout(); }
     }
@@ -268,31 +293,45 @@ internal sealed class IdentityForm : Form
     {
         if (_closed || IsDisposed || Disposing) return;
         _status.Text = response.Message;
+        _status.ForeColor = response.Success ? Theme.Success : Theme.Danger;
         if (IdentityProtocol.RequiresSignIn(response)) SignedOut();
     }
     private async Task Execute(Func<Task> action)
     {
         if (_busy || _closed || IsDisposed || Disposing) return;
         _busy = true;
-        Enabled = false;
+        _tabs.Enabled = false; _navigation.Enabled = false; UseWaitCursor = true;
+        _status.ForeColor = Theme.Muted; _status.Text = "Đang xử lý, vui lòng chờ…";
         try { await action(); }
         catch (OperationCanceledException) { /* A reset/disposed view must not render a stale callback. */ }
         catch { if (!_closed && !IsDisposed && !Disposing) { _status.Text = "Không thể hoàn tất thao tác. Vui lòng đăng nhập lại."; SignedOut(); } }
-        finally { _busy = false; if (!_closed && !IsDisposed && !Disposing) Enabled = true; }
+        finally
+        {
+            _busy = false;
+            if (!_closed && !IsDisposed && !Disposing)
+            {
+                _tabs.Enabled = true; _navigation.Enabled = true; UseWaitCursor = false;
+                if (_status.Text == "Đang xử lý, vui lòng chờ…") { _status.Text = "Sẵn sàng."; _status.ForeColor = Theme.TextSecondary; }
+            }
+        }
     }
-    private void Button(FlowLayoutPanel host, string caption, Func<Task> action)
+    private ModernButton Button(FlowLayoutPanel host, string caption, Func<Task> action, bool primary = false)
     {
-        var button = new Button { Text = caption, Width = 600, Height = 34, Margin = new Padding(4, 6, 4, 6) };
+        var button = AtelierUi.Action(caption, primary);
         button.Click += async (_, _) => await Execute(action); host.Controls.Add(button);
+        return button;
     }
     private static TextBox Password() => new() { UseSystemPasswordChar = true, MaxLength = 128 };
     private static FlowLayoutPanel Stack(Control parent)
     {
-        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(16) };
-        parent.Controls.Add(panel); return panel;
+        return AtelierUi.Stack(parent);
     }
-    private static void Field(FlowLayoutPanel host, string label, TextBox value)
+    private static Panel Field(FlowLayoutPanel host, string label, TextBox value)
     {
-        host.Controls.Add(new Label { Text = label, AutoSize = true }); value.Width = 600; host.Controls.Add(value);
+        value.Font = Theme.Font(10); value.BorderStyle = BorderStyle.None; value.ForeColor = Theme.Text;
+        var field = StudioManager.WinForms.Forms.AtelierInput.CreateVectorInputField(label, value, value.UseSystemPasswordChar ? IconKind.Lock : IconKind.Users,
+            value.UseSystemPasswordChar);
+        field.Dock = DockStyle.None; field.Height = 76; field.Margin = new Padding(0, 2, 0, 6); host.Controls.Add(field);
+        return field;
     }
 }
