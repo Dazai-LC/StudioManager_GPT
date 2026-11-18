@@ -9,7 +9,7 @@ internal static class PaymentUi
     {
         form.AutoScaleDimensions=new SizeF(96,96);form.AutoScaleMode=AutoScaleMode.Dpi;
         form.BackColor=Theme.Background;form.ForeColor=Theme.Text;form.Font=Theme.Font();form.Padding=new Padding(20);
-        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=4,BackColor=Color.Transparent,Margin=Padding.Empty};
+        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=4,BackColor=Color.Empty,Margin=Padding.Empty};
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent,100));root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -19,7 +19,7 @@ internal static class PaymentUi
     internal static Control Summary(Label label)
     {
         label.Dock=DockStyle.Fill;label.Font=Theme.Font(9.2f);label.ForeColor=Theme.TextSecondary;
-        label.BackColor=Color.Transparent;label.Padding=Padding.Empty;label.UseMnemonic=false;
+        label.BackColor=Color.Empty;label.Padding=Padding.Empty;label.UseMnemonic=false;
         label.TextChanged+=(_,_)=>label.Parent?.Parent?.PerformLayout();
         return new SummaryCard(label);
     }
@@ -63,7 +63,7 @@ internal static class PaymentUi
     internal static FlowLayoutPanel Actions()=>new()
     {
         Dock=DockStyle.Fill,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,WrapContents=true,
-        BackColor=Color.Transparent,Padding=Padding.Empty,Margin=new Padding(0,10,0,0)
+        BackColor=Color.Empty,Padding=Padding.Empty,Margin=new Padding(0,10,0,0)
     };
     internal static ModernButton Action(FlowLayoutPanel bar,string text,IconKind icon,bool primary=false)
     {
