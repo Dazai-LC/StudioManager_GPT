@@ -36,6 +36,7 @@ internal sealed class PaymentWorkspaceForm : Form
     private readonly FlowLayoutPanel _actions=PaymentUi.Actions();
     private readonly ModernButton _collect,_older,_receipt;
     private BookingPaymentSummary? _balance;
+    private LichChup? _booking;
     private IReadOnlyList<PaymentTransaction> _rows=[];
     private bool _busy,_reloadRequired;
     public PaymentWorkspaceForm(AppFacade app,long bookingId)
@@ -62,7 +63,7 @@ internal sealed class PaymentWorkspaceForm : Form
         catch
         {
             _reloadRequired=true;_summary.Text="Không tải được trạng thái. Tải lại trước khi thực hiện tiếp; không gửi lại khoản thu.";
-            _balance=null;_rows=[];_history.DataSource=null;
+            _balance=null;_booking=null;_rows=[];_history.DataSource=null;
         }
         finally
         {
@@ -75,9 +76,16 @@ internal sealed class PaymentWorkspaceForm : Form
         var actor=_app.Session;
         var result=await _app.Finance.PaymentsAsync(_bookingId,before);
         if(!Current(actor))return;
-        if(!result.Success){_balance=null;_rows=[];_history.DataSource=null;_summary.Text=result.Message;return;}
-        _balance=result.Data!;_rows=_balance.Payments;_reloadRequired=false;
-        _summary.Text=$"Lịch {_balance.BookingCode} · {ReceiptText.BookingStatus(_balance.Status)}\r\nTổng: {ReceiptText.Money(_balance.Total)} | Đã thu: {ReceiptText.Money(_balance.Collected)} | Đã hoàn: {ReceiptText.Money(_balance.Refunded)}\r\n"+
+        if(!result.Success){_balance=null;_booking=null;_rows=[];_history.DataSource=null;_summary.Text=result.Message;return;}
+        var booking=await _app.Bookings.GetAsync(_bookingId);
+        if(!Current(actor))return;
+        if(booking is null || booking.Id!=_bookingId || result.Data!.BookingId!=_bookingId || booking.Ma!=result.Data.BookingCode)
+        {
+            _balance=null;_booking=null;_rows=[];_history.DataSource=null;_reloadRequired=true;
+            _summary.Text="Không xác minh được lịch chụp của giao dịch. Tải lại và chọn đúng lịch trước khi thu tiền.";return;
+        }
+        _booking=booking;_balance=result.Data;_rows=_balance.Payments;_reloadRequired=false;
+        _summary.Text=BookingActionTarget.Describe(booking)+$"\r\nTổng: {ReceiptText.Money(_balance.Total)} | Đã thu: {ReceiptText.Money(_balance.Collected)} | Đã hoàn: {ReceiptText.Money(_balance.Refunded)}\r\n"+
             $"Còn lại: {ReceiptText.Money(_balance.Remaining)}\r\nChỉ ghi nhận mô phỏng. Chuyển khoản DEMO do nhân viên xác nhận; không có xác minh ngân hàng.";
         _history.DataSource=_rows.Select(p=>new{p.Id,Ma=p.Code,MucDich=ReceiptText.Purpose(p.Purpose),SoTien=ReceiptText.Money(p.Amount),PhuongThuc=ReceiptText.Method(p.Method),ThoiDiem=p.PaidAt.ToString("dd/MM/yyyy HH:mm:ss")}).ToList();
         if(_history.Columns.Contains("Id"))_history.Columns["Id"].Visible=false;
@@ -88,12 +96,24 @@ internal sealed class PaymentWorkspaceForm : Form
     {
         if(_balance is null || _reloadRequired)return;
         // Explicit reload before presenting the amount; SQL validates again under the booking lock.
-        await LoadData(null);if(_balance is null || _balance.Remaining<=0)return;
-        using var dialog=new CollectionDialog(_balance);
+        await LoadData(null);if(_balance is null || _booking is null || _balance.Remaining<=0)return;
+        var balance=_balance;var booking=_booking;var actor=_app.Session;
+        if(actor is null)return;
+        using var dialog=new CollectionDialog(balance,booking);
         if(dialog.ShowDialog(this)!=DialogResult.OK)return;
+        if(!Current(actor))return;
+        var current=await _app.Bookings.GetAsync(_bookingId);
+        if(!Current(actor))return;
+        var latest=await _app.Finance.PaymentsAsync(_bookingId);
+        if(!Current(actor))return;
+        if(current!=booking || !latest.Success || !SameBalance(balance,latest.Data!))
+        {
+            _reloadRequired=true;
+            AtelierNotificationService.ShowWarning(this,"Thông tin lịch hoặc số dư đã thay đổi. Khoản thu chưa được gửi. Kiểm tra dữ liệu mới và xác nhận lại.","Kiểm tra lại khoản thu");
+            await LoadData(null);return;
+        }
         var request=new PaymentInput(_bookingId,dialog.Purpose,dialog.Amount,dialog.Note)
         {PhuongThucThu=dialog.Method,YeuCauThuId=Guid.NewGuid()};
-        var actor=_app.Session;if(actor is null){_balance=null;return;}
         var result=await _app.Finance.CollectAsync(request,actor);
         if(!Current(actor))return;
         if(!result.Success)
@@ -107,6 +127,9 @@ internal sealed class PaymentWorkspaceForm : Form
         using(var preview=new PersistedReceiptForm(PaymentPresentation.Receipt(saved)))preview.ShowDialog(this);
         await LoadData(null);
     }
+    private static bool SameBalance(BookingPaymentSummary expected,BookingPaymentSummary current)=>
+        expected.BookingId==current.BookingId && expected.BookingCode==current.BookingCode && expected.Status==current.Status &&
+        expected.Total==current.Total && expected.Collected==current.Collected && expected.Refunded==current.Refunded && expected.Remaining==current.Remaining;
     private async Task Receipt()
     {
         if(_history.CurrentRow is not {Index:>=0} selected || selected.Index>=_rows.Count)return;
@@ -121,7 +144,7 @@ internal sealed class PaymentWorkspaceForm : Form
     {
         if(IsDisposed)return false;
         if(_app.Session==actor)return true;
-        _balance=null;_rows=[];_history.DataSource=null;_reloadRequired=true;
+        _balance=null;_booking=null;_rows=[];_history.DataSource=null;_reloadRequired=true;
         _summary.Text="Phiên đăng nhập đã thay đổi. Tải lại dữ liệu trước khi thao tác.";return false;
     }
 }
@@ -136,12 +159,12 @@ internal sealed class CollectionDialog : Form
     public string Method=>(string)_method.SelectedValue!;
     public string Purpose=>(string)_purpose.SelectedValue!;
     public string Note=>_note.Text.Trim();
-    public CollectionDialog(BookingPaymentSummary summary)
+    public CollectionDialog(BookingPaymentSummary summary,LichChup booking)
     {
         Text="Xác nhận khoản thu mô phỏng — "+summary.BookingCode;StartPosition=FormStartPosition.CenterParent;
         ClientSize=new Size(600,700);MinimumSize=new Size(560,620);FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=false;MinimizeBox=false;
         var layout=PaymentUi.Layout(this,"Xác nhận khoản thu","Chọn phương thức, mục đích thu và kiểm tra số tiền trước khi ghi nhận");
-        layout.Controls.Add(PaymentUi.Summary(new Label{Text=$"Lịch {summary.BookingCode}\r\nTổng {ReceiptText.Money(summary.Total)} · Đã thu {ReceiptText.Money(summary.Collected)}\r\nCòn lại {ReceiptText.Money(summary.Remaining)}"}),0,1);
+        layout.Controls.Add(PaymentUi.Summary(new Label{Text=BookingActionTarget.Describe(booking)+$"\r\nTổng {ReceiptText.Money(summary.Total)} · Đã thu {ReceiptText.Money(summary.Collected)}\r\nCòn lại {ReceiptText.Money(summary.Remaining)}"}),0,1);
         var scroll=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Color.Transparent,Margin=Padding.Empty};
         var card=new CardPanel{Dock=DockStyle.Top,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,Padding=new Padding(20,14,20,14)};
         var body=new FlowLayoutPanel{Dock=DockStyle.Top,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,FlowDirection=FlowDirection.TopDown,WrapContents=false,BackColor=Color.Transparent,Margin=Padding.Empty};
@@ -176,7 +199,7 @@ internal sealed class CollectionDialog : Form
         {
             if(!PaymentPolicy.TryReadAmount(_amount.Text,out var amount) || amount>summary.Remaining)
             {Ui.Error(this,"Nhập số tiền dương chính xác đến 0,01 đ, không vượt số dư; không tự làm tròn.");return;}
-            if(!AtelierNotificationService.Confirm(this,"Xác nhận thủ công",$"Ghi nhận {ReceiptText.Money(amount)} cho {summary.BookingCode}?\r\n{_method.Text} · {_purpose.Text}\r\nĐây là giao dịch mô phỏng."))return;
+            if(!AtelierNotificationService.Confirm(this,"Xác nhận thủ công",BookingActionTarget.Describe(booking)+$"\r\n\r\nGhi nhận {ReceiptText.Money(amount)} cho lịch này?\r\n{_method.Text} · {_purpose.Text}\r\nĐây là giao dịch mô phỏng."))return;
             Amount=amount;DialogResult=DialogResult.OK;Close();
         };
     }

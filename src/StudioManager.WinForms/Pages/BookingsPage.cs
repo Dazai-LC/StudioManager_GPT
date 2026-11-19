@@ -11,7 +11,11 @@ namespace StudioManager.WinForms.Pages;
 public sealed class BookingsPage : UserControl
 {
     private readonly AppFacade _app;
-    private bool _paymentPending;
+    private bool _bookingActionPending;
+    private bool _loadingBookings, _bindingBookings;
+    private long? _selectedBookingId;
+    private int _selectionVersion, _loadVersion;
+    private BookingSearchFilter? _loadedFilter;
     private readonly DataGridView _grid = Theme.Grid();
     private readonly SearchInput _search = Ui.SearchBox("Tìm mã lịch, tên khách hàng, số điện thoại...");
     private readonly DateTimePicker _from = new() { Format = DateTimePickerFormat.Short, ShowCheckBox = true, Checked = false, Font = Theme.Font(9.2f) };
@@ -76,8 +80,37 @@ public sealed class BookingsPage : UserControl
         workbench.BringToFront();
 
         ConfigureGridPainting();
-        _grid.CellDoubleClick += async (_, _) => await DetailAsync();
-        _grid.SelectionChanged += (_, _) => UpdateInspectorAndActions();
+        _grid.CellClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0) SelectBookingRow(_grid.Rows[e.RowIndex]);
+        };
+        _grid.KeyUp += (_, e) =>
+        {
+            if (e.KeyCode is Keys.Up or Keys.Down or Keys.PageUp or Keys.PageDown or Keys.Home or Keys.End or Keys.Space)
+                SelectBookingRow(_grid.CurrentRow);
+        };
+        _grid.CellDoubleClick += async (_, e) => { if (e.RowIndex >= 0) await DetailAsync(); };
+        _grid.SelectionChanged += (_, _) =>
+        {
+            if (_loadingBookings || _bindingBookings) return;
+            // CurrencyManager/focus can supply a CurrentRow without a deliberate booking choice.
+            // Such changes may invalidate the old target, but must never adopt a different one.
+            if (Selected() is null)
+            {
+                if (_selectedBookingId is not null) _selectionVersion++;
+                _selectedBookingId = null;
+                _bindingBookings = true;
+                try { _grid.ClearSelection(); }
+                finally { _bindingBookings = false; }
+            }
+            UpdateInspectorAndActions();
+        };
+        _grid.DataBindingComplete += (_, _) =>
+        {
+            if (_loadingBookings || _bindingBookings) return;
+            RestoreBookingSelection(_selectedBookingId);
+            UpdateInspectorAndActions();
+        };
         _search.KeyDown += async (_, e) =>
         {
             if (e.KeyCode == Keys.Enter)
@@ -93,6 +126,7 @@ public sealed class BookingsPage : UserControl
             await LoadFiltersAsync();
             await LoadAsync();
         };
+        UpdateInspectorAndActions();
     }
 
     private Control BuildCommandToolbar(Control advancedFilters)
@@ -515,23 +549,62 @@ public sealed class BookingsPage : UserControl
         };
     }
 
-    private LichChup? Selected() =>
-        _grid.CurrentRow?.Cells["Id"].Value is object v ? _items.FirstOrDefault(x => x.Id == Convert.ToInt64(v)) : null;
+    private static long? BookingId(DataGridViewRow? row) =>
+        row?.DataGridView?.Columns.Contains("Id") == true && row.Cells["Id"].Value is long id && id > 0 ? id : null;
 
-    private async Task LoadAsync()
+    private LichChup? Selected() =>
+        !_loadingBookings && !_bindingBookings && _selectedBookingId is long id &&
+        _grid.SelectedRows.Count == 1 && _grid.CurrentRow is { Selected: true } row && BookingId(row) == id
+            ? _items.FirstOrDefault(x => x.Id == id) : null;
+
+    private void SelectBookingRow(DataGridViewRow? row)
     {
+        if (_loadingBookings || _bindingBookings || _bookingActionPending) return;
+        var id = BookingId(row);
+        _selectionVersion++;
+        RestoreBookingSelection(id);
+        UpdateInspectorAndActions();
+    }
+
+    private void RestoreBookingSelection(long? id)
+    {
+        var binding = _bindingBookings;
+        _bindingBookings = true;
         try
         {
-            var filter = new BookingSearchFilter(
-                string.IsNullOrWhiteSpace(_search.Text) ? null : _search.Text.Trim(),
-                _from.Checked ? _from.Value.Date : null,
-                _to.Checked ? _to.Value.Date : null,
-                SelectedId(_photographer),
-                SelectedId(_room),
-                SelectedId(_package),
-                SelectedStatus());
+            _selectedBookingId = null;
+            _grid.ClearSelection();
+            _grid.CurrentCell = null;
+            if (id is null || !_items.Any(x => x.Id == id)) return;
+            var row = _grid.Rows.Cast<DataGridViewRow>().SingleOrDefault(x => BookingId(x) == id);
+            var column = _grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(x => x.Visible);
+            if (row is null || column is null) return;
+            _grid.CurrentCell = row.Cells[column.Index];
+            row.Selected = true;
+            _selectedBookingId = id;
+        }
+        finally { _bindingBookings = binding; }
+    }
 
-            _items = await _app.Bookings.SearchAsync(filter);
+    private async Task LoadAsync(bool preserveSelection = true)
+    {
+        var filter = new BookingSearchFilter(
+            string.IsNullOrWhiteSpace(_search.Text) ? null : _search.Text.Trim(),
+            _from.Checked ? _from.Value.Date : null,
+            _to.Checked ? _to.Value.Date : null,
+            SelectedId(_photographer), SelectedId(_room), SelectedId(_package), SelectedStatus());
+        var selectedId = preserveSelection && filter == _loadedFilter ? _selectedBookingId : null;
+        var version = ++_loadVersion;
+        _selectionVersion++;
+        _loadingBookings = true;
+        _grid.Enabled = false;
+        UpdateInspectorAndActions();
+        try
+        {
+            var items = await _app.Bookings.SearchAsync(filter);
+            if (IsDisposed || version != _loadVersion) return;
+            _bindingBookings = true;
+            _items = items;
 
             _grid.DataSource = _items.Select(x => new
             {
@@ -578,35 +651,45 @@ public sealed class BookingsPage : UserControl
                 }
             }
 
-            if (_grid.Rows.Count > 0)
-            {
-                _grid.Rows[0].Selected = true;
-                var firstVisibleCol = _grid.Columns.Cast<DataGridViewColumn>().FirstOrDefault(c => c.Visible);
-                if (firstVisibleCol is not null)
-                    _grid.CurrentCell = _grid.Rows[0].Cells[firstVisibleCol.Index];
-            }
-            UpdateInspectorAndActions();
+            RestoreBookingSelection(selectedId);
+            _loadedFilter = filter;
         }
         catch (Exception ex)
         {
+            if (IsDisposed || version != _loadVersion) return;
+            _items = [];
+            _selectedBookingId = null;
+            _loadedFilter = null;
+            _grid.DataSource = null;
             Ui.Error(this, Ui.ReportError("BookingsPage", ex));
+        }
+        finally
+        {
+            if (!IsDisposed && version == _loadVersion)
+            {
+                _bindingBookings = false;
+                _loadingBookings = false;
+                _grid.Enabled = !_bookingActionPending;
+                UpdateInspectorAndActions();
+            }
         }
     }
 
     private void UpdateInspectorAndActions()
     {
         var b = Selected();
-        var hasSelection = b is not null;
+        var actor = _app.Session;
+        var hasSelection = b is not null && actor is not null && !_bookingActionPending;
 
-        var isAdmin = _app.Session!.VaiTro == VaiTro.QuanTriVien;
+        var isAdmin = actor?.VaiTro == VaiTro.QuanTriVien;
         _detail.Enabled = hasSelection;
-        _edit.Enabled = b is not null && (isAdmin
+        _edit.Enabled = hasSelection && b is not null && (isAdmin
             ? b.TrangThai is not TrangThaiLich.HoanThanh and not TrangThaiLich.DaHuy
             : b.TrangThai == TrangThaiLich.DaDatLich);
-        _progress.Enabled = b is not null && b.TrangThai.BuocTiepTheo() is not null;
-        _pay.Enabled = b is not null && b.TrangThai != TrangThaiLich.DaHuy && b.ConLai > 0;
-        _refund.Enabled = _refund.Visible && b is not null && b.TrangThai == TrangThaiLich.DaHuy && b.DaThu - b.DaHoan > 0;
-        _cancel.Enabled = b is not null && BusinessRules.DuocHuy(b.TrangThai, _app.Session!.VaiTro, b.BatDau, DateTime.Now);
+        _progress.Enabled = hasSelection && b is not null && b.TrangThai.BuocTiepTheo() is not null;
+        _pay.Enabled = hasSelection && b is not null && b.TrangThai != TrangThaiLich.DaHuy && b.ConLai > 0;
+        _refund.Enabled = hasSelection && _refund.Visible && b is not null && b.TrangThai == TrangThaiLich.DaHuy && b.DaThu - b.DaHoan > 0;
+        _cancel.Enabled = hasSelection && b is not null && BusinessRules.DuocHuy(b.TrangThai, actor!.VaiTro, b.BatDau, DateTime.Now);
 
         if (b is null)
         {
@@ -624,6 +707,7 @@ public sealed class BookingsPage : UserControl
                 ("Ghi chú", "—", null, false)
             ]);
             _finGauge.SetBooking(null);
+            _progress.Text = "Bước tiếp";
             _bookingPackagePreview.BindAsset(VisualAssetService.GetCoverEntry("GC000001"));
             return;
         }
@@ -707,10 +791,58 @@ public sealed class BookingsPage : UserControl
         else { Ui.Info(this, r.Message); await LoadAsync(); }
     }
 
-    private async Task EditAsync()
+    private async Task RunBookingActionAsync(Func<LichChup, UserSession, int, Task> action)
     {
-        var b = Selected();
-        if (b is null) return;
+        if (_bookingActionPending || _loadingBookings || IsDisposed) return;
+        var booking = Selected();
+        var actor = _app.Session;
+        if (booking is null || actor is null) return;
+        var version = _selectionVersion;
+        _bookingActionPending = true;
+        _grid.Enabled = false;
+        UpdateInspectorAndActions();
+        try
+        {
+            if (await VerifyActionTargetAsync(booking, actor, version)) await action(booking, actor, version);
+        }
+        catch (Exception error)
+        {
+            if (!IsDisposed)
+            {
+                RestoreBookingSelection(null);
+                Ui.Error(this, Ui.ReportError("BookingsPage.Action", error));
+            }
+        }
+        finally
+        {
+            _bookingActionPending = false;
+            if (!IsDisposed)
+            {
+                _grid.Enabled = !_loadingBookings;
+                UpdateInspectorAndActions();
+            }
+        }
+    }
+
+    private bool IsCurrentTarget(LichChup booking, UserSession actor, int version) =>
+        !IsDisposed && _app.Session == actor && _selectionVersion == version && Selected() == booking;
+
+    private async Task<bool> VerifyActionTargetAsync(LichChup booking, UserSession actor, int version)
+    {
+        if (IsDisposed) return false;
+        var current = IsCurrentTarget(booking, actor, version) ? await _app.Bookings.GetAsync(booking.Id) : null;
+        if (IsDisposed) return false;
+        if (IsCurrentTarget(booking, actor, version) && current == booking) return true;
+        RestoreBookingSelection(null);
+        AtelierNotificationService.ShowWarning(this,
+            "Lựa chọn hoặc thông tin lịch chụp đã thay đổi. Thao tác chưa được gửi. Vui lòng chọn lại đúng lịch và kiểm tra thông tin mới.",
+            "Kiểm tra lại lịch chụp");
+        if (_app.Session == actor) await LoadAsync(preserveSelection: false);
+        return false;
+    }
+
+    private Task EditAsync() => RunBookingActionAsync(async (b, actor, version) =>
+    {
         if (b.TrangThai is TrangThaiLich.HoanThanh or TrangThaiLich.DaHuy)
         {
             Ui.Error(this, "Không thể sửa lịch đã hoàn thành hoặc đã hủy.");
@@ -720,7 +852,7 @@ public sealed class BookingsPage : UserControl
         string? reason = null;
         if (b.TrangThai != TrangThaiLich.DaDatLich)
         {
-            if (_app.Session!.VaiTro != VaiTro.QuanTriVien)
+            if (actor.VaiTro != VaiTro.QuanTriVien)
             {
                 Ui.Error(this, "Chỉ được sửa thông tin cốt lõi khi lịch đang ở trạng thái 'Đã đặt lịch'.");
                 return;
@@ -732,24 +864,23 @@ public sealed class BookingsPage : UserControl
 
         using var f = new BookingDialog(_app, b);
         if (f.ShowDialog(this) != DialogResult.OK || f.Input is null) return;
-        var r = await _app.Bookings.UpdateAsync(b.Id, f.Input, reason, _app.Session!);
+        if (!AtelierNotificationService.Confirm(this, "Lưu thay đổi lịch chụp",
+                BookingActionTarget.Describe(b) + "\n\nLưu các thay đổi cho lịch này?")) return;
+        if (!await VerifyActionTargetAsync(b, actor, version)) return;
+        var r = await _app.Bookings.UpdateAsync(b.Id, f.Input, reason, actor);
         if (!r.Success) Ui.Error(this, r.Message);
         else { Ui.Info(this, r.Message); await LoadAsync(); }
-    }
+    });
 
-    private async Task DetailAsync()
+    private Task DetailAsync() => RunBookingActionAsync(async (b, _, _) =>
     {
-        var b = Selected();
-        if (b is null) return;
         using var d = new BookingDetailDialog(_app, b);
         d.ShowDialog(this);
         await LoadAsync();
-    }
+    });
 
-    private async Task AdvanceAsync()
+    private Task AdvanceAsync() => RunBookingActionAsync(async (b, actor, version) =>
     {
-        var b = Selected();
-        if (b is null) return;
         var next = b.TrangThai.BuocTiepTheo();
         if (next is null)
         {
@@ -760,40 +891,46 @@ public sealed class BookingsPage : UserControl
         if (!AtelierNotificationService.Confirm(
                 this,
                 "Cập nhật tiến độ lịch chụp",
-                $"Xác nhận chuyển lịch #{b.Ma} sang trạng thái “{next.Value.HienThi()}”?",
+                BookingActionTarget.Describe(b) + $"\n\nChuyển lịch này sang trạng thái “{next.Value.HienThi()}”?",
                 confirmText: "Chuyển trạng thái",
                 cancelText: "Giữ nguyên"))
             return;
 
-        var r = await _app.Bookings.AdvanceAsync(b.Id, _app.Session!);
+        if (!await VerifyActionTargetAsync(b, actor, version)) return;
+        var r = await _app.Bookings.AdvanceAsync(b.Id, actor);
         if (!r.Success) Ui.Error(this, r.Message);
         else await LoadAsync();
-    }
+    });
 
-    private async Task CancelAsync()
+    private Task CancelAsync() => RunBookingActionAsync(async (b, actor, version) =>
     {
-        var b = Selected();
-        if (b is null) return;
-        using var d = new TextPrompt("Hủy lịch chụp", "Nhập lý do hủy lịch chụp:");
-        if (d.ShowDialog(this) != DialogResult.OK) return;
-        var r = await _app.Bookings.CancelAsync(b.Id, d.Value, _app.Session!);
-        if (!r.Success) Ui.Error(this, r.Message);
-        else { Ui.Info(this, r.Message); await LoadAsync(); }
-    }
-
-    private async Task PaymentAsync(bool refund)
-    {
-        if(_paymentPending)return;
-        var b = Selected();
-        if (b is null) return;
-        if(!refund)
+        if (!BusinessRules.DuocHuy(b.TrangThai, actor.VaiTro, b.BatDau, DateTime.Now))
         {
-            _paymentPending=true;
-            try{using var payments=new PaymentWorkspaceForm(_app,b.Id);payments.ShowDialog(this);await LoadAsync();}
-            finally{_paymentPending=false;}
+            Ui.Error(this, "Bạn không được hủy lịch ở trạng thái hoặc thời điểm hiện tại.");
             return;
         }
-        var maximum = refund ? Math.Max(0, b.DaThu - b.DaHoan) : b.ConLai;
+        using var d = new TextPrompt($"Hủy lịch #{b.Ma}", "Nhập lý do hủy lịch chụp:");
+        if (d.ShowDialog(this) != DialogResult.OK) return;
+        if (!AtelierNotificationService.Confirm(this, "Xác nhận hủy lịch chụp",
+                BookingActionTarget.Describe(b) + $"\n\nLý do hủy: {d.Value}\n\nHủy đúng lịch chụp này?",
+                confirmText: "Hủy lịch này", cancelText: "Giữ nguyên", isDestructive: true)) return;
+        if (!await VerifyActionTargetAsync(b, actor, version)) return;
+        var r = await _app.Bookings.CancelAsync(b.Id, d.Value, actor);
+        if (!r.Success) Ui.Error(this, r.Message);
+        else { Ui.Info(this, r.Message); await LoadAsync(); }
+    });
+
+    private Task PaymentAsync(bool refund) => RunBookingActionAsync(async (b, actor, version) =>
+    {
+        if(!refund)
+        {
+            using var payments=new PaymentWorkspaceForm(_app,b.Id);
+            payments.ShowDialog(this);
+            await LoadAsync();
+            return;
+        }
+        if (actor.VaiTro != VaiTro.QuanTriVien || b.TrangThai != TrangThaiLich.DaHuy) return;
+        var maximum = Math.Max(0, b.DaThu - b.DaHoan);
         if (maximum <= 0)
         {
             Ui.Error(this, refund ? "Không còn số tiền có thể hoàn cho lịch này." : "Lịch này đã thanh toán đủ, không thể thu thêm.");
@@ -805,20 +942,29 @@ public sealed class BookingsPage : UserControl
             Ui.Error(this, "Số dư có phần lẻ hoặc vượt giới hạn sổ thu. Cần kiểm tra dữ liệu cũ; ứng dụng không tự làm tròn.");
             return;
         }
-        using var d = new MoneyDialog(refund ? "Hoàn tiền lịch chụp" : "Ghi nhận thanh toán", maximum, refund);
+        using var d = new MoneyDialog($"Hoàn tiền lịch #{b.Ma}", maximum, refund);
         if (d.ShowDialog(this) != DialogResult.OK) return;
+        if (!AtelierNotificationService.Confirm(this, "Xác nhận hoàn tiền lịch chụp",
+                BookingActionTarget.Describe(b) + $"\n\nSố tiền hoàn: {d.Amount:#,0.####} đ\nLý do hoàn: {d.Note}\n\nHoàn tiền cho đúng lịch này?",
+                confirmText: "Hoàn tiền lịch này", cancelText: "Quay lại", isDestructive: true)) return;
+        if (!await VerifyActionTargetAsync(b, actor, version)) return;
 
-        _paymentPending=true;
         try
         {
-            var r=await _app.Finance.RefundAsync(new(b.Id,d.Amount,d.Note,d.Note),_app.Session!);
+            var r=await _app.Finance.RefundAsync(new(b.Id,d.Amount,d.Note,d.Note),actor);
             if(!r.Success)Ui.Error(this,r.Code=="DB_ERROR"?"Chưa xác định kết quả hoàn tiền. Kiểm tra lịch sử trước khi thao tác tiếp; không gửi lại.":r.Message);
             else Ui.Info(this,r.Message+" Có thể xem phiếu hoàn đã lưu trong lịch sử giao dịch.");
             await LoadAsync();
         }
         catch{Ui.Error(this,"Không xác định kết quả hoàn tiền. Tải lại lịch sử trước khi thao tác tiếp.");}
-        finally{_paymentPending=false;}
-    }
+    });
+}
+
+internal static class BookingActionTarget
+{
+    internal static string Describe(LichChup booking) =>
+        $"Khách hàng: {booking.KhachHang}\nMã lịch: {booking.Ma}\n" +
+        $"Thời gian: {booking.BatDau:dd/MM/yyyy HH:mm} – {booking.KetThuc:dd/MM/yyyy HH:mm}\nTrạng thái: {booking.TrangThai.HienThi()}";
 }
 
 /// <summary>
