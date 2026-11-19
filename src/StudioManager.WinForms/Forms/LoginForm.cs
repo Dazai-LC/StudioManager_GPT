@@ -454,9 +454,11 @@ public sealed class LoginForm : Form
         ClearError();
         ProcessStartInfo start;
         try { start = CustomerPortalLauncher.Prepare(Environment.ProcessPath, _demoProfile, registration); }
-        catch
+        catch (Exception failure)
         {
-            ShowError("Không tìm thấy CustomerClient thật trong bố trí Staff/CustomerClient cùng profile. Kiểm tra bản cài; portal giả lập sẽ không được mở.");
+            ShowError(_demoProfile?.IsDevelopment == true
+                ? "Không thể khởi chạy CustomerClient source Debug. Build lại solution Debug và kiểm tra profile.\n" + failure.Message
+                : "Không tìm thấy CustomerClient thật trong bố trí Staff/CustomerClient cùng profile. Kiểm tra bản cài; portal giả lập sẽ không được mở.");
             return;
         }
         try { using var process = Process.Start(start); if (process is null) throw new InvalidOperationException(); }

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Staff-Admin (Local Demo)": {
+      "commandName": "Project",
+      "commandLineArgs": "--local-demo-dev"
+    }
+  }
+}

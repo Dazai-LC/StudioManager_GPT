@@ -46,23 +46,51 @@ public static class LocalDemoHostIdentity
     {
         try
         {
-            LocalDemoProfile.RejectReparsePoints(profile.RuntimeFile);
-            var info = new FileInfo(profile.RuntimeFile);
-            if (!info.Exists || info.Length is <= 0 or > 4096) throw new InvalidOperationException();
+            var host = ReadDescriptor(profile);
             using var current = WindowsIdentity.GetCurrent();
-            var sid = current.User ?? throw new InvalidOperationException();
-            var acl = info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
-            if (!sid.Equals(acl.GetOwner(typeof(SecurityIdentifier))) || !acl.AreAccessRulesProtected)
-                throw new InvalidOperationException();
-            foreach (FileSystemAccessRule rule in acl.GetAccessRules(true, true, typeof(SecurityIdentifier)))
-                if (rule.AccessControlType == AccessControlType.Allow && !sid.Equals(rule.IdentityReference))
-                    throw new InvalidOperationException();
-            using var stream = new FileStream(profile.RuntimeFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var host = JsonSerializer.Deserialize<Host>(stream, Json) ?? throw new InvalidOperationException();
-            Validate(profile, host, Observe(host.ProcessId), sid.Value);
+            Validate(profile, host, Observe(host.ProcessId), current.User!.Value);
             return host;
         }
         catch { throw new InvalidOperationException("Local demo host identity is unavailable or invalid; start the matching console host first."); }
+    }
+
+    internal static Host ReadDescriptor(LocalDemoProfile profile)
+    {
+        LocalDemoProfile.RejectReparsePoints(profile.RuntimeFile);
+        var info = new FileInfo(profile.RuntimeFile);
+        if (!info.Exists || info.Length is <= 0 or > 4096) throw new InvalidOperationException("Missing or invalid Local Demo lease.");
+        using var current = WindowsIdentity.GetCurrent();
+        var sid = current.User ?? throw new InvalidOperationException("A local Windows user is required.");
+        var acl = info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+        if (!sid.Equals(acl.GetOwner(typeof(SecurityIdentifier))) || !acl.AreAccessRulesProtected)
+            throw new InvalidOperationException("The Local Demo lease must be protected and owned by the current Windows user.");
+        foreach (FileSystemAccessRule rule in acl.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+            if (rule.AccessControlType == AccessControlType.Allow && !sid.Equals(rule.IdentityReference))
+                throw new InvalidOperationException("The Local Demo lease grants access to another Windows user.");
+        using var stream = new FileStream(profile.RuntimeFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var host = ReadDescriptor(stream);
+        ValidateDescriptor(profile, host, sid.Value);
+        return host;
+    }
+
+    internal static Host ReadDescriptor(Stream stream)
+    {
+        if (stream.Length is <= 0 or > 4096) throw new InvalidOperationException("Invalid Local Demo lease size.");
+        using var document = JsonDocument.Parse(stream);
+        if (document.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("Invalid Local Demo lease.");
+        var names = document.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
+        if (names.Length != 7 || names.Distinct(StringComparer.Ordinal).Count() != 7)
+            throw new InvalidOperationException("Incomplete or ambiguous Local Demo lease.");
+        return document.RootElement.Deserialize<Host>(Json) ?? throw new InvalidOperationException("Invalid Local Demo lease.");
+    }
+
+    internal static void ValidateDescriptor(LocalDemoProfile profile, Host lease, string currentSid)
+    {
+        if (lease.Profile != LocalDemoProfile.ProfileName || lease.Pipe != LocalDemoProfile.PipeName ||
+            lease.ProcessId <= 0 || lease.StartedUtcTicks <= 0 || lease.StartedUtcTicks > DateTime.UtcNow.Ticks ||
+            lease.UserSid != currentSid || lease.SessionId < 0 ||
+            !string.Equals(lease.Executable, profile.HostExecutable, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Local demo host identity refused.");
     }
 
     public static void VerifyPeer(LocalDemoProfile profile, SafePipeHandle pipe)
@@ -81,11 +109,9 @@ public static class LocalDemoHostIdentity
 
     internal static void Validate(LocalDemoProfile profile, Host lease, Host observed, string currentSid)
     {
-        if (lease.Profile != LocalDemoProfile.ProfileName || lease.Pipe != LocalDemoProfile.PipeName ||
-            lease.ProcessId <= 0 || lease.StartedUtcTicks <= 0 || lease.UserSid != currentSid ||
-            lease.ProcessId != observed.ProcessId || lease.StartedUtcTicks != observed.StartedUtcTicks ||
+        ValidateDescriptor(profile, lease, currentSid);
+        if (lease.ProcessId != observed.ProcessId || lease.StartedUtcTicks != observed.StartedUtcTicks ||
             lease.UserSid != observed.UserSid || lease.SessionId != observed.SessionId ||
-            !string.Equals(lease.Executable, profile.HostExecutable, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(observed.Executable, profile.HostExecutable, StringComparison.OrdinalIgnoreCase))
             throw new IOException("Local demo host identity refused.");
     }

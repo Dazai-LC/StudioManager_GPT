@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CustomerClient (Local Demo)": {
+      "commandName": "Project",
+      "commandLineArgs": "--local-demo-dev"
+    }
+  }
+}

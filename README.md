@@ -22,7 +22,13 @@
 - .NET 8 SDK/Desktop Runtime.
 - SQL Server 2019+ hoặc SQL Server Express và SQL Server Management Studio.
 
-## Cài đặt
+## F5 Local Demo v2.2 hiện có
+
+Mở `StudioManager.sln`, chọn **Debug**, đặt `StudioManager.WinForms` hoặc `StudioManager.CustomerClient` làm **Startup Project**, chọn profile **Staff-Admin (Local Demo)** hoặc **CustomerClient (Local Demo)** tương ứng rồi nhấn **F5**. Host demo được khởi chạy hoặc dùng lại tự động; GUI chạy từ source Debug, không cần chép EXE vào artifacts.
+
+Xem [hướng dẫn F5 và vòng đời host](docs/v2.2/LOCAL_DEMO_F5.md) để biết cấu hình, kiểm tra breakpoint và giới hạn. Luồng này sử dụng database Local Demo đã có dữ liệu; **không chạy lại SQL setup, seed, migration hay bootstrap**. File `local-demo.development.json` chỉ tham chiếu tới profile demo hiện có.
+
+## Cài đặt database mới (không áp dụng cho Local Demo hiện có)
 
 1. Mở SQL Server Management Studio, chạy lần lượt:
    - `database/01_CreateDatabase.sql`
@@ -30,7 +36,7 @@
    - `database/03_SeedData.sql`
 2. Mở `src/StudioManager.WinForms/appsettings.json`, sửa `ConnectionString` theo máy. Cấu hình mặc định dùng `localhost\SQLEXPRESS` và Windows Authentication.
 3. Mở `StudioManager.sln` bằng Visual Studio, chọn **Restore NuGet Packages** rồi **Build Solution**.
-4. Đặt `StudioManager.WinForms` làm Startup Project và nhấn `F5`.
+4. Với Local Demo v2.2 đã có sẵn, dùng hướng dẫn F5 ở trên. Cấu hình Debug yêu cầu chọn Local Demo rõ ràng và không tự dùng cấu hình production.
 
 Nếu bạn đã chạy ba file SQL trước đó thì **không cần chạy lại**. Chỉ cần kiểm tra `ConnectionString` trỏ đúng instance và database `StudioManager`; chạy lại file seed có thể tạo dữ liệu trùng.
 

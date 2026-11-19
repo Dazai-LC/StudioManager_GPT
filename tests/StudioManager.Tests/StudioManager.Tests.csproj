@@ -8,4 +8,8 @@
     <ProjectReference Include="..\..\src\StudioManager.Application\StudioManager.Application.csproj" />
     <ProjectReference Include="..\..\src\StudioManager.IdentityService\StudioManager.IdentityService.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Exercise the actual launch planner without loading WinForms or starting a GUI. -->
+    <Compile Include="..\..\src\StudioManager.WinForms\CustomerPortalLauncher.cs" Link="Startup\CustomerPortalLauncher.cs" />
+  </ItemGroup>
 </Project>

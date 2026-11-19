@@ -16,10 +16,12 @@ internal static class CustomerPortalLauncher
         var arguments = new List<string>();
         if (demo is not null)
         {
-            var selected = new[] { "--local-demo", "--runtime", demo.RuntimeFile };
-            LocalDemoProfile.SelectForProcess(selected, staff, LocalDemoComponent.Staff);
+            var selected = demo.LaunchArguments;
+            var staffProfile = LocalDemoProfile.SelectForProcess(selected, staff, LocalDemoComponent.Staff)!;
             customer = demo.Executable(LocalDemoComponent.CustomerClient);
-            LocalDemoProfile.SelectForProcess(selected, customer, LocalDemoComponent.CustomerClient);
+            var customerProfile = LocalDemoProfile.SelectForProcess(selected, customer, LocalDemoComponent.CustomerClient)!;
+            if (!string.Equals(staffProfile.RuntimeFile, demo.RuntimeFile, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(customerProfile.RuntimeFile, demo.RuntimeFile, StringComparison.OrdinalIgnoreCase)) throw Unavailable();
             arguments.AddRange(selected);
         }
         else
@@ -51,5 +53,5 @@ internal static class CustomerPortalLauncher
         for (var current = path; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
             if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) throw Unavailable();
     }
-    private static InvalidOperationException Unavailable() => new("Không tìm thấy CustomerClient thật trong bố trí Staff/CustomerClient đã được hỗ trợ.");
+    private static InvalidOperationException Unavailable() => new("Không tìm thấy CustomerClient thật trong bố trí Staff/CustomerClient hoặc source Debug Local Demo. Build lại solution Debug và kiểm tra profile.");
 }

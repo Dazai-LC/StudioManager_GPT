@@ -9,6 +9,11 @@ namespace StudioManager.WinForms;
 
 internal static class Program
 {
+#if DEBUG
+    private const bool RequireLocalDemo = true;
+#else
+    private const bool RequireLocalDemo = false;
+#endif
     [STAThread]
     private static void Main(string[] args)
     {
@@ -27,14 +32,17 @@ internal static class Program
         LocalDemoProfile? demo;
         try
         {
-            demo = LocalDemoClientRuntime.Configure(args, LocalDemoComponent.Staff);
-            connection = demo is not null ? LocalDemoSqlSettings.Load(AppContext.BaseDirectory) :
+            demo = LocalDemoClientRuntime.Configure(args, LocalDemoComponent.Staff, RequireLocalDemo);
+            connection = demo is not null ? LocalDemoSqlSettings.Load(demo.ConfigurationDirectory(LocalDemoComponent.Staff)) :
                 (JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) ?? new()).ConnectionString;
         }
-        catch
+        catch (Exception failure)
         {
+            var message = RequireLocalDemo || args.Contains(LocalDemoDevelopment.Option, StringComparer.Ordinal)
+                ? "Không thể đọc cấu hình runtime. Chọn profile Staff-Admin (Local Demo), cấu hình Debug.\n\n" + failure.Message
+                : "Không thể đọc cấu hình runtime. Với local demo, hãy kiểm tra host, --local-demo --runtime và appsettings.json của bản Staff riêng.";
             using var error = new Controls.AtelierDialog(Controls.AtelierNotificationKind.Error, "Runtime",
-                "Không thể đọc cấu hình runtime. Với local demo, hãy kiểm tra host, --local-demo --runtime và appsettings.json của bản Staff riêng.");
+                message);
             error.ShowDialog(); Environment.ExitCode = 1; return;
         }
         var facade = new AppFacade(new SqlStudioRepository(connection), new Pbkdf2PasswordHasher(), new SystemClock());

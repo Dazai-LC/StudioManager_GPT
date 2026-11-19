@@ -7,6 +7,11 @@ namespace StudioManager.CustomerClient;
 
 internal static class Program
 {
+#if DEBUG
+    private const bool RequireLocalDemo = true;
+#else
+    private const bool RequireLocalDemo = false;
+#endif
     [STAThread]
     private static void Main(string[] args)
     {
@@ -16,13 +21,16 @@ internal static class Program
         {
             registration = args.Contains("--register", StringComparer.Ordinal);
             if (args.Count(argument => argument == "--register") > 1) throw new InvalidOperationException();
-            LocalDemoClientRuntime.Configure(args.Where(argument => argument != "--register").ToArray(), LocalDemoComponent.CustomerClient);
+            LocalDemoClientRuntime.Configure(args.Where(argument => argument != "--register").ToArray(), LocalDemoComponent.CustomerClient, RequireLocalDemo);
         }
-        catch
+        catch (Exception failure)
         {
+            var message = RequireLocalDemo || args.Contains(LocalDemoDevelopment.Option, StringComparer.Ordinal)
+                ? "Không thể khởi chạy cổng khách hàng. Chọn profile CustomerClient (Local Demo), cấu hình Debug.\n\n" + failure.Message
+                : "Không thể khởi chạy cổng khách hàng. Kiểm tra tham số và bản cài. Với local demo, hãy kiểm tra host, --local-demo --runtime và thư mục demo riêng.";
             using var error = new StudioManager.WinForms.Controls.AtelierDialog(
                 StudioManager.WinForms.Controls.AtelierNotificationKind.Error, "Khởi chạy cổng khách hàng",
-                "Không thể khởi chạy cổng khách hàng. Kiểm tra tham số và bản cài. Với local demo, hãy kiểm tra host, --local-demo --runtime và thư mục demo riêng.");
+                message);
             error.ShowDialog(); Environment.ExitCode = 1; return;
         }
         Application.Run(new IdentityForm(registration));

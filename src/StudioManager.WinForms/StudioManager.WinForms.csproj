@@ -9,6 +9,8 @@
     <ProjectReference Include="..\StudioManager.Application\StudioManager.Application.csproj" />
     <ProjectReference Include="..\StudioManager.Infrastructure\StudioManager.Infrastructure.csproj" />
     <ProjectReference Include="..\StudioManager.CustomerApi\StudioManager.CustomerApi.csproj" />
+    <!-- Build the real portal when VS builds only the startup project and its dependencies; do not copy its output. -->
+    <ProjectReference Include="..\StudioManager.CustomerClient\StudioManager.CustomerClient.csproj" ReferenceOutputAssembly="false" Private="false" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
   <ItemGroup>
     <None Update="appsettings.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
